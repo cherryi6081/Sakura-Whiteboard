@@ -4,10 +4,15 @@
     "noEmit": false,
     "outDir": "dist",
     "rootDir": "src",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "sourceMap": true,
-    "declaration": false
+    "declaration": false,
+    // 编译时不把 shared 源码拉进 server 的 program：只引用 shared 已构建的声明文件
+    "paths": {
+      "@whiteboard/shared": ["../../packages/shared/dist/index.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export const BOARD_ROLES = ['owner', 'editor', 'viewer'] as const;
 export type BoardRole = (typeof BOARD_ROLES)[number];
 
@@ -6,6 +8,9 @@ export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
 
 export const OP_KINDS = ['upsert', 'delete', 'zindex'] as const;
 export type OpKind = (typeof OP_KINDS)[number];
+
+/** 与 `0001_init.sql` 中 `elements.type` 的 check 约束保持一致。 */
+export const ELEMENT_TYPES = ['rectangle', 'ellipse', 'diamond', 'arrow', 'text', 'freedraw', 'note'] as const;
 
 export const LIMITS = {
   /** 单条 op 载荷上限（字节） */
@@ -35,43 +40,62 @@ export const ERROR_CODES = {
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
-/**
- * 元素级 op 协议（纯类型，服务端裁决逻辑在 C3 实现）。
+/* ------------------------------------------------------------------------------------
+ * 元素级 op 协议：zod schema 为唯一来源，类型一律 `z.infer` 派生。
  *
  * 约定：
  * - `upsert`：整块元素覆盖写；`baseVersion` 为客户端上次看到的版本，新建时为 null。
- * - `delete`：墓碑语义（`isDeleted=true` + 新版本），不物理删除，删除也参与 LWW。
- * - `versionNonce`：同版本时的决胜位（小者胜，见文档 §2.4）。
- */
-export type ElementSnapshot = {
-  id: string;
-  version: number;
-  versionNonce: number;
-  isDeleted: boolean;
+ * - `delete`：墓碑语义（`is_deleted=true` + 新版本），不物理删除，删除也参与 LWW。
+ * - `versionNonce`：同版本时的决胜位（**小者胜**，见文档 §2.4）。
+ * - `opId`：客户端生成（UUID），服务端以它做 Redis 幂等键。
+ * ------------------------------------------------------------------------------------ */
+
+export const elementTypeSchema = z.enum(ELEMENT_TYPES);
+export type ElementType = z.infer<typeof elementTypeSchema>;
+
+/** 派生 op 时的"上一帧"快照，不含渲染数据。 */
+export const elementSnapshotSchema = z.object({
+  id: z.string().min(1).max(128),
+  type: elementTypeSchema.optional(),
+  version: z.number().int().positive(),
+  versionNonce: z.number().int().nonnegative(),
+  isDeleted: z.boolean(),
+});
+export type ElementSnapshot = z.infer<typeof elementSnapshotSchema>;
+
+const opBaseShape = {
+  opId: z.string().min(1).max(64),
+  id: z.string().min(1).max(128),
+  type: elementTypeSchema,
+  baseVersion: z.number().int().nonnegative().nullable(),
+  version: z.number().int().positive(),
+  versionNonce: z.number().int().nonnegative(),
 };
 
-export type ElementUpsertOp = {
-  kind: "upsert";
-  id: string;
-  baseVersion: number | null;
-  version: number;
-  versionNonce: number;
-};
+export const elementUpsertOpSchema = z.object({
+  ...opBaseShape,
+  kind: z.literal('upsert'),
+  /** 整块元素（Excalidraw 元素对象），落库到 `elements.data`。 */
+  data: z.record(z.unknown()),
+  /** 分数索引字符串，落库到 `elements.zindex_key`。 */
+  zindexKey: z.string().min(1).max(256),
+});
+export type ElementUpsertOp = z.infer<typeof elementUpsertOpSchema>;
 
-export type ElementDeleteOp = {
-  kind: "delete";
-  id: string;
-  baseVersion: number;
-  version: number;
-  versionNonce: number;
-};
+export const elementDeleteOpSchema = z.object({
+  ...opBaseShape,
+  kind: z.literal('delete'),
+  baseVersion: z.number().int().nonnegative(),
+});
+export type ElementDeleteOp = z.infer<typeof elementDeleteOpSchema>;
 
-export type ElementOp = ElementUpsertOp | ElementDeleteOp;
+export const elementOpSchema = z.discriminatedUnion('kind', [elementUpsertOpSchema, elementDeleteOpSchema]);
+export type ElementOp = z.infer<typeof elementOpSchema>;
 
-/** 一次上行批量：同 id 只保留最后一条（C2 的 batcher 保证，C3 入站再按 opId 幂等）。 */
-export type OpBatch = {
-  boardId: string;
-  clientId: string;
-  ops: ElementOp[];
-};
-
+/** 一次上行批量：同 id 只保留最后一条（C2 的 batcher 保证，服务端按 opId 再幂等）。 */
+export const opSubmitSchema = z.object({
+  boardId: z.string().regex(LIMITS.boardIdPattern),
+  clientId: z.string().min(1).max(64),
+  ops: z.array(elementOpSchema).min(1).max(LIMITS.opBatchMax),
+});
+export type OpBatch = z.infer<typeof opSubmitSchema>;

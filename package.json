@@ -13,6 +13,6 @@
   "scripts": {
     "dev:server": "npm run dev -w @whiteboard/server",
     "migrate": "npm run migrate -w @whiteboard/server",
-    "typecheck": "npm run typecheck -w @whiteboard/server"
+    "typecheck": "npm run build -w @whiteboard/shared && npm run typecheck -w @whiteboard/server && npm run typecheck -w @whiteboard/web"
   }
 }

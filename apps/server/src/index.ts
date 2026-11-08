@@ -4,12 +4,15 @@ import { config } from './config.js';
 import { logger } from './infra/logger.js';
 import { closeDb, pingDb } from './infra/db.js';
 import { closeRedis, pingRedis } from './infra/redis.js';
+import { attachRealtime } from './realtime/board.js';
 
 const app = createApp();
 
 const server = app.listen(config.PORT, () => {
   logger.info({ port: config.PORT, env: config.NODE_ENV }, 'api listening');
 });
+
+const realtime = attachRealtime(server);
 
 void (async () => {
   const [db, redis] = await Promise.all([pingDb(), pingRedis()]);
@@ -19,7 +22,8 @@ void (async () => {
 
 async function shutdown(signal: string) {
   logger.info({ signal }, 'shutting down');
-  server.close();
+  await realtime.close().catch((err) => logger.warn({ err: String(err) }, 'realtime close failed'));
+  server.close(() => undefined);
   await Promise.allSettled([closeDb(), closeRedis()]);
   process.exit(0);
 }

@@ -22,6 +22,7 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/apps/server/dist apps/server/dist
 COPY --from=build /app/apps/server/migrations apps/server/migrations
+COPY --from=build /app/packages/shared/dist packages/shared/dist
 
 EXPOSE 8080
 CMD ["node", "apps/server/dist/index.js"]
