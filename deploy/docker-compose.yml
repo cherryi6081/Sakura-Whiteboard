@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    # pg/redis 不参与 --scale，固定容器名与端口不会冲突
+    container_name: wb-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: whiteboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d whiteboard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: wb-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    # 不写 container_name：允许 `up -d --scale api=2`
+    # host 端口用区间，否则第二个实例会 Port is already allocated
+    ports:
+      - "8080-8081:8080"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      # 容器内必须用 compose 服务名，不能用 127.0.0.1（那会连到 api 自己）
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/whiteboard
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: dev-only-change-me-0123456789abcdef
+      # INSTANCE_ID 不写死：默认取容器主机名，--scale 后两个实例各自可区分
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  pgdata:
+  redisdata:

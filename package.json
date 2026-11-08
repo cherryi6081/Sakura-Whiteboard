@@ -1,0 +1,17 @@
+{
+  "name": "whiteboard",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:server": "npm run dev -w @whiteboard/server",
+    "migrate": "npm run migrate -w @whiteboard/server",
+    "typecheck": "npm run typecheck -w @whiteboard/server"
+  }
+}
