@@ -18,7 +18,7 @@ import {
   writeCachedScene,
 } from "../store/cacheDb";
 import { createWriterLease, type WriterLeaseSnapshot } from "../store/writerLease";
-import { resolveTabIdentity, type TabHandshakeEvent, type TabIdentity } from "./tabIdentity";
+import { resolveTabIdentity, type GuestUser, type TabHandshakeEvent, type TabIdentity } from "./tabIdentity";
 
 /**
  * M3：**每标签、每板**一个 store 实例。
@@ -49,6 +49,9 @@ export type BoardStoreSnapshot = {
   boardId: string;
   tabId: string;
   guestId: string;
+  /** M5-1：是否已登录 + 当前用户（游客为 null） */
+  authenticated: boolean;
+  user: GuestUser | null;
   tabSupported: boolean;
   tabRegenerated: boolean;
   tabEvents: TabHandshakeEvent[];
@@ -176,6 +179,8 @@ export function createBoardStore(options: {
       boardId,
       tabId: tabIdentity?.tabId ?? "",
       guestId: tabIdentity?.guestId ?? "",
+      authenticated: tabIdentity?.authenticated ?? false,
+      user: tabIdentity?.user ?? null,
       tabSupported: tabIdentity?.supported ?? false,
       tabRegenerated: tabIdentity?.regenerated ?? false,
       tabEvents: tabIdentity ? [...tabIdentity.events] : [],

@@ -7,22 +7,21 @@ import { LIMITS, opSubmitSchema } from '@whiteboard/shared';
 import { config } from '../config.js';
 import { logger } from '../infra/logger.js';
 import { pool } from '../infra/db.js';
-import { getBoardForJoin, persistOp } from './opStore.js';
+import { persistOp } from './opStore.js';
 import { allocateSeq, claimOpIdem, markOpIdemDone, releaseOpIdem } from './seq.js';
-import { resolveJoinRole, type JoinRole } from '../domain/roles.js';
+import { resolveBoardAccess, type AccessRole } from '../domain/access.js';
+import { resolveIdentityFromCookieHeader, type Identity } from '../auth/identity.js';
 import { createPresenceRegistry } from './presence.js';
 
 const joinSchema = z.object({
   boardId: z.string().regex(LIMITS.boardIdPattern),
   clientId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
-  /** M2-C4：只读客户端自报；只能把 editor 降为 viewer，不能提权。 */
+  /** M2-C4：只读客户端自报；只能降级，不能提权。 */
   viewOnly: z.boolean().optional(),
   /**
-   * M3：浏览器级游客标识（`wb_gid` cookie，未签名）。同一浏览器的多个标签共享它，
-   * presence 才能按用户聚合成 "×2 标签页"。未传时回退到旧的 `anon_{clientId}`。
+   * M5-1 起**不再接受**客户端自报 `guestId`：身份只从 WS 握手带的签名 cookie / Redis
+   * 会话推导。`tabId` 仍来自 sessionStorage，只用于 presence 展示与重复检测。
    */
-  guestId: z.string().min(4).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
-  /** M3：每标签一条（sessionStorage），仅用于 presence 展示与重复检测，不参与权限。 */
   tabId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
 });
 
@@ -38,9 +37,10 @@ type SocketState = {
   boardId: string;
   clientId: string;
   tabId: string | null;
-  role: JoinRole;
+  role: AccessRole;
   identity: string;
-  guestId: string;
+  userId: string | null;
+  guestId: string | null;
 };
 
 const stateOf = (socket: { data: Record<string, unknown> }): SocketState | null =>
@@ -58,9 +58,8 @@ const colorOf = (seed: string): string =>
  * 强制 `transports: ['websocket']`，避免 C1 部署里的轮询降级；
  * 广播通过 `@socket.io/redis-adapter` 扇出，双实例（8080/8081）才能互相收到。
  *
- * **鉴权缺口（如实标注）**：当前没有会话/OAuth 中间件，`join` 只能按"板存在且
- * `share_mode != private`"放行；`guestId` 由客户端 self-claim 的 `clientId` 派生，
- * 服务端未签名、未校验。真正的登录/游客 cookie 校验待 M1 补做。
+ * 身份**只从 WS 握手附带的签名 cookie / Redis 会话推导**（M5-1 收口）：
+ * `join` 与 `op:submit` 都不再接受客户端自报的 `guestId`；`viewOnly` 只能降级权限。
  */
 export function attachRealtime(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -90,30 +89,30 @@ export function attachRealtime(httpServer: HttpServer) {
         return;
       }
 
-      const { boardId, clientId, viewOnly = false, guestId: claimedGuestId, tabId: claimedTabId }: JoinPayload =
-        parsed.data;
+      const { boardId, clientId, viewOnly = false, tabId: claimedTabId }: JoinPayload = parsed.data;
       // z.optional() 解构默认值会与 `string | undefined` 冲突，这里统一收敛成 `string | null`
       const tabId = claimedTabId ?? null;
 
       try {
-        const board = await getBoardForJoin(boardId);
-        if (!board || board.archived_at) {
-          socket.emit('join:error', { code: 'NOT_FOUND' });
-          ack?.({ ok: false, code: 'NOT_FOUND' });
-          return;
-        }
-        // 最小规则：没有鉴权前，private 板（包括未登录 owner 自己的板）一律不可进
-        const role = resolveJoinRole(board.share_mode, viewOnly);
-        if (role === 'forbidden') {
-          socket.emit('join:error', { code: 'FORBIDDEN' });
-          ack?.({ ok: false, code: 'FORBIDDEN' });
+        // 身份只来自握手 cookie；客户端 payload 里即使塞了 guestId 也会被 schema 忽略/拒绝
+        const identity: Identity = await resolveIdentityFromCookieHeader(socket.handshake.headers.cookie);
+        const access = await resolveBoardAccess(boardId, identity);
+        if (!access.ok) {
+          const code = access.reason === 'not_found' ? 'NOT_FOUND' : 'FORBIDDEN';
+          socket.emit('join:error', { code });
+          ack?.({ ok: false, code });
           return;
         }
 
-        const guestId = claimedGuestId ?? `anon_${clientId}`;
-        const identity = `guest:${guestId}`;
+        // 自报 viewOnly 只能降级；owner/editor 降为 viewer，viewer 不变
+        const role: AccessRole = viewOnly && access.role !== 'viewer' ? 'viewer' : access.role;
 
-        const state: SocketState = { boardId, clientId, tabId, role, identity, guestId };
+        // 无 cookie 的直连客户端：由服务端生成临时身份（不是客户端自报），保证 op 归属可写
+        const userId = identity.userId;
+        const guestId = userId ? null : (identity.guestId ?? `anon_${socket.id}`);
+        const presenceIdentity = userId ? `user:${userId}` : `guest:${guestId}`;
+
+        const state: SocketState = { boardId, clientId, tabId, role, identity: presenceIdentity, userId, guestId };
         socket.data = state;
         await socket.join(roomOf(boardId));
 
@@ -123,15 +122,22 @@ export function attachRealtime(httpServer: HttpServer) {
           connectionId: socket.id,
           clientId,
           tabId,
-          identity,
+          identity: presenceIdentity,
           role,
-          color: colorOf(guestId),
+          color: colorOf(userId ?? guestId ?? clientId),
           joinedAt: Date.now(),
         });
 
         const joined = {
-          self: { identity, role, isGuest: true, color: colorOf(guestId), viewOnly: role === 'viewer', tabId },
-          seq: board.last_seq,
+          self: {
+            identity: presenceIdentity,
+            role,
+            isGuest: !userId,
+            color: colorOf(userId ?? guestId ?? clientId),
+            viewOnly: role === 'viewer',
+            tabId,
+          },
+          seq: access.board.last_seq,
           resumed: false,
         };
         socket.emit('joined', joined);
@@ -167,7 +173,7 @@ export function attachRealtime(httpServer: HttpServer) {
         socket.emit('op:rejected', { opId: null, reason: 'FORBIDDEN' });
         return;
       }
-      if (state.role !== 'editor') {
+      if (state.role !== 'owner' && state.role !== 'editor') {
         for (const op of batch.ops) socket.emit('op:rejected', { opId: op.opId, reason: 'NO_PERMISSION' });
         return;
       }
@@ -204,6 +210,7 @@ export function attachRealtime(httpServer: HttpServer) {
             result = await persistOp({
               boardId: state.boardId,
               clientId: state.clientId,
+              userId: state.userId,
               guestId: state.guestId,
               seq,
               op,

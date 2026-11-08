@@ -5,8 +5,8 @@
  * - `tabId` 存在 **sessionStorage**（每标签一份）。浏览器"复制标签页"会把 sessionStorage
  *   一起复制，于是两个标签拿到同一个 `tabId`；而 `BroadcastChannel` 是浏览器级共享的，
  *   正好可以用来发现重复。
- * - `guestId` 存在 **cookie**（`wb_gid`，浏览器级共享）。同一浏览器的标签因此聚合为一个用户，
- *   presence 显示 "×2 标签页"；这是设计特性，不是隔离失败（见开发文档 §6.2）。
+ * - `guestId` 由**服务端签发**（HttpOnly 签名 cookie `wb_gid`），前端通过 `GET /api/guest/me`
+ *   读取。同一浏览器的标签共享它，presence 显示 "×2 标签页"；这是设计特性（§6.2）。
  *
  * 检测协议（频道 `wb-handshake`）：
  * 1. 启动时读取 sessionStorage 的 `wb:tabId`，没有则生成；
@@ -22,8 +22,42 @@
  */
 
 export const TAB_ID_KEY = "wb:tabId";
-export const GUEST_COOKIE = "wb_gid";
 export const HANDSHAKE_CHANNEL = "wb-handshake";
+
+export type GuestUser = { id: string; email: string | null; displayName: string; color: string };
+
+/** `GET /api/guest/me` 的返回（服务端签发 cookie 的唯一入口）。 */
+export type GuestSessionInfo = {
+  guestId: string;
+  isGuest: boolean;
+  authenticated: boolean;
+  user: GuestUser | null;
+};
+
+/**
+ * 读取服务端身份。**前端不再自造 `wb_gid`**：cookie 是 HttpOnly 的，JS 读不到，
+ * 必须由这个接口下发 / 轮换；服务端据此把 `join`、`op:submit` 的身份收口到签名 cookie。
+ * 失败时返回 null，页面降级为"无 guestId 展示"，但 WS 仍会由服务端生成临时身份。
+ */
+export async function fetchGuestIdentity(): Promise<GuestSessionInfo | null> {
+  try {
+    const res = await fetch("/api/guest/me", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<GuestSessionInfo>;
+    if (typeof data.guestId !== "string" || data.guestId.length === 0) return null;
+    return {
+      guestId: data.guestId,
+      isGuest: data.isGuest ?? true,
+      authenticated: Boolean(data.authenticated),
+      user: data.user ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export type TabFingerprint = { bootedAt: number; nonce: string };
 
@@ -46,7 +80,11 @@ export type TabHandshakeEvent = {
 
 export type TabIdentity = {
   tabId: string;
+  /** 服务端签发的浏览器级游客标识；接口失败时为空串 */
   guestId: string;
+  /** 当前是否有登录会话 */
+  authenticated: boolean;
+  user: GuestUser | null;
   bootedAt: number;
   nonce: string;
   /** 本次启动是否因重复而重新生成过 tabId */
@@ -92,35 +130,6 @@ function safeSessionSet(key: string, value: string): void {
   }
 }
 
-function readCookie(name: string): string | null {
-  try {
-    const prefix = `${name}=`;
-    for (const part of document.cookie.split(";")) {
-      const trimmed = part.trim();
-      if (trimmed.startsWith(prefix)) return decodeURIComponent(trimmed.slice(prefix.length));
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-/**
- * 浏览器级游客标识：整块浏览器共享，多标签聚合为一个用户。
- * 未签名，服务端按"自报身份"处理（与 M2 的鉴权缺口边界一致，见开发文档 §7.2.1）。
- */
-export function ensureGuestId(): string {
-  const existing = readCookie(GUEST_COOKIE);
-  if (existing && /^[A-Za-z0-9_-]{4,64}$/.test(existing)) return existing;
-  const guestId = randomId("g");
-  try {
-    document.cookie = `${GUEST_COOKIE}=${encodeURIComponent(guestId)}; path=/; max-age=${365 * 24 * 3600}; SameSite=Lax`;
-  } catch {
-    /* ignore */
-  }
-  return guestId;
-}
-
 async function resolveTabIdentityCore(options: {
   boardId: string;
   handshakeMs?: number;
@@ -130,6 +139,8 @@ async function resolveTabIdentityCore(options: {
   const now = options.now ?? (() => Date.now());
   const handshakeMs = options.handshakeMs ?? 200;
 
+  // 身份请求与握手并行，避免串行叠加延迟
+  const guestPromise = fetchGuestIdentity();
   const bootedAt = PAGE_BOOTED_AT;
   const nonce = PAGE_NONCE;
   let tabId = safeSessionGet(TAB_ID_KEY) ?? randomId("tab");
@@ -141,9 +152,12 @@ async function resolveTabIdentityCore(options: {
 
   const supported = typeof BroadcastChannel !== "undefined";
   if (!supported) {
+    const guest = await guestPromise;
     return {
       tabId,
-      guestId: ensureGuestId(),
+      guestId: guest?.guestId ?? "",
+      authenticated: guest?.authenticated ?? false,
+      user: guest?.user ?? null,
       bootedAt,
       nonce,
       regenerated: false,
@@ -207,9 +221,12 @@ async function resolveTabIdentityCore(options: {
   post({ type: "hello", boardId, tabId, nonce, bootedAt });
   await new Promise<void>((resolve) => setTimeout(resolve, handshakeMs));
 
+  const guest = await guestPromise;
   return {
     tabId,
-    guestId: ensureGuestId(),
+    guestId: guest?.guestId ?? "",
+    authenticated: guest?.authenticated ?? false,
+    user: guest?.user ?? null,
     bootedAt,
     nonce,
     regenerated,

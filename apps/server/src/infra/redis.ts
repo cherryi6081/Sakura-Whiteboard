@@ -26,6 +26,16 @@ export type PingResult = {
   error?: string;
 };
 
+/** 懒连接：首次使用 Redis 时补一次 `connect()`，并发调用可重入。 */
+export async function ensureRedisConnected(): Promise<void> {
+  if (redis.status === 'ready') return;
+  try {
+    await redis.connect();
+  } catch (err) {
+    if (!/already/i.test(String(err))) throw err;
+  }
+}
+
 export async function pingRedis(): Promise<PingResult> {
   const startedAt = performance.now();
   const target = describeRedisTarget();

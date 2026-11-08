@@ -116,7 +116,7 @@ export function createBoardCollab(options: {
   clientId?: string;
   /** M3：每标签一条（sessionStorage） */
   tabId: string;
-  /** M3：浏览器级游客标识（cookie `wb_gid`），presence 按它聚合 */
+  /** M5-1：服务端签发的游客标识，仅用于 UI 展示；WS 不再上报它 */
   guestId: string;
   cache: CollabCache;
   getBridge: () => CanvasBridge | null;
@@ -583,7 +583,6 @@ export function createBoardCollab(options: {
         clientId,
         viewOnly: options.viewOnly,
         tabId: state.tabId,
-        guestId: state.guestId,
         handlers: {
           onStatus: (status) => {
             state.status = status;

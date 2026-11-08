@@ -15,6 +15,7 @@
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
     "@whiteboard/shared": "*",
+    "argon2": "^0.44.0",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",
     "nanoid": "^5.0.9",

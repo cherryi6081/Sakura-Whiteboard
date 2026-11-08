@@ -20,6 +20,10 @@ const EnvSchema = z.object({
     .min(1)
     .refine((value) => value.startsWith('redis://') || value.startsWith('rediss://'), 'REDIS_URL 必须是 redis:// 或 rediss:// 连接串'),
   SESSION_SECRET: z.string().min(16),
+  /** 游客 cookie `wb_gid` 的 HMAC 密钥（≥32 字节，缺失即拒绝启动）。 */
+  GUEST_COOKIE_SECRET: z.string().min(32),
+  /** 轮换期并行验签的上一代密钥（可选）。 */
+  GUEST_COOKIE_SECRET_PREV: z.string().min(32).optional(),
   // 容器内未显式指定时用容器主机名，双实例才能各自区分
   INSTANCE_ID: z.string().default(() => hostname()),
   DB_POOL_MAX: z.coerce.number().int().positive().max(50).default(10),

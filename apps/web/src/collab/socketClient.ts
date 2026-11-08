@@ -9,11 +9,12 @@ import type { ElementOp, OpBatch } from "@whiteboard/shared";
  *
  * 只做传输层：join/重连、事件回调、submit、cursor。合并与 LWW 在 `BoardCollab` 里。
  *
- * M3：每次连接都带上 `tabId`（每标签一条，sessionStorage）与 `guestId`（浏览器级 cookie）。
- * presence 按 `guestId` 聚合，光标按 socket 连接（`connectionId`）广播。
+ * M3：每次连接都带上 `tabId`（每标签一条，sessionStorage）。
+ * **M5-1：不再发送 `guestId`** —— 身份由服务端从 WS 握手的 HttpOnly 签名 cookie 推导，
+ * 客户端自报值不再参与权限。presence 按服务端 identity 聚合，光标按连接广播。
  */
 
-export type JoinRole = "editor" | "viewer";
+export type JoinRole = "owner" | "editor" | "viewer";
 
 export type JoinedPayload = {
   self: { identity: string; role: JoinRole; isGuest: boolean; color: string; viewOnly?: boolean; tabId?: string | null };
@@ -99,10 +100,9 @@ export function createBoardSocket(options: {
   clientId: string;
   viewOnly: boolean;
   tabId: string;
-  guestId: string;
   handlers: BoardSocketHandlers;
 }): BoardSocket {
-  const { boardId, clientId, viewOnly, tabId, guestId, handlers } = options;
+  const { boardId, clientId, viewOnly, tabId, handlers } = options;
 
   // 同源连接；namespace 固定 `/board`
   const socket = io("/board", {
@@ -111,10 +111,10 @@ export function createBoardSocket(options: {
     reconnectionDelay: 600,
     reconnectionDelayMax: 4000,
     timeout: 8000,
-    auth: { boardId, clientId, viewOnly, tabId, guestId },
+    auth: { boardId, clientId, viewOnly, tabId },
   });
 
-  const joinPayload = { boardId, clientId, viewOnly, tabId, guestId };
+  const joinPayload = { boardId, clientId, viewOnly, tabId };
   const join = () => {
     socket.emit("join", joinPayload, (res: { ok?: boolean; code?: string } | undefined) => {
       if (!res?.ok) handlers.onJoinError(res?.code ?? "INTERNAL");

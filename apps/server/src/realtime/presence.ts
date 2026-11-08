@@ -1,4 +1,4 @@
-import type { JoinRole } from '../domain/roles.js';
+import type { AccessRole } from '../domain/access.js';
 
 /**
  * M3：板级在场（presence）的**连接**注册表与**按用户**聚合。
@@ -21,7 +21,7 @@ export type PresenceConnectionInput = {
   /** 每标签一条（sessionStorage）；老客户端未带时为 null */
   tabId: string | null;
   identity: string;
-  role: JoinRole;
+  role: AccessRole;
   color: string;
   joinedAt: number;
 };
@@ -31,7 +31,7 @@ export type PresenceConnection = PresenceConnectionInput & { cursor: PresenceCur
 export type PresenceUser = {
   identity: string;
   color: string;
-  role: JoinRole;
+  role: AccessRole;
   /** 该用户在本板的连接数（= 标签页数，同一标签重连会被顶层 map 覆盖而不是相加） */
   connectionCount: number;
   tabIds: string[];
@@ -69,7 +69,11 @@ export function aggregatePresence(
       identity,
       color: first.color,
       // 同一用户多标签的权限可能不同（例如一标签自报只读）；展示取最高权限
-      role: sorted.some((conn) => conn.role === 'editor') ? 'editor' : 'viewer',
+      role: sorted.some((conn) => conn.role === 'owner')
+        ? 'owner'
+        : sorted.some((conn) => conn.role === 'editor')
+          ? 'editor'
+          : 'viewer',
       connectionCount: sorted.length,
       tabIds: [...new Set(tabIds)],
       connectionIds: sorted.map((conn) => conn.connectionId),

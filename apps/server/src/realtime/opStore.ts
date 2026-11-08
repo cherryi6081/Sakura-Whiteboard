@@ -17,7 +17,8 @@ import { decideLww, type ExistingElementState } from '../domain/lww.js';
 export type PersistOpInput = {
   boardId: string;
   clientId: string;
-  guestId: string;
+  userId: string | null;
+  guestId: string | null;
   seq: number;
   op: ElementOp;
 };
@@ -28,7 +29,7 @@ export type PersistOpResult = {
 };
 
 export async function persistOp(input: PersistOpInput): Promise<PersistOpResult> {
-  const { boardId, clientId, guestId, seq, op } = input;
+  const { boardId, clientId, userId, guestId, seq, op } = input;
   const client = await pool.connect();
 
   try {
@@ -81,9 +82,9 @@ export async function persistOp(input: PersistOpInput): Promise<PersistOpResult>
 
     await client.query(
       `insert into board_ops (board_id, seq, op_id, client_id, user_id, guest_id, kind, element_id, payload)
-       values ($1, $2, $3, $4, null, $5, $6, $7, $8::jsonb)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        on conflict (op_id) do nothing`,
-      [boardId, seq, op.opId, clientId, guestId, op.kind, op.id, JSON.stringify(op)],
+      [boardId, seq, op.opId, clientId, userId, guestId, op.kind, op.id, JSON.stringify(op)],
     );
 
     await client.query('update boards set last_seq = greatest(last_seq, $2) where id = $1', [boardId, seq]);
@@ -103,6 +104,8 @@ export type BoardRow = {
   share_mode: 'private' | 'link_read' | 'link_edit';
   last_seq: number;
   archived_at: Date | null;
+  owner_id: string | null;
+  owner_guest_id: string | null;
 };
 
 export async function getBoardForJoin(boardId: string): Promise<BoardRow | null> {
@@ -111,7 +114,9 @@ export async function getBoardForJoin(boardId: string): Promise<BoardRow | null>
     share_mode: BoardRow['share_mode'];
     last_seq: string;
     archived_at: Date | null;
-  }>('select id, share_mode, last_seq, archived_at from boards where id = $1', [boardId]);
+    owner_id: string | null;
+    owner_guest_id: string | null;
+  }>('select id, share_mode, last_seq, archived_at, owner_id, owner_guest_id from boards where id = $1', [boardId]);
 
   const row = rows[0];
   if (!row) return null;

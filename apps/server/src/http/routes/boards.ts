@@ -1,35 +1,164 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import { nanoid } from 'nanoid';
+import { z } from 'zod';
 import { pool } from '../../infra/db.js';
-import { getBoardForJoin, type BoardRow } from '../../realtime/opStore.js';
+import { ensureRedisConnected, redis } from '../../infra/redis.js';
 import { AppError } from '../middlewares/error.js';
 import { boardIdSchema, needsResync, opsQuerySchema, paginatePage } from '../../domain/opPage.js';
+import { identityOf } from '../../auth/identity.js';
+import { issueGuestCookie } from '../../auth/guestCookie.js';
+import { resolveBoardAccess } from '../../domain/access.js';
 
 /**
- * M2-C5 补拉与整板快照的 REST 接口。
+ * 白板 REST（M5-1）。
  *
- * **鉴权缺口（如实标注，与 §7.2.1 同源）**：当前仍没有会话 / `wb_gid` cookie / 分享 token。
- * 这里的最小规则是「板存在、未归档、`share_mode != private`」即可读：
- * - `private` 板一律 404（不暴露存在性），连 owner 自己都读不到；
- * - `link_read` / `link_edit` 板只要知道 12 位 boardId 就能读（无 token 校验）。
- * 这只能支撑"补拉链路联调"，**不是可交付的权限实现**；M5 接入签名 token 后必须替换。
- * 写接口（`POST /ops`）本阶段不开放，写仍然只走 WebSocket 的 `op:submit`。
+ * - `POST /api/boards`：登录用户 `owner_id = userId`；无会话时按游客建板（`owner_guest_id`
+ *   取签名 cookie），满足 §4.5.3 配额（24h 3 块 / 未归档 ≤6）。
+ * - `GET /api/boards`：**仅登录用户**，游客 401（游客列表只在本机）。
+ * - `GET /api/boards/:id/ops|snapshot`：身份与权限统一由 `resolveBoardAccess` 推导，
+ *   不再按"share_mode != private"放行；陌生人访问 private 板一律 404。
  */
-export const boardsRouter = Router();
 
-async function loadReadableBoard(boardId: string): Promise<BoardRow> {
-  const board = await getBoardForJoin(boardId);
-  if (!board || board.archived_at || board.share_mode === 'private') {
-    throw new AppError(404, 'NOT_FOUND', 'board not found');
-  }
-  return board;
-}
+export const boardsRouter = Router();
 
 const handle =
   (fn: (req: Request, res: Response) => Promise<void>) =>
   (req: Request, res: Response, next: NextFunction) => {
     fn(req, res).catch(next);
   };
+
+const GUEST_BOARDS_PER_24H = 3;
+const GUEST_UNARCHIVED_MAX = 6;
+
+const createBoardSchema = z.object({
+  title: z.string().trim().min(1).max(80).optional(),
+});
+
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(30).default(20),
+  cursor: z.string().datetime().optional(),
+});
+
+type BoardMetaRow = { id: string; title: string; role: string; last_edited_at: Date };
+
+async function enforceGuestQuota(guestId: string): Promise<void> {
+  const { rows } = await pool.query<{ unarchived: number }>(
+    `select count(*)::int as unarchived from boards
+      where owner_guest_id = $1 and archived_at is null`,
+    [guestId],
+  );
+  if ((rows[0]?.unarchived ?? 0) >= GUEST_UNARCHIVED_MAX) {
+    throw new AppError(429, 'QUOTA_EXCEEDED', `游客最多保留 ${GUEST_UNARCHIVED_MAX} 块未归档白板，请归档或注册后继续`);
+  }
+
+  let created: number;
+  try {
+    await ensureRedisConnected();
+    const key = `rl:board:create:${guestId}`;
+    created = await redis.incr(key);
+    if (created === 1) await redis.expire(key, 24 * 60 * 60);
+  } catch {
+    // Redis 不可用时退回 PG 计数（降级路径必须打日志，不能静默）
+    const { rows: fallback } = await pool.query<{ created: number }>(
+      `select count(*)::int as created from boards
+        where owner_guest_id = $1 and created_at > now() - interval '24 hours'`,
+      [guestId],
+    );
+    created = fallback[0]?.created ?? 0;
+    console.warn('[boards] redis 配额计数不可用，已退回 PG 计数', { guestId });
+  }
+
+  if (created > GUEST_BOARDS_PER_24H) {
+    // 超限时把多计的一次退回，避免持续请求把窗口越撑越紧
+    try {
+      await ensureRedisConnected();
+      await redis.decr(`rl:board:create:${guestId}`);
+    } catch {
+      /* ignore */
+    }
+    throw new AppError(429, 'QUOTA_EXCEEDED', `游客每 24 小时最多新建 ${GUEST_BOARDS_PER_24H} 块白板，请稍后再试或注册`);
+  }
+}
+
+/** `POST /api/boards` —— 无会话按游客建板（必要时签发 `wb_gid`）。 */
+boardsRouter.post(
+  '/boards',
+  handle(async (req, res) => {
+    const { title } = createBoardSchema.parse(req.body ?? {});
+    const identity = identityOf(req);
+    const boardTitle = title ?? '未命名白板';
+
+    let ownerId: string | null = null;
+    let ownerGuestId: string | null = null;
+
+    if (identity.userId) {
+      ownerId = identity.userId;
+    } else {
+      let guestId = identity.guestId;
+      if (!guestId) guestId = issueGuestCookie(res);
+      await enforceGuestQuota(guestId);
+      ownerGuestId = guestId;
+    }
+
+    const boardId = nanoid(12);
+    const { rows } = await pool.query<{ id: string; title: string; created_at: Date }>(
+      `insert into boards (id, title, owner_id, owner_guest_id, share_mode)
+       values ($1, $2, $3, $4, 'private')
+       returning id, title, created_at`,
+      [boardId, boardTitle, ownerId, ownerGuestId],
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(500, 'INTERNAL', 'board insert returned no row');
+
+    res.status(201).json({
+      id: row.id,
+      title: row.title,
+      ownerType: ownerId ? 'user' : 'guest',
+      quota: ownerGuestId
+        ? { per24h: GUEST_BOARDS_PER_24H, unarchivedMax: GUEST_UNARCHIVED_MAX }
+        : null,
+      createdAt: row.created_at.toISOString(),
+    });
+  }),
+);
+
+/** `GET /api/boards` —— 登录用户的"最近编辑"；游客 401（列表只在本机）。 */
+boardsRouter.get(
+  '/boards',
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '游客没有服务端白板列表，请使用本机列表');
+
+    const { limit, cursor } = listQuerySchema.parse(req.query);
+    const { rows } = await pool.query<BoardMetaRow>(
+      `select b.id, b.title, 'owner' as role, b.last_edited_at
+         from boards b
+        where b.owner_id = $1 and b.archived_at is null
+          and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
+        union all
+       select b.id, b.title, m.role, b.last_edited_at
+         from boards b
+         join board_members m on m.board_id = b.id
+        where m.user_id = $1 and b.archived_at is null
+          and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
+        order by last_edited_at desc, id desc
+        limit $3`,
+      [identity.userId, cursor ?? null, limit],
+    );
+
+    const last = rows[rows.length - 1];
+    res.json({
+      boards: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        role: row.role,
+        lastEditedAt: row.last_edited_at.toISOString(),
+      })),
+      nextCursor: last ? last.last_edited_at.toISOString() : null,
+    });
+  }),
+);
 
 type OpRow = {
   seq: string;
@@ -46,7 +175,9 @@ boardsRouter.get(
   handle(async (req, res) => {
     const boardId = boardIdSchema.parse(req.params.id);
     const { since, limit } = opsQuerySchema.parse(req.query);
-    const board = await loadReadableBoard(boardId);
+    const access = await resolveBoardAccess(boardId, identityOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    const board = access.board;
 
     if (needsResync(since, board.last_seq)) {
       res.json({
@@ -106,7 +237,9 @@ boardsRouter.get(
   '/boards/:id/snapshot',
   handle(async (req, res) => {
     const boardId = boardIdSchema.parse(req.params.id);
-    const board = await loadReadableBoard(boardId);
+    const access = await resolveBoardAccess(boardId, identityOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    const board = access.board;
 
     const { rows } = await pool.query<ElementRow>(
       `select element_id, version, version_nonce, data
