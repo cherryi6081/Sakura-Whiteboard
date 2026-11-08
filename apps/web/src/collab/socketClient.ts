@@ -2,18 +2,21 @@ import { io, type Socket } from "socket.io-client";
 import type { ElementOp, OpBatch } from "@whiteboard/shared";
 
 /**
- * M2-C4：`/board` 命名空间的浏览器客户端。
+ * M2-C4 / M3：`/board` 命名空间的浏览器客户端。
  *
  * 连接地址不写死：走同源（开发期由 `vite.config.ts` 把 `/socket.io` 代理到
  * `VITE_API_TARGET`），生产环境由反向代理同源转发。
  *
- * 只做传输层：join/重连、事件回调、submit。合并与 LWW 在 `BoardCollab` 里。
+ * 只做传输层：join/重连、事件回调、submit、cursor。合并与 LWW 在 `BoardCollab` 里。
+ *
+ * M3：每次连接都带上 `tabId`（每标签一条，sessionStorage）与 `guestId`（浏览器级 cookie）。
+ * presence 按 `guestId` 聚合，光标按 socket 连接（`connectionId`）广播。
  */
 
 export type JoinRole = "editor" | "viewer";
 
 export type JoinedPayload = {
-  self: { identity: string; role: JoinRole; isGuest: boolean; color: string; viewOnly?: boolean };
+  self: { identity: string; role: JoinRole; isGuest: boolean; color: string; viewOnly?: boolean; tabId?: string | null };
   seq: number;
   resumed: boolean;
 };
@@ -41,6 +44,33 @@ export type RejectedPayload = {
   issues?: unknown;
 };
 
+export type PresenceUserPayload = {
+  identity: string;
+  color: string;
+  role: JoinRole;
+  connectionCount: number;
+  tabIds: string[];
+  connectionIds: string[];
+};
+
+export type PresenceStatePayload = {
+  boardId: string;
+  users: PresenceUserPayload[];
+  totalConnections: number;
+  at: number;
+};
+
+export type CursorPayload = {
+  boardId: string;
+  connectionId: string;
+  clientId: string;
+  tabId: string | null;
+  identity: string;
+  color: string;
+  x: number;
+  y: number;
+};
+
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 export type BoardSocketHandlers = {
@@ -50,11 +80,14 @@ export type BoardSocketHandlers = {
   onAck: (payload: AckPayload) => void;
   onApply: (payload: ApplyPayload) => void;
   onRejected: (payload: RejectedPayload) => void;
+  onPresence: (payload: PresenceStatePayload) => void;
+  onCursor: (payload: CursorPayload) => void;
 };
 
 export type BoardSocket = {
   socket: Socket;
   submit: (batch: OpBatch) => void;
+  sendCursor: (x: number, y: number) => void;
   /** 调试/验收用：手动断开（会关闭自动重连），重新 `connect()` 后 join 会再次执行。 */
   disconnect: () => void;
   connect: () => void;
@@ -65,9 +98,11 @@ export function createBoardSocket(options: {
   boardId: string;
   clientId: string;
   viewOnly: boolean;
+  tabId: string;
+  guestId: string;
   handlers: BoardSocketHandlers;
 }): BoardSocket {
-  const { boardId, clientId, viewOnly, handlers } = options;
+  const { boardId, clientId, viewOnly, tabId, guestId, handlers } = options;
 
   // 同源连接；namespace 固定 `/board`
   const socket = io("/board", {
@@ -76,11 +111,12 @@ export function createBoardSocket(options: {
     reconnectionDelay: 600,
     reconnectionDelayMax: 4000,
     timeout: 8000,
-    auth: { boardId, clientId, viewOnly },
+    auth: { boardId, clientId, viewOnly, tabId, guestId },
   });
 
+  const joinPayload = { boardId, clientId, viewOnly, tabId, guestId };
   const join = () => {
-    socket.emit("join", { boardId, clientId, viewOnly }, (res: { ok?: boolean; code?: string } | undefined) => {
+    socket.emit("join", joinPayload, (res: { ok?: boolean; code?: string } | undefined) => {
       if (!res?.ok) handlers.onJoinError(res?.code ?? "INTERNAL");
     });
   };
@@ -98,11 +134,16 @@ export function createBoardSocket(options: {
   socket.on("op:ack", handlers.onAck);
   socket.on("op:apply", handlers.onApply);
   socket.on("op:rejected", handlers.onRejected);
+  socket.on("presence:state", handlers.onPresence);
+  socket.on("presence:cursor", handlers.onCursor);
 
   return {
     socket,
     submit(batch) {
       socket.emit("op:submit", batch);
+    },
+    sendCursor(x, y) {
+      socket.emit("cursor:move", { x, y });
     },
     disconnect() {
       socket.disconnect();

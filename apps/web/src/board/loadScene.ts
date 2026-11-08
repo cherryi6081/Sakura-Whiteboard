@@ -20,8 +20,14 @@ export type BoardScene = {
  *
  * 缓存按 `[boardId, elementId]` 复合键存，所以不同板不会互相污染。
  * 服务端 404（板被删/归档/private）时顺手清掉本地缓存，避免永久泄漏。
+ *
+ * M3：冷启动快照落盘要经过 Web Locks 写者门禁（`canWriteCache`）。非写者标签跳过写，
+ * 由写者标签或后续 op 落盘补齐，避免同板两个标签冷启动时互相覆盖快照。
  */
-export async function loadBoardScene(boardId: string): Promise<BoardScene> {
+export async function loadBoardScene(
+  boardId: string,
+  options: { canWriteCache?: () => boolean } = {},
+): Promise<BoardScene> {
   const started = performance.now();
 
   try {
@@ -43,10 +49,13 @@ export async function loadBoardScene(boardId: string): Promise<BoardScene> {
   const snapshot = await fetchSnapshot(boardId);
   if (snapshot.ok) {
     const elements = snapshot.data.elements as unknown as ExcalidrawElement[];
-    try {
-      await writeCachedScene(boardId, snapshot.data.elements, snapshot.data.seq);
-    } catch (err) {
-      console.warn("[board] 写入本地缓存失败", err);
+    // M3：非 Web Locks 写者只读缓存，不落这份冷启动快照
+    if (options.canWriteCache?.() ?? true) {
+      try {
+        await writeCachedScene(boardId, snapshot.data.elements, snapshot.data.seq);
+      } catch (err) {
+        console.warn("[board] 写入本地缓存失败", err);
+      }
     }
     return { elements, source: "snapshot", seq: snapshot.data.seq, loadMs: performance.now() - started };
   }

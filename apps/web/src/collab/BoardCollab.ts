@@ -8,8 +8,10 @@ import {
   type ApplyPayload,
   type BoardSocket,
   type ConnectionStatus,
+  type CursorPayload,
   type JoinRole,
   type JoinedPayload,
+  type PresenceStatePayload,
   type RejectedPayload,
 } from "./socketClient";
 
@@ -37,9 +39,24 @@ export type CollabCache = {
   clearQueue: (boardId: string) => Promise<void>;
 };
 
+/** M3：远端光标按**连接**保存（同一用户多标签会有多条，各自位置不可合并）。 */
+export type RemoteCursor = {
+  connectionId: string;
+  clientId: string;
+  tabId: string | null;
+  identity: string;
+  color: string;
+  x: number;
+  y: number;
+  at: number;
+};
+
 export type CollabSnapshot = {
   boardId: string;
   clientId: string;
+  /** M3：本标签的 tabId 与浏览器级 guestId */
+  tabId: string;
+  guestId: string;
   status: ConnectionStatus;
   joined: boolean;
   role: JoinRole | "unknown";
@@ -65,6 +82,10 @@ export type CollabSnapshot = {
   pullPages: number;
   resyncCount: number;
   lastPullResync: boolean;
+  /** M3：按用户聚合的 presence（头像一个 + ×N 标签页） */
+  presence: PresenceStatePayload | null;
+  /** M3：按连接渲染的远端光标 */
+  cursors: RemoteCursor[];
 };
 
 export type BoardCollab = ReturnType<typeof createBoardCollab>;
@@ -74,6 +95,10 @@ const MAX_REJECTIONS = 20;
 const MAX_PULL_PAGES = 20;
 /** 已本地确认的 opId，避免"先 ack 后落盘"的竞态在队列里留下幽灵记录 */
 const MAX_SETTLED_IDS = 4000;
+/** 远端光标上限（异常客户端刷光标也不至于把内存打爆） */
+const MAX_CURSORS = 40;
+/** 光标上行节流：约 16Hz，够顺滑又不至于每个 pointermove 都发一帧 */
+const CURSOR_INTERVAL_MS = 60;
 
 /**
  * M2-C5 协作控制器：
@@ -89,6 +114,10 @@ export function createBoardCollab(options: {
   boardId: string;
   viewOnly: boolean;
   clientId?: string;
+  /** M3：每标签一条（sessionStorage） */
+  tabId: string;
+  /** M3：浏览器级游客标识（cookie `wb_gid`），presence 按它聚合 */
+  guestId: string;
   cache: CollabCache;
   getBridge: () => CanvasBridge | null;
   onChange?: (snapshot: CollabSnapshot) => void;
@@ -99,6 +128,8 @@ export function createBoardCollab(options: {
   const state: CollabSnapshot = {
     boardId: options.boardId,
     clientId,
+    tabId: options.tabId,
+    guestId: options.guestId,
     status: "connecting",
     joined: false,
     role: "unknown",
@@ -122,6 +153,8 @@ export function createBoardCollab(options: {
     pullPages: 0,
     resyncCount: 0,
     lastPullResync: false,
+    presence: null,
+    cursors: [],
   };
 
   const pendingRemote: ApplyPayload[] = [];
@@ -134,9 +167,25 @@ export function createBoardCollab(options: {
   let persistSeq: number | null = null;
   let socket: BoardSocket | null = null;
   let stopped = false;
+  let lastCursorAt = 0;
 
   const emit = () => {
-    options.onChange?.({ ...state, staleIds: [...state.staleIds], rejected: [...state.rejected] });
+    options.onChange?.({
+      ...state,
+      staleIds: [...state.staleIds],
+      rejected: [...state.rejected],
+      cursors: [...state.cursors],
+      presence: state.presence
+        ? {
+            ...state.presence,
+            users: state.presence.users.map((user) => ({
+              ...user,
+              tabIds: [...user.tabIds],
+              connectionIds: [...user.connectionIds],
+            })),
+          }
+        : null,
+    });
   };
 
   /** 缓存操作失败不应该弄挂协作主链路：记录并继续。 */
@@ -209,6 +258,9 @@ export function createBoardCollab(options: {
 
     if (!state.joined || !socket) {
       void persistEnqueue(ops);
+      // 断线期间的本地编辑也要进整板缓存：刷新首帧应包含它们，
+      // 否则只能等重连补发 op 后才出现（C5 缓存先行的回归项）。
+      schedulePersist();
       emit();
       return;
     }
@@ -446,13 +498,57 @@ export function createBoardCollab(options: {
     emit();
   };
 
+  /**
+   * M3 presence：服务端已按用户聚合（`users[].connectionCount` 即标签页数）。
+   * 连接断开时顺手清理它留下的光标，避免"幽灵光标"。
+   */
+  const handlePresence = (payload: PresenceStatePayload) => {
+    state.presence = payload;
+    const alive = new Set(payload.users.flatMap((user) => user.connectionIds));
+    state.cursors = state.cursors.filter((cursor) => alive.has(cursor.connectionId));
+    emit();
+  };
+
+  const handleCursor = (payload: CursorPayload) => {
+    if (payload.boardId !== state.boardId) return;
+    const next: RemoteCursor = { ...payload, at: Date.now() };
+    const index = state.cursors.findIndex((cursor) => cursor.connectionId === payload.connectionId);
+    if (index >= 0) {
+      state.cursors = state.cursors.map((cursor, i) => (i === index ? next : cursor));
+    } else {
+      state.cursors = [...state.cursors, next].slice(-MAX_CURSORS);
+    }
+    emit();
+  };
+
+  /** 光标上行节流；坐标由页面按画布容器归一化到 0..1。 */
+  const sendCursor = (x: number, y: number) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const nowMs = Date.now();
+    if (nowMs - lastCursorAt < CURSOR_INTERVAL_MS) return;
+    lastCursorAt = nowMs;
+    socket?.sendCursor(x, y);
+  };
+
   return {
     snapshot: (): CollabSnapshot => ({
       ...state,
       staleIds: [...state.staleIds],
       rejected: [...state.rejected],
+      cursors: [...state.cursors],
+      presence: state.presence
+        ? {
+            ...state.presence,
+            users: state.presence.users.map((user) => ({
+              ...user,
+              tabIds: [...user.tabIds],
+              connectionIds: [...user.connectionIds],
+            })),
+          }
+        : null,
     }),
     submit,
+    sendCursor,
     /** 画布 API 就绪后调用，回放此前因无画布而积压的远端 op / 快照。 */
     notifyCanvasReady: () => {
       const bridge = options.getBridge();
@@ -486,6 +582,8 @@ export function createBoardCollab(options: {
         boardId: state.boardId,
         clientId,
         viewOnly: options.viewOnly,
+        tabId: state.tabId,
+        guestId: state.guestId,
         handlers: {
           onStatus: (status) => {
             state.status = status;
@@ -503,6 +601,8 @@ export function createBoardCollab(options: {
           onAck: handleAck,
           onApply: handleApply,
           onRejected: handleRejected,
+          onPresence: handlePresence,
+          onCursor: handleCursor,
         },
       });
       void refreshQueuedOps();
