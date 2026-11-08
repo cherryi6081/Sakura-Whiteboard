@@ -14,7 +14,8 @@
     "@excalidraw/excalidraw": "0.18.1",
     "@whiteboard/shared": "*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

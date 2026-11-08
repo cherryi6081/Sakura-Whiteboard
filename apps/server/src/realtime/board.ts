@@ -9,10 +9,13 @@ import { logger } from '../infra/logger.js';
 import { pool } from '../infra/db.js';
 import { getBoardForJoin, persistOp } from './opStore.js';
 import { allocateSeq, claimOpIdem, markOpIdemDone, releaseOpIdem } from './seq.js';
+import { resolveJoinRole, type JoinRole } from '../domain/roles.js';
 
 const joinSchema = z.object({
   boardId: z.string().regex(LIMITS.boardIdPattern),
   clientId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  /** M2-C4：只读客户端自报；只能把 editor 降为 viewer，不能提权。 */
+  viewOnly: z.boolean().optional(),
 });
 
 type JoinPayload = z.infer<typeof joinSchema>;
@@ -20,7 +23,7 @@ type JoinPayload = z.infer<typeof joinSchema>;
 type SocketState = {
   boardId: string;
   clientId: string;
-  role: 'editor' | 'viewer';
+  role: JoinRole;
   identity: string;
   guestId: string;
 };
@@ -69,7 +72,7 @@ export function attachRealtime(httpServer: HttpServer) {
         return;
       }
 
-      const { boardId, clientId }: JoinPayload = parsed.data;
+      const { boardId, clientId, viewOnly = false }: JoinPayload = parsed.data;
 
       try {
         const board = await getBoardForJoin(boardId);
@@ -79,13 +82,13 @@ export function attachRealtime(httpServer: HttpServer) {
           return;
         }
         // 最小规则：没有鉴权前，private 板（包括未登录 owner 自己的板）一律不可进
-        if (board.share_mode === 'private') {
+        const role = resolveJoinRole(board.share_mode, viewOnly);
+        if (role === 'forbidden') {
           socket.emit('join:error', { code: 'FORBIDDEN' });
           ack?.({ ok: false, code: 'FORBIDDEN' });
           return;
         }
 
-        const role = board.share_mode === 'link_edit' ? 'editor' : 'viewer';
         const guestId = `anon_${clientId}`;
         const identity = `guest:${guestId}`;
 
@@ -94,7 +97,7 @@ export function attachRealtime(httpServer: HttpServer) {
         await socket.join(roomOf(boardId));
 
         const joined = {
-          self: { identity, role, isGuest: true, color: colorOf(guestId) },
+          self: { identity, role, isGuest: true, color: colorOf(guestId), viewOnly: role === 'viewer' },
           seq: board.last_seq,
           resumed: false,
         };
