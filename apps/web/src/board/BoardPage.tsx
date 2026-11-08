@@ -3,6 +3,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import type { CollabSnapshot } from "../collab/BoardCollab";
+import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 
@@ -79,16 +80,29 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const storeRef = useRef<BoardStore | null>(null);
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed());
   const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
-  // 真正的分享 token 尚未实现，因此这只是「自报只读」，可信度边界见开发文档 §7.2.2。
+  // 真正的分享权限由服务端按 token 判定（M5-2）；`?share=` 的 token 会在 REST/WS 一起带上。
   const queryViewOnly = readOnlyQuery();
+  const shareToken = readShareQuery();
   const collabState = storeState?.collab ?? null;
   const requestedViewOnly =
     queryViewOnly ||
     (collabState?.viewOnly ?? false) ||
     (collabState?.role ?? "unknown") === "viewer";
+  const isGuest = storeState?.authenticated === false;
+  const user = storeState?.user ?? null;
+
+  const dismissBanner = () => {
+    setBannerDismissed(true);
+    try {
+      sessionStorage.setItem(BANNER_KEY, "1");
+    } catch {
+      /* sessionStorage 不可用时仅本次生效 */
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +111,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
     void loadBoardScene(boardId, {
       // M3：冷启动快照只有 Web Locks 写者才落盘
       canWriteCache: () => storeRef.current?.snapshot().writer.isWriter ?? false,
+      shareToken,
     }).then((loaded) => {
       if (!alive) return;
       const timing = timingRef.current;
@@ -114,6 +129,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
     const store = createBoardStore({
       boardId,
       viewOnly: queryViewOnly,
+      shareToken,
       getBridge: () => bridgeRef.current,
       onChange: (snapshot) => {
         const timing = timingRef.current;
@@ -128,7 +144,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       store.stop();
       storeRef.current = null;
     };
-  }, [boardId, queryViewOnly]);
+  }, [boardId, queryViewOnly, shareToken]);
 
   useEffect(() => {
     const hook: BoardWindow = {
@@ -201,6 +217,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      {isGuest && !bannerDismissed ? (
+        <SaveToAccountBanner
+          onLogin={() => {
+            window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+          }}
+          onDismiss={dismissBanner}
+        />
+      ) : null}
       <header
         style={{
           display: "flex",
@@ -217,6 +241,21 @@ export function BoardPage({ boardId }: { boardId: string }) {
       >
         <strong style={{ color: "#A85C7C" }}>白板</strong>
         <code data-testid="board-id" style={{ color: "#8E4568" }}>{boardId}</code>
+        {isGuest ? <GuestBadge /> : null}
+        {!isGuest && user ? (
+          <span data-testid="auth-user" style={{ fontSize: 12, color: "#4E8A68" }}>
+            {user.displayName}
+          </span>
+        ) : null}
+        {isGuest ? (
+          <a
+            data-testid="header-login"
+            href={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+            style={{ fontSize: 12, color: "#8E4568" }}
+          >
+            登录 / 注册
+          </a>
+        ) : null}
         {readonly ? (
           <span data-testid="readonly-badge" style={{ color: "#8E4568", border: "1px solid #E7BFCE", borderRadius: 999, padding: "1px 8px", fontSize: 11 }}>
             只读
@@ -373,4 +412,20 @@ function shortId(value: string): string {
 function readOnlyQuery(): boolean {
   const params = new URLSearchParams(window.location.search);
   return params.get("view") === "1" || params.get("readonly") === "1";
+}
+
+/** M5-2：`/board/:id?share=<token>` 的分享 token；长度上限与 `shareLinks` 校验口径一致。 */
+function readShareQuery(): string | null {
+  const token = new URLSearchParams(window.location.search).get("share");
+  return token && token.length >= 8 && token.length <= 128 ? token : null;
+}
+
+const BANNER_KEY = "wb:saveBannerDismissed";
+
+function readBannerDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(BANNER_KEY) === "1";
+  } catch {
+    return false;
+  }
 }

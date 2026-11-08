@@ -23,6 +23,11 @@ const joinSchema = z.object({
    * 会话推导。`tabId` 仍来自 sessionStorage，只用于 presence 展示与重复检测。
    */
   tabId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
+  /**
+   * M5-2：分享链接的明文 token。仅用于"匿名凭链接进入"，服务端按
+   * `share_links(token_hash)` 判定只读/可编辑、过期与吊销；它永远不能提权 owner。
+   */
+  shareToken: z.string().min(8).max(128).optional(),
 });
 
 type JoinPayload = z.infer<typeof joinSchema>;
@@ -89,14 +94,14 @@ export function attachRealtime(httpServer: HttpServer) {
         return;
       }
 
-      const { boardId, clientId, viewOnly = false, tabId: claimedTabId }: JoinPayload = parsed.data;
+      const { boardId, clientId, viewOnly = false, tabId: claimedTabId, shareToken }: JoinPayload = parsed.data;
       // z.optional() 解构默认值会与 `string | undefined` 冲突，这里统一收敛成 `string | null`
       const tabId = claimedTabId ?? null;
 
       try {
         // 身份只来自握手 cookie；客户端 payload 里即使塞了 guestId 也会被 schema 忽略/拒绝
         const identity: Identity = await resolveIdentityFromCookieHeader(socket.handshake.headers.cookie);
-        const access = await resolveBoardAccess(boardId, identity);
+        const access = await resolveBoardAccess(boardId, identity, shareToken);
         if (!access.ok) {
           const code = access.reason === 'not_found' ? 'NOT_FOUND' : 'FORBIDDEN';
           socket.emit('join:error', { code });

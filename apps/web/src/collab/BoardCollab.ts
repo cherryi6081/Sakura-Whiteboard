@@ -118,6 +118,8 @@ export function createBoardCollab(options: {
   tabId: string;
   /** M5-1：服务端签发的游客标识，仅用于 UI 展示；WS 不再上报它 */
   guestId: string;
+  /** M5-2：分享链接明文 token（仅在 `/board/:id?share=` 进入时存在），用于 REST/WS 的匿名访问 */
+  shareToken?: string | null;
   cache: CollabCache;
   getBridge: () => CanvasBridge | null;
   onChange?: (snapshot: CollabSnapshot) => void;
@@ -366,7 +368,7 @@ export function createBoardCollab(options: {
 
   const resyncFromSnapshot = async () => {
     state.resyncCount += 1;
-    const snapshot = await fetchSnapshot(state.boardId);
+    const snapshot = await fetchSnapshot(state.boardId, options.shareToken);
     if (!snapshot.ok) {
       console.warn(`[collab] 快照重载失败 status=${snapshot.status} code=${snapshot.code}`);
       emit();
@@ -401,7 +403,7 @@ export function createBoardCollab(options: {
     let cursor = cachedSeq;
     let pulled = 0;
     for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
-      const res = await fetchOpsPage(state.boardId, cursor, LIMITS.opsPageMax);
+      const res = await fetchOpsPage(state.boardId, cursor, LIMITS.opsPageMax, options.shareToken);
       if (!res.ok) {
         console.warn(`[collab] 补拉失败 status=${res.status} code=${res.code} since=${cursor}`);
         break;
@@ -583,6 +585,7 @@ export function createBoardCollab(options: {
         clientId,
         viewOnly: options.viewOnly,
         tabId: state.tabId,
+        shareToken: options.shareToken ?? null,
         handlers: {
           onStatus: (status) => {
             state.status = status;

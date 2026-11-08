@@ -26,7 +26,7 @@ export type BoardScene = {
  */
 export async function loadBoardScene(
   boardId: string,
-  options: { canWriteCache?: () => boolean } = {},
+  options: { canWriteCache?: () => boolean; shareToken?: string | null } = {},
 ): Promise<BoardScene> {
   const started = performance.now();
 
@@ -46,7 +46,7 @@ export async function loadBoardScene(
     console.warn("[board] 读取本地缓存失败，回退到服务端快照", err);
   }
 
-  const snapshot = await fetchSnapshot(boardId);
+  const snapshot = await fetchSnapshot(boardId, options.shareToken);
   if (snapshot.ok) {
     const elements = snapshot.data.elements as unknown as ExcalidrawElement[];
     // M3：非 Web Locks 写者只读缓存，不落这份冷启动快照

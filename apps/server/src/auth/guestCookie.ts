@@ -119,3 +119,8 @@ export function maybeRenewGuestCookie(res: Response, state: GuestCookieState, no
   const exp = Math.floor(nowMs / 1000) + GUEST_TTL_SECONDS;
   res.append('Set-Cookie', serializeGuestCookie(buildGuestCookieValue(state.guestId, exp)));
 }
+
+/** 认领成功后清除游客身份（§8.6.3：服务端下发删除 `wb_gid`）。 */
+export function clearGuestCookie(res: Response): void {
+  res.append('Set-Cookie', `${GUEST_COOKIE}=; Path=/; Max-Age=0; HttpOnly${secureAttribute()}; SameSite=Lax`);
+}

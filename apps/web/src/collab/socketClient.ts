@@ -100,9 +100,12 @@ export function createBoardSocket(options: {
   clientId: string;
   viewOnly: boolean;
   tabId: string;
+  /** M5-2：分享 token（匿名凭链接进入时带上）；服务端据此判定只读/可编辑 */
+  shareToken?: string | null;
   handlers: BoardSocketHandlers;
 }): BoardSocket {
-  const { boardId, clientId, viewOnly, tabId, handlers } = options;
+  const { boardId, clientId, viewOnly, tabId, shareToken, handlers } = options;
+  const tokenField = shareToken ? { shareToken } : {};
 
   // 同源连接；namespace 固定 `/board`
   const socket = io("/board", {
@@ -111,10 +114,10 @@ export function createBoardSocket(options: {
     reconnectionDelay: 600,
     reconnectionDelayMax: 4000,
     timeout: 8000,
-    auth: { boardId, clientId, viewOnly, tabId },
+    auth: { boardId, clientId, viewOnly, tabId, ...tokenField },
   });
 
-  const joinPayload = { boardId, clientId, viewOnly, tabId };
+  const joinPayload = { boardId, clientId, viewOnly, tabId, ...tokenField };
   const join = () => {
     socket.emit("join", joinPayload, (res: { ok?: boolean; code?: string } | undefined) => {
       if (!res?.ok) handlers.onJoinError(res?.code ?? "INTERNAL");

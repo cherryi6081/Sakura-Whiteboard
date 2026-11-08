@@ -32,9 +32,12 @@ export type SnapshotPayload = {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string };
 
-async function requestJson<T>(url: string): Promise<ApiResult<T>> {
+async function requestJson<T>(url: string, shareToken?: string | null): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(url, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+    const res = await fetch(url, {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json', ...(shareToken ? { 'x-share-token': shareToken } : {}) },
+    });
     const body = (await res.json().catch(() => null)) as
       | (T & { error?: { code?: string } })
       | null;
@@ -48,11 +51,16 @@ async function requestJson<T>(url: string): Promise<ApiResult<T>> {
   }
 }
 
-export function fetchOpsPage(boardId: string, since: number, limit: number): Promise<ApiResult<OpsPage>> {
+export function fetchOpsPage(
+  boardId: string,
+  since: number,
+  limit: number,
+  shareToken?: string | null,
+): Promise<ApiResult<OpsPage>> {
   const query = new URLSearchParams({ since: String(since), limit: String(limit) });
-  return requestJson<OpsPage>(`/api/boards/${encodeURIComponent(boardId)}/ops?${query.toString()}`);
+  return requestJson<OpsPage>(`/api/boards/${encodeURIComponent(boardId)}/ops?${query.toString()}`, shareToken);
 }
 
-export function fetchSnapshot(boardId: string): Promise<ApiResult<SnapshotPayload>> {
-  return requestJson<SnapshotPayload>(`/api/boards/${encodeURIComponent(boardId)}/snapshot`);
+export function fetchSnapshot(boardId: string, shareToken?: string | null): Promise<ApiResult<SnapshotPayload>> {
+  return requestJson<SnapshotPayload>(`/api/boards/${encodeURIComponent(boardId)}/snapshot`, shareToken);
 }

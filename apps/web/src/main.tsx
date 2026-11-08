@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AuthFlow } from "./auth/AuthFlow";
 import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
 import { SpikeApp } from "./spike/SpikeApp";
@@ -15,10 +16,11 @@ function IndexPage() {
   return (
     <div style={{ maxWidth: 560, margin: "80px auto", fontFamily: "system-ui, sans-serif", color: "#6B5A60", lineHeight: 1.7 }}>
       <h1 style={{ fontSize: 22, color: "#A85C7C" }}>实时协作白板</h1>
-      <p>当前为 M3：多标签隔离。选择一块白板进入（boardId 为 12 位字符）：</p>
+      <p>当前进度：M5 账号、权限与分享。选择一块白板进入（boardId 为 12 位字符）：</p>
       <ul>
         <li><a href="/board/demo_board01">/board/demo_board01</a></li>
         <li><a href="/board/demo_board02">/board/demo_board02</a></li>
+        <li><a href="/login">/login（登录）</a> · <a href="/register">/register（注册）</a></li>
         <li><a href="/spike">/spike（M2 前置验证页，保留）</a></li>
       </ul>
     </div>
@@ -29,6 +31,8 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {route.kind === "board" ? (
       <BoardPage boardId={route.boardId} />
+    ) : route.kind === "auth" ? (
+      <AuthFlow mode={route.mode} next={route.next} />
     ) : route.kind === "spike" ? (
       <SpikeApp />
     ) : (

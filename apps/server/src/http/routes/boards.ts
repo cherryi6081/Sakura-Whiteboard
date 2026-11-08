@@ -169,13 +169,23 @@ type OpRow = {
   payload: Record<string, unknown>;
 };
 
+/**
+ * 分享 token 的来源（M5-2）：`?share=` 或 `x-share-token` 头。
+ * 它不是身份，只用于"匿名凭链接进入"；权限仍由 `resolveBoardAccess` 统一判定。
+ */
+function shareTokenOf(req: Request): string | null {
+  const fromQuery = typeof req.query.share === 'string' ? req.query.share : null;
+  const fromHeader = typeof req.headers['x-share-token'] === 'string' ? req.headers['x-share-token'] : null;
+  return fromQuery ?? fromHeader;
+}
+
 /** `GET /api/boards/:id/ops?since=<seq>&limit=` —— 按 seq 升序补拉。 */
 boardsRouter.get(
   '/boards/:id/ops',
   handle(async (req, res) => {
     const boardId = boardIdSchema.parse(req.params.id);
     const { since, limit } = opsQuerySchema.parse(req.query);
-    const access = await resolveBoardAccess(boardId, identityOf(req));
+    const access = await resolveBoardAccess(boardId, identityOf(req), shareTokenOf(req));
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
     const board = access.board;
 
@@ -237,7 +247,7 @@ boardsRouter.get(
   '/boards/:id/snapshot',
   handle(async (req, res) => {
     const boardId = boardIdSchema.parse(req.params.id);
-    const access = await resolveBoardAccess(boardId, identityOf(req));
+    const access = await resolveBoardAccess(boardId, identityOf(req), shareTokenOf(req));
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
     const board = access.board;
 

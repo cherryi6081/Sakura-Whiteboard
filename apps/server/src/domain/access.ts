@@ -1,6 +1,7 @@
 import type { Identity } from '../auth/identity.js';
 import { pool } from '../infra/db.js';
 import { getBoardForJoin, type BoardRow } from '../realtime/opStore.js';
+import { resolveShareToken } from './shareLinks.js';
 
 /**
  * 统一的服务端授权（开发文档 §4.5.2 / §7.1.6）。
@@ -11,9 +12,9 @@ import { getBoardForJoin, type BoardRow } from '../realtime/opStore.js';
  * 1. 板不存在 / 已归档 → `not_found`；
  * 2. 会话用户是 `owner_id` → `owner`；
  * 3. **无会话**且签名游客是 `owner_guest_id` → `owner`（有会话时 `guestId` 不参与权限）；
- * 4. 会话用户是 `board_members` 成员 → `editor` / `viewer`（成员角色优先于公开链接，不借链接提权）；
- * 5. 其余按 `share_mode`：`link_edit` → `editor`，`link_read` → `viewer`（M5-1 尚未接 share token，
- *    token 校验在 M5-2 插入这一层）；
+ * 4. 会话用户是 `board_members` 成员 → `editor` / `viewer`（成员角色优先于分享链接，不借链接提权）；
+ * 5. 其余**必须持有效分享 token**（M5-2 起）：`permission=edit` → `editor`，`read` → `viewer`；
+ *    token 校验覆盖过期 / 吊销 / 板不匹配，`share_mode` 不再单独授予任何访问权；
  * 6. `private` 板对陌生人 → `forbidden`（REST 侧统一映射成 404，不暴露存在性）。
  */
 
@@ -22,7 +23,11 @@ export type AccessResult =
   | { ok: true; board: BoardRow; role: AccessRole }
   | { ok: false; reason: 'not_found' | 'forbidden' };
 
-export async function resolveBoardAccess(boardId: string, identity: Identity): Promise<AccessResult> {
+export async function resolveBoardAccess(
+  boardId: string,
+  identity: Identity,
+  shareToken?: string | null,
+): Promise<AccessResult> {
   const board = await getBoardForJoin(boardId);
   if (!board || board.archived_at) return { ok: false, reason: 'not_found' };
 
@@ -42,7 +47,8 @@ export async function resolveBoardAccess(boardId: string, identity: Identity): P
     if (member) return { ok: true, board, role: member.role };
   }
 
-  if (board.share_mode === 'link_edit') return { ok: true, board, role: 'editor' };
-  if (board.share_mode === 'link_read') return { ok: true, board, role: 'viewer' };
+  const permission = await resolveShareToken(boardId, shareToken);
+  if (permission === 'edit') return { ok: true, board, role: 'editor' };
+  if (permission === 'read') return { ok: true, board, role: 'viewer' };
   return { ok: false, reason: 'forbidden' };
 }

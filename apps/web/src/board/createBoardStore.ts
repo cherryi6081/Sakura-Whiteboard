@@ -77,6 +77,8 @@ type CacheInvalidationMessage = { type: "cache:updated"; boardId: string; seq: n
 export function createBoardStore(options: {
   boardId: string;
   viewOnly: boolean;
+  /** M5-2：分享 token（`/board/:id?share=`），透传给 REST/WS */
+  shareToken?: string | null;
   getBridge: () => CanvasBridge | null;
   onChange?: (snapshot: BoardStoreSnapshot) => void;
 }) {
@@ -134,6 +136,7 @@ export function createBoardStore(options: {
       viewOnly: options.viewOnly,
       tabId: tab.tabId,
       guestId: tab.guestId,
+      shareToken: options.shareToken ?? null,
       cache: guardedCache,
       getBridge: options.getBridge,
       onChange: (snapshot) => {
