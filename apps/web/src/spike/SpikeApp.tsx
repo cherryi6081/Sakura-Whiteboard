@@ -2,7 +2,8 @@ import { useRef } from "react";
 import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
-import { diffElements, snapshotMap, type ElementOp } from "./diff";
+import type { ElementOp } from "@whiteboard/shared";
+import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
 import { probeStorage } from "./probe";
 
 type Stats = {
@@ -44,35 +45,27 @@ declare global {
 
 export function SpikeApp() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
-  const prevRef = useRef(snapshotMap([]));
   const statsRef = useRef<Stats>(createStats());
-  const pendingRef = useRef(new Map<string, ElementOp>());
-  const timerRef = useRef<number | null>(null);
-
-  const scheduleFlush = () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      const pending = pendingRef.current;
-      pendingRef.current = new Map();
-      if (pending.size === 0) return;
-      const batch = [...pending.values()];
-      statsRef.current.dedupFlushes += 1;
-      statsRef.current.dedupOps += batch.length;
-      statsRef.current.dedupOpsPerFlush.push(batch);
-    }, 50);
-  };
+  const deriverRef = useRef(createOpDeriver());
+  const batcherRef = useRef(
+    createOpBatcher({
+      onFlush: (batch) => {
+        const s = statsRef.current;
+        s.dedupFlushes += 1;
+        s.dedupOps += batch.length;
+        s.dedupOpsPerFlush.push(batch);
+      },
+    }),
+  );
 
   const onChange = (elements: readonly any[]) => {
     const s = statsRef.current;
     s.onChangeCalls += 1;
-    const ops = diffElements(prevRef.current, elements);
-    prevRef.current = snapshotMap(elements);
+    const ops = deriverRef.current.derive(elements);
     s.rawOps += ops.length;
     s.rawOpsPerCall.push(ops.length);
     s.lastOps = ops;
-    for (const op of ops) pendingRef.current.set(op.id, op);
-    scheduleFlush();
+    batcherRef.current.push(ops);
   };
 
   const sceneFull = () => {
@@ -90,10 +83,8 @@ export function SpikeApp() {
     reset: () => {
       statsRef.current = createStats();
       const api = apiRef.current;
-      prevRef.current = snapshotMap(api ? api.getSceneElementsIncludingDeleted() : []);
-      pendingRef.current = new Map();
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      timerRef.current = null;
+      deriverRef.current.reset(api ? api.getSceneElementsIncludingDeleted() : []);
+      batcherRef.current.dispose();
     },
     applyRemote: (elements: unknown[], mode: "never" | "immediately") => {
       const api = apiRef.current;

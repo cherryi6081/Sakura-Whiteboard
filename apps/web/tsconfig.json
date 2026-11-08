@@ -10,6 +10,10 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@whiteboard/shared": ["../../packages/shared/src/index.ts"]
+    },
     "types": ["vite/client"]
   },
   "include": ["src", "vite.config.ts"]

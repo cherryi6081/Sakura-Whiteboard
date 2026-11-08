@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import "@excalidraw/excalidraw/index.css";
+import type { ElementOp } from "@whiteboard/shared";
+import { BoardCanvas } from "../canvas/BoardCanvas";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 
 type BoardWindow = {
   boardId: string;
   sceneIds: () => string[];
   ready: boolean;
+  /** C2 起可用：已 flush 的 op 批次，用于验收"拖一次 = 1 条 upsert" */
+  opBatches: ElementOp[][];
+  lastOps: () => ElementOp[];
 };
 
 declare global {
@@ -32,11 +35,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }, [boardId]);
 
   useEffect(() => {
-    window.__board = {
+    const hook: BoardWindow = {
       boardId,
       ready: false,
       sceneIds: () => apiRef.current?.getSceneElements().map((el) => el.id) ?? [],
+      opBatches: [],
+      lastOps: () => hook.opBatches[hook.opBatches.length - 1] ?? [],
     };
+    window.__board = hook;
     return () => {
       delete window.__board;
     };
@@ -72,12 +78,15 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </span>
       </header>
       <div style={{ position: "relative", flex: 1 }}>
-        <Excalidraw
-          excalidrawAPI={(api) => {
+        <BoardCanvas
+          initialElements={scene.elements}
+          onApiReady={(api) => {
             apiRef.current = api;
             if (window.__board) window.__board.ready = true;
           }}
-          initialData={{ elements: scene.elements }}
+          onOps={(ops) => {
+            window.__board?.opBatches.push(ops);
+          }}
         />
       </div>
     </div>

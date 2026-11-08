@@ -4,7 +4,10 @@ import { BoardPage } from "./board/BoardPage";
 import { SpikeApp } from "./spike/SpikeApp";
 
 const boardMatch = /^\/board\/([A-Za-z0-9_-]{12})\/?$/.exec(window.location.pathname);
-const isSpikeRoute = /^\/spike\/?$/.test(window.location.pathname);
+// `/spike` 或历史入口 `/?board=xxx` 都进验证页，保证 .spike 脚本可原样复跑
+const isSpikeRoute =
+  /^\/spike\/?$/.test(window.location.pathname) ||
+  new URLSearchParams(window.location.search).has("board");
 
 function IndexPage() {
   return (
