@@ -55,6 +55,9 @@ export type BoardSocketHandlers = {
 export type BoardSocket = {
   socket: Socket;
   submit: (batch: OpBatch) => void;
+  /** 调试/验收用：手动断开（会关闭自动重连），重新 `connect()` 后 join 会再次执行。 */
+  disconnect: () => void;
+  connect: () => void;
   close: () => void;
 };
 
@@ -100,6 +103,12 @@ export function createBoardSocket(options: {
     socket,
     submit(batch) {
       socket.emit("op:submit", batch);
+    },
+    disconnect() {
+      socket.disconnect();
+    },
+    connect() {
+      socket.connect();
     },
     close() {
       socket.removeAllListeners();

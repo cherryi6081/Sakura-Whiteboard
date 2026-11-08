@@ -3,6 +3,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import { createBoardCollab, type BoardCollab, type CollabSnapshot } from "../collab/BoardCollab";
+import { cacheDebugInfo, clearQueuedOps, enqueueOps, getCachedSeq, listQueuedOps, removeQueuedOps, writeCachedScene } from "../store/cacheDb";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 
 type SceneElementSummary = {
@@ -15,6 +16,15 @@ type SceneElementSummary = {
   isDeleted: boolean;
 };
 
+type BoardTiming = {
+  startedAt: number;
+  sceneReadyAt?: number;
+  cacheLoadMs?: number;
+  canvasReadyAt?: number;
+  joinedAt?: number;
+  syncedAt?: number;
+};
+
 type BoardWindow = {
   boardId: string;
   sceneIds: () => string[];
@@ -25,6 +35,14 @@ type BoardWindow = {
   lastOps: () => ElementOp[];
   /** C4：协作连接/角色/队列的实时快照 */
   collab: () => CollabSnapshot | null;
+  /** C5：首帧来源与各阶段耗时（缓存先行验收） */
+  sceneSource: () => BoardScene["source"];
+  timing: BoardTiming;
+  /** C5：IndexedDB 结构/复合键/localStorage 断言 */
+  cache: () => ReturnType<typeof cacheDebugInfo>;
+  syncNow: () => void;
+  socketDisconnect: () => void;
+  socketConnect: () => void;
 };
 
 declare global {
@@ -39,6 +57,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const collabRef = useRef<BoardCollab | null>(null);
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [collabState, setCollabState] = useState<CollabSnapshot | null>(null);
+  const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
   // 真正的分享 token 尚未实现，因此这只是「自报只读」，可信度边界见开发文档 §7.2.2。
@@ -51,19 +70,38 @@ export function BoardPage({ boardId }: { boardId: string }) {
     let alive = true;
     setScene(null);
     void loadBoardScene(boardId).then((loaded) => {
-      if (alive) setScene(loaded);
+      if (!alive) return;
+      const timing = timingRef.current;
+      timing.cacheLoadMs = loaded.loadMs;
+      timing.sceneReadyAt = performance.now();
+      setScene(loaded);
     });
     return () => {
       alive = false;
     };
   }, [boardId]);
 
+  // 先让缓存/快照内容渲染出来，再开始连接与补拉（保证"缓存先行"的顺序）
   useEffect(() => {
+    if (!scene) return;
     const collab = createBoardCollab({
       boardId,
       viewOnly: readOnlyQuery(),
+      cache: {
+        getSeq: getCachedSeq,
+        writeScene: writeCachedScene,
+        enqueue: enqueueOps,
+        listQueued: listQueuedOps,
+        removeQueued: removeQueuedOps,
+        clearQueue: clearQueuedOps,
+      },
       getBridge: () => bridgeRef.current,
-      onChange: setCollabState,
+      onChange: (snapshot) => {
+        const timing = timingRef.current;
+        if (snapshot.joined && timing.joinedAt === undefined) timing.joinedAt = performance.now();
+        if (snapshot.synced && timing.syncedAt === undefined) timing.syncedAt = performance.now();
+        setCollabState(snapshot);
+      },
     });
     collabRef.current = collab;
     collab.start();
@@ -71,7 +109,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       collab.stop();
       collabRef.current = null;
     };
-  }, [boardId]);
+  }, [boardId, scene]);
 
   useEffect(() => {
     const hook: BoardWindow = {
@@ -91,12 +129,18 @@ export function BoardPage({ boardId }: { boardId: string }) {
       opBatches: [],
       lastOps: () => hook.opBatches[hook.opBatches.length - 1] ?? [],
       collab: () => collabRef.current?.snapshot() ?? null,
+      sceneSource: () => scene?.source ?? "placeholder",
+      timing: timingRef.current,
+      cache: () => cacheDebugInfo(boardId),
+      syncNow: () => collabRef.current?.syncNow(),
+      socketDisconnect: () => collabRef.current?.debugDisconnect(),
+      socketConnect: () => collabRef.current?.debugConnect(),
     };
     window.__board = hook;
     return () => {
       delete window.__board;
     };
-  }, [boardId]);
+  }, [boardId, scene]);
 
   if (!scene) {
     return (
@@ -135,13 +179,22 @@ export function BoardPage({ boardId }: { boardId: string }) {
         <span data-testid="collab-status" style={{ fontSize: 12, color: status === "connected" ? "#4E8A68" : "#A86A4E" }}>
           {status} · {role}
         </span>
-        {collabState && collabState.queuedBatches > 0 ? (
-          <span data-testid="queued-batches" style={{ fontSize: 12, color: "#A86A4E" }}>
-            待补发 {collabState.queuedBatches} 批
+        {collabState && collabState.queuedOps > 0 ? (
+          <span data-testid="queued-ops" style={{ fontSize: 12, color: "#A86A4E" }}>
+            待补发 {collabState.queuedOps} op
+          </span>
+        ) : null}
+        {collabState && collabState.synced ? (
+          <span data-testid="sync-state" style={{ fontSize: 12, color: "#4E8A68" }}>
+            已对齐 seq={collabState.cacheSeq ?? 0}
           </span>
         ) : null}
         <span style={{ marginLeft: "auto", fontSize: 12 }}>
-          {scene.source === "placeholder" ? "空场景（快照接口待 C5）" : `快照 seq=${scene.seq}`}
+          {scene.source === "cache"
+            ? `本地缓存 ${Math.round(scene.loadMs)}ms · seq=${scene.seq}`
+            : scene.source === "snapshot"
+              ? `服务端快照 · seq=${scene.seq}`
+              : "空场景"}
         </span>
       </header>
       <div style={{ position: "relative", flex: 1 }}>
@@ -151,6 +204,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           onApiReady={(api, handle) => {
             apiRef.current = api;
             bridgeRef.current = handle;
+            timingRef.current.canvasReadyAt = performance.now();
             collabRef.current?.notifyCanvasReady();
             if (window.__board) window.__board.ready = true;
           }}
