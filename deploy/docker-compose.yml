@@ -59,6 +59,28 @@ services:
       retries: 10
       start_period: 20s
 
+  # 一次性迁移任务：默认不启动（`docker compose up` 不受影响），
+  # 需要初始化/升级表结构时显式执行：
+  #   docker compose --profile init run --rm migrate
+  # 迁移本身幂等（schema_migrations 记录 checksum），重复执行只会输出 up to date。
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    profiles: ["init"]
+    # api 不依赖 migrate：默认启动路径不被一次性任务阻塞
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/whiteboard
+      # config.ts 启动时强制校验 REDIS_URL / SESSION_SECRET，迁移本身不连 Redis
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: dev-only-change-me-0123456789abcdef
+    command: ["node", "apps/server/dist/db/migrate.js"]
+    restart: "no"
+
 volumes:
   pgdata:
   redisdata:
