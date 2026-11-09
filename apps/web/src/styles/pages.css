@@ -752,6 +752,17 @@
     padding: var(--space-4);
   }
 
+  /* 移动端底部抽屉把手（§5.4：32×4，#F4E3E9） */
+  .wb-drawer::before {
+    content: "";
+    display: block;
+    width: 32px;
+    height: 4px;
+    margin: 0 auto var(--space-3);
+    border-radius: var(--radius-pill);
+    background: var(--rose-100);
+  }
+
   .wb-auth__card {
     padding: var(--space-6);
   }
