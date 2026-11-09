@@ -85,10 +85,20 @@ docker compose -f deploy/docker-compose.yml up -d
 
 打开 <http://localhost:8080>。前端在构建阶段产出静态资源，由 API 同源托管（`WEB_DIST=apps/web/dist`），因此只有 `pg / redis / migrate-auto / api` 四个服务，没有额外 nginx。
 
+- **入口只有一个**：默认 compose 把 api 固定发布到 `8080:8080`，重建、重启都不会漂到 8081。想验证双实例再叠加 `deploy/docker-compose.scale.yml`（见下）。
+- **前端产物在镜像里**：`apps/web/dist` 由 [apps/server/Dockerfile](apps/server/Dockerfile) 的 build 阶段生成并 `COPY` 进 runtime 镜像。**只改代码再 `up -d` 不会更新前端**，必须带 `--build` 重建；重建后建议看一眼 `docker compose ps`，确认 api 仍是 `0.0.0.0:8080->8080`。
 - **取舍**：少一个服务、少一层代理，cookie 天然同源（不依赖 Vite 代理，也就绕开了代理改写 `Host` 带来的同源校验问题）；代价是前端与 API 同进程、同滚动发布，静态资源缓存交给了 Express 默认头（未做 CDN）。若后续要独立发布前端，把 `apps/web/dist` 交给 nginx/CDN 即可，API 不设 `WEB_DIST` 就回到纯后端。
 - **迁移**：默认路径里的 `migrate-auto` 跑完即退出，`api` 等它成功后才启动；迁移幂等（`schema_migrations` 记录 checksum），每天重复 `up` 也只会输出 `up to date`。
 - **手动迁移（能力保留）**：`docker compose -f deploy/docker-compose.yml --profile init run --rm migrate`。
-- **双实例**：`docker compose -f deploy/docker-compose.yml up -d --scale api=2`，宿主端口 8080/8081，健康检查各自返回不同 `instance`。
+- **双实例（能力保留，默认不启用）**：叠加 override 后再 scale，宿主端口才是 8080/8081：
+  ```bash
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.scale.yml up -d --scale api=2
+  ```
+  验证完缩回单实例，并回到 8080 固定绑定：
+  ```bash
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.scale.yml up -d --scale api=1
+  docker compose -f deploy/docker-compose.yml up -d --force-recreate api
+  ```
 
 **已验证（2026-11-09，Windows + Docker Desktop 4.98 / Engine 29.9.2）**：
 
@@ -97,6 +107,7 @@ docker compose -f deploy/docker-compose.yml up -d
 - `GET /` → `200 text/html`（前端由 API 同源托管）。
 - `GET /api/nope` → `404 {"error":{"code":"NOT_FOUND"...}}`，说明 SPA fallback 没有吞掉 `/api` 路由。
 - 无头 Chrome 打开 `http://127.0.0.1:8080/` 首页正常渲染（标题、按钮与入口链接齐全），控制台无报错。
+- 默认路径**连续重建两次**，`docker compose ps` 两次都是 `0.0.0.0:8080->8080`（未漂到 8081）；叠加 `deploy/docker-compose.scale.yml` 后 `--scale api=2` 两个实例都 healthy、8080/8081 各自 `/api/health` `ok:true`，随后缩回单实例恢复 8080。
 
 ## 环境变量
 
