@@ -96,6 +96,12 @@ assetsRouter.post(
     const boardId = boardIdSchema.parse(req.params.id);
     const identity = identityOf(req);
 
+    // CSRF：自定义头会强制跨站请求先发预检，而本服务不返回 CORS 头 → 跨站写失败。
+    // 比 Origin/Host 对比更适配 Vite 代理（代理会改写 Host）。
+    if (req.get('x-wb-upload') !== '1') {
+      throw new AppError(403, 'FORBIDDEN', 'missing upload intent header');
+    }
+
     if (!identity.userId) {
       throw new AppError(401, 'UNAUTHENTICATED', '图片上传需要登录；游客与只读访客不可上传');
     }
