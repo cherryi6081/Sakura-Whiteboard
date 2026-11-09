@@ -129,14 +129,6 @@
   --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
   --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
 
-  /* 浅底文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
-  --day-text-primary: var(--rose-900);
-  --day-text-secondary: var(--neutral-800);
-  /* 半透明白粉浮层：叠在浅蓝天空与浅蓝山体上都成立，实际叠色对比度见交付表格 */
-  --day-card-surface: color-mix(in srgb, var(--paper) 74%, transparent);
-  --day-card-line: color-mix(in srgb, var(--rose-600) 22%, transparent);
-  --day-card-shadow: 0 1px 2px rgba(90, 42, 63, 0.06), 0 8px 22px rgba(90, 42, 63, 0.07);
-  --day-eyebrow-ink: var(--rose-800);
   /* 右下角题词压在浅色山脊/水面上，用一小块白粉底托住深色字（纯装饰文字） */
   --day-caption-surface: color-mix(in srgb, var(--paper) 74%, transparent);
 
@@ -159,9 +151,7 @@
   --lh-title: 30px;
   --text-display: 28px;
   --lh-display: 40px;
-  /* 首页主标题与页脚：一个放大建立重心，一个收小退到背景 */
-  --text-hero: 46px;
-  --lh-hero: 58px;
+  /* 首页页脚：收小退到背景 */
   --text-footer: 11px;
   --lh-footer: 16px;
 

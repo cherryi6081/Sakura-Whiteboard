@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchClaimPreview, fetchMe, type ClaimPreview } from "../auth/authApi";
 import { ClaimDialog, claimSnoozed } from "../auth/ClaimDialog";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
-import { createBoard, fetchBoards, ROLE_LABEL, type BoardListItem } from "./boardsApi";
-import { listRecentBoards, recordRecentBoard, type RecentBoard } from "./recentBoards";
+import { fetchBoards, ROLE_LABEL, type BoardListItem } from "./boardsApi";
+import { listRecentBoards, type RecentBoard } from "./recentBoards";
+import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { IconAlert, IconBoard, IconPlus } from "../ui/icons";
 
 /**
@@ -23,6 +24,13 @@ type ViewState =
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
 
+/** 本页的建板失败文案：沿用这一页原来的措辞，避免因为共用 hook 改掉已有提示 */
+function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?: string }): string {
+  if (kind === "quota") return "已建满 3 块临时板，登录后可以继续。";
+  if (kind === "offline") return "连不上服务器，恢复网络后再试。";
+  return `没建成（${code}），再试一次。`;
+}
+
 export function BoardsPage() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [preview, setPreview] = useState<ClaimPreview | null>(null);
@@ -30,8 +38,8 @@ export function BoardsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [guestBannerVisible, setGuestBannerVisible] = useState(() => !readFlag(SAVE_BANNER_KEY));
   const [toast, setToast] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  // 建板逻辑（含配额/离线/慢请求处理）统一走 useCreateBoard，与旧首页入口同一份实现
+  const { busy, slow, error: createError, start } = useCreateBoard({ messageFor: boardsMessageFor });
 
   const load = useCallback(async () => {
     setView({ kind: "loading" });
@@ -65,24 +73,6 @@ export function BoardsPage() {
     const timer = window.setTimeout(() => setToast(null), 2400);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  const newBoard = async () => {
-    if (busy) return;
-    setBusy(true);
-    setCreateError(null);
-    const res = await createBoard();
-    setBusy(false);
-    if (!res.ok) {
-      setCreateError(
-        res.status === 429 && res.code === "QUOTA_EXCEEDED"
-          ? "已建满 3 块临时板，登录后可以继续。"
-          : `没建成（${res.code}），再试一次。`,
-      );
-      return;
-    }
-    recordRecentBoard({ id: res.data.id, title: res.data.title });
-    window.location.href = `/board/${res.data.id}`;
-  };
 
   const dismissClaimBar = () => {
     setClaimBarVisible(false);
@@ -133,19 +123,19 @@ export function BoardsPage() {
           <button
             className="wb-btn wb-btn--primary"
             type="button"
-            onClick={() => void newBoard()}
+            onClick={() => void start()}
             disabled={busy}
             data-testid="boards-new"
           >
             {busy ? <span className="wb-spinner" aria-hidden /> : <IconPlus />}
-            {busy ? "正在新建…" : "新建白板"}
+            {busy ? (slow ? "还在连接…" : "正在新建…") : "新建白板"}
           </button>
         </div>
 
         {createError ? (
           <div className="wb-inline-note wb-inline-note--danger" style={{ marginTop: "var(--space-4)" }} role="alert">
             <IconAlert />
-            <span>{createError}</span>
+            <span>{createError.message}</span>
           </div>
         ) : null}
 
@@ -174,13 +164,13 @@ export function BoardsPage() {
           </div>
         ) : null}
 
-        {view.kind === "user" && view.items.length === 0 ? <EmptyState onNew={() => void newBoard()} /> : null}
+        {view.kind === "user" && view.items.length === 0 ? <EmptyState onNew={() => void start()} /> : null}
 
         {view.kind === "guest" && view.items.length === 0 ? (
           <EmptyState
             title="还没有打开过白板"
             hint="这块浏览器还没记录任何临时板。新建一块，立刻开始画。"
-            onNew={() => void newBoard()}
+            onNew={() => void start()}
           />
         ) : null}
 

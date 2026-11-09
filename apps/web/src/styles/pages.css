@@ -47,7 +47,8 @@
   font-weight: 700;
 }
 
-/* ============ 首页 / 入口 ============ */
+/* ============ 首页 / 展示页 ============ */
+/* 首页只保留整页场景与页脚：顶栏、品牌、导航与文案区块都已移除，页内没有可聚焦元素 */
 .wb-home {
   position: relative;
   min-height: 100%;
@@ -57,154 +58,11 @@
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
   background: var(--sky-blue-top);
-  /* 首页作用域内把文字 token 切成浅底可读的深色版（纯展示页没有次级/禁用文字） */
-  --text-primary: var(--day-text-primary);
-  --text-secondary: var(--day-text-secondary);
-}
-
-/* 顶栏与页脚压在场景之上；首页是纯展示页，里面没有可聚焦/可点击元素 */
-.wb-home__top {
-  position: relative;
-  z-index: 2;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-8);
-}
-
-/* 顶栏词条组：只是纯文本标注，不承接任何交互，所以没有 hover / 焦点 / 下划线 */
-.wb-home__nav {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  /* 顶栏落在顶部深蓝里：词条组自成一枚浅色胶囊，深色文字始终合在浅底上 */
-  padding: 6px 14px;
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--day-card-shadow);
-}
-
-.wb-home__nav-item {
-  padding: 2px 0;
-  font-size: var(--text-caption);
-  line-height: var(--lh-caption);
-  color: var(--text-secondary);
-}
-
-.wb-home__nav-item--strong {
-  font-weight: 600;
-  color: var(--rose-700);
-}
-
-/* 整页铺满：场景是绝对定位的背景层，文案直接叠在场景左侧 */
-.wb-home__stage {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  padding: 0 clamp(var(--space-8), 7vw, 112px) var(--space-12);
-  min-height: 0;
-}
-
-.wb-home__main {
-  width: 100%;
-  max-width: 600px;
-  padding: clamp(var(--space-8), 4vh, var(--space-12)) 0;
-  position: relative;
-  z-index: 1;
-}
-
-.wb-home__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  padding: 5px 12px;
-  font-size: var(--text-micro);
-  line-height: var(--lh-micro);
-  letter-spacing: 0.08em;
-  color: var(--day-eyebrow-ink);
-  /* 矮视口时正文整体上移，眉标会落到顶部深蓝段：改成不透明的浅粉底，
-     深蓝段与浅蓝段上是同一个合成色，12px 文字也稳定在 5:1 以上 */
-  background: color-mix(in srgb, var(--paper) 74%, var(--rose-600));
-  border-radius: var(--radius-pill);
-}
-
-.wb-home__eyebrow-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--sakura-300);
-}
-
-.wb-home__headline {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-hero);
-  line-height: var(--lh-hero);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-.wb-home__lead {
-  margin: var(--space-3) 0 0;
-  max-width: 26em;
-  font-size: var(--text-subtitle);
-  line-height: var(--lh-subtitle);
-  color: var(--text-secondary);
-}
-
-/* 能力点做成三张小卡：填补信息密度，又不会堆成一堵墙 */
-.wb-home__points {
-  margin: var(--space-8) 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-
-.wb-home__point {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  font-size: var(--text-caption);
-  line-height: var(--lh-caption);
-  color: var(--text-secondary);
-  /* 半透明白粉浮层：叠在浅粉天空与山体上都成立，实际叠色对比度见交付表格 */
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-md);
-  box-shadow: var(--day-card-shadow);
-}
-
-.wb-home__point::before {
-  content: "";
-  width: 4px;
-  height: 4px;
-  margin-top: 8px;
-  border-radius: 50%;
-  background: var(--sakura-300);
-  flex: none;
-}
-
-/* 移动端专用的单行能力点（桌面隐藏，见响应式块） */
-.wb-home__points-line {
-  display: none;
-  margin: var(--space-8) 0 0;
-  font-size: var(--text-caption);
-  line-height: var(--lh-caption);
-  color: var(--text-secondary);
 }
 
 /* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 ---------- */
 /* 铺满方式：绝对定位 + inset:0，随 .wb-home 的 100dvh 撑满整个首页视口；
-   内部 overflow: hidden 既裁掉出界的枝条与花瓣，也不影响文案层 */
+   内部 overflow: hidden 既裁掉出界的枝条与花瓣，也不影响其它层 */
 .wb-home__scene {
   position: absolute;
   inset: 0;
@@ -213,19 +71,8 @@
   pointer-events: none;
   user-select: none;
   isolation: isolate;
-  /* 顶部深蓝占据上 1/4，品牌与导航正落在这一带：给这两处各垫一层与能力卡同源的
-     半透明浅色衬底（--day-card-surface），深色文字因此始终合在浅底上；
-     文字只保留全站唯一那套深色 token，不出现上下两套字色 */
+  /* 天空仍是"顶部深蓝 + 向下过渡回四档浅蓝"的多 stop 渐变 */
   background: var(--home-scene-sky);
-}
-
-/* 顶栏落在深蓝上时，品牌也包成一枚浅色胶囊，与导航同一套表面 */
-.wb-home__top .wb-brand {
-  padding: 4px 12px 4px 6px;
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--day-card-shadow);
 }
 
 /* 山 + 湖面 / 倒影：meet 完整呈现（峰顶、两侧山脚、水线与湖底都在画面内） */
@@ -321,7 +168,7 @@
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
 .wb-scene__branch {
   position: absolute;
-  /* 从右上角下方一点进入，避开顶栏词条，避免枝条压住“我的白板 / 登录 / 注册” */
+  /* 从右上角下方一点进入，让枝条自然地从画面外伸进来 */
   top: 7%;
   right: 0;
   width: min(44%, 560px);
@@ -565,64 +412,15 @@
   color: var(--rose-900);
 }
 
-/* ---------- 浅粉首页：品牌与题词在浅底上的收口 ---------- */
-.wb-home .wb-brand {
-  color: var(--rose-900);
-}
-
-/* 状态条与按钮不再做深底适配：直接沿用全局浅底一套 token */
-
-/* 平板：场景仍是整页背景，只收紧文案区留白，避免文案贴边 */
+/* 平板：场景仍是整页背景，页脚留白与移动端一致收紧 */
 @media (max-width: 900px) {
-  .wb-home__stage {
-    padding: 0 var(--space-6) var(--space-8);
-  }
-
-  .wb-home__main {
-    max-width: 560px;
-    padding: var(--space-8) 0;
+  .wb-home__foot {
+    padding: var(--space-4) var(--space-6) var(--space-8);
   }
 }
 
-/* 移动端：文案落到下半屏，配自下而上的提亮层；花瓣减半 */
+/* 移动端：场景保持整页背景，花瓣减半 */
 @media (max-width: 767px) {
-  .wb-home__top {
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .wb-home__nav {
-    gap: var(--space-3);
-  }
-
-  /* 移动端文案居中：山体按 meet 完整压在底部 219px 一带，
-     文案抬到中段就不会压住山峰，山体完整可见 */
-  .wb-home__stage {
-    align-items: center;
-    padding: 0 var(--space-4) var(--space-6);
-  }
-
-  .wb-home__main {
-    padding: var(--space-4) 0 0;
-  }
-
-  .wb-home__headline {
-    font-size: 34px;
-    line-height: 44px;
-  }
-
-  .wb-home__lead {
-    font-size: var(--text-body);
-    line-height: var(--lh-body);
-  }
-
-  .wb-home__points {
-    display: none;
-  }
-
-  .wb-home__points-line {
-    display: block;
-  }
-
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
   .wb-scene__petal:nth-child(n + 13) {
     display: none;
@@ -1286,30 +1084,9 @@
     padding: var(--space-4);
   }
 
-  .wb-home__top {
-    padding: var(--space-4);
-  }
-
-  .wb-home__main {
-    padding: 0;
-  }
-
   .wb-display {
     font-size: var(--text-title);
     line-height: var(--lh-title);
-  }
-
-  .wb-home__nav {
-    gap: var(--space-3);
-  }
-
-  /* 移动端：能力点收成一行文案（§4.1） */
-  .wb-home__points {
-    display: none;
-  }
-
-  .wb-home__points-line {
-    display: block;
   }
 
   .wb-home__foot {
