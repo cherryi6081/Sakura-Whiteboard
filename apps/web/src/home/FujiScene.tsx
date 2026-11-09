@@ -139,33 +139,187 @@ const STARS: Array<[number, number, number, number]> = [
   [1320, 312, 1.5, 0.28],
 ];
 
-/** 前景樱花枝上的花簇：[x, y, r] */
-const BLOSSOMS: Array<[number, number, number]> = [
-  [418, 56, 12],
-  [392, 70, 14],
-  [372, 78, 11],
-  [340, 72, 13],
-  [306, 68, 10],
-  [274, 76, 12],
-  [266, 82, 9],
-  [322, 118, 13],
-  [292, 116, 11],
-  [262, 122, 14],
-  [238, 132, 10],
-  [230, 138, 9],
-  [306, 232, 12],
-  [316, 262, 14],
-  [324, 294, 11],
-  [330, 322, 13],
-  [288, 262, 10],
-  [262, 274, 13],
-  [232, 290, 11],
-  [212, 302, 12],
-  [322, 342, 12],
-  [304, 358, 13],
-  [286, 376, 11],
-  [276, 386, 9],
+/**
+ * 枝条分段：每段是一条**纯直线折线**（只用 M / L，不用任何贝塞尔），
+ * 段内保留拐点，所以转折处是硬角；同一根枝由粗到细拆成 2–5 段，
+ * 每段给一个更细的 strokeWidth，靠 butt 端点直接衔接模拟收细。
+ * 角度按现实生长：主干自画面边缘斜插进来，分叉一律锐角。
+ */
+type BranchSegment = { d: string; width: number };
+
+/** 前景主枝组：主干 + 六根侧枝 + 六根末梢短枝 */
+const MAIN_BRANCHES: BranchSegment[] = [
+  // 主干：右侧画外 → 左上折 → 转左下，一路带硬转折
+  { d: "M522 28 L452 52 L404 88", width: 13 },
+  { d: "M404 88 L372 112 L340 168", width: 11 },
+  { d: "M340 168 L318 206 L300 266", width: 8.8 },
+  { d: "M300 266 L296 330 L302 392", width: 6.6 },
+  { d: "M302 392 L312 452 L324 502", width: 4.6 },
+  { d: "M324 502 L344 556 L366 606", width: 3 },
+  { d: "M366 606 L372 640 L368 678", width: 1.8 },
+  // 上侧横枝：向左铺开，每个拐点都换角度
+  { d: "M372 112 L320 92 L270 76 L226 74", width: 6.8 },
+  { d: "M226 74 L182 92 L140 106 L104 118", width: 4.2 },
+  // 上斜短枝
+  { d: "M188 86 L164 66 L140 54 L116 48", width: 2.2 },
+  // 中段左枝
+  { d: "M344 150 L300 134 L258 132 L222 146", width: 5.4 },
+  { d: "M222 146 L188 160 L156 180 L134 200", width: 3 },
+  // 右上短枝
+  { d: "M318 212 L352 196 L392 180 L430 178", width: 5 },
+  { d: "M430 178 L452 182 L472 188", width: 2.4 },
+  // 左下长枝
+  { d: "M298 300 L266 318 L232 338 L196 362", width: 5 },
+  { d: "M196 362 L168 386 L142 412 L130 434", width: 2.8 },
+  // 右下长枝
+  { d: "M302 372 L324 404 L352 440 L374 472", width: 4.2 },
+  { d: "M374 472 L388 500 L392 530 L390 554", width: 2.2 },
+  // 主干上的末梢短枝（越靠下越短、越细）
+  { d: "M312 466 L320 496 L330 518", width: 2 },
+  { d: "M348 546 L352 562", width: 1.4 },
+  { d: "M232 80 L200 56 L172 38", width: 2.4 },
+  { d: "M304 268 L272 290 L240 316", width: 3 },
+  { d: "M268 148 L238 172 L214 202", width: 2.8 },
+  { d: "M424 200 L430 228 L434 258", width: 2 },
+  // 两根更小的末梢分枝
+  { d: "M300 296 L284 284", width: 1.8 },
+  { d: "M352 440 L370 428", width: 1.6 },
 ];
+
+/** 背景枯枝：更细更淡，同样用折线，垫在前景枝之后 */
+const FAR_BRANCHES: BranchSegment[] = [
+  { d: "M522 128 L470 130 L420 142 L396 152", width: 3 },
+  { d: "M396 152 L350 178 L310 202 L286 226", width: 2.2 },
+  { d: "M472 236 L420 236 L374 248 L344 262", width: 2.6 },
+  { d: "M344 262 L308 284 L282 306 L262 324", width: 1.8 },
+  { d: "M522 336 L480 354 L450 378 L432 404", width: 2.4 },
+  { d: "M432 404 L414 436 L404 466", width: 1.7 },
+];
+
+type BlossomKind = "bud" | "half" | "full";
+
+/** 花朵：x/y 为花心坐标，size 为花瓣长度，rot 为朝向 */
+type Blossom = { x: number; y: number; size: number; rot: number; kind: BlossomKind };
+
+/** 沿各枝梢成簇布置：每簇 2–3 朵，花心贴着枝梢（离枝线 2–8 单位），不串成一条珠链 */
+const BLOSSOMS: Blossom[] = [
+  // 左上细梢
+  { x: 113, y: 42, size: 12, rot: 12, kind: "full" },
+  { x: 125, y: 56, size: 9, rot: -34, kind: "half" },
+  { x: 102, y: 40, size: 8, rot: 44, kind: "bud" },
+  // 横枝末端
+  { x: 104, y: 112, size: 13, rot: -14, kind: "full" },
+  { x: 115, y: 127, size: 9, rot: 28, kind: "bud" },
+  { x: 91, y: 124, size: 10, rot: 58, kind: "half" },
+  { x: 169, y: 89, size: 13, rot: 22, kind: "full" },
+  { x: 182, y: 103, size: 9, rot: -40, kind: "bud" },
+  { x: 157, y: 101, size: 11, rot: 64, kind: "half" },
+  // 新补的上斜梢
+  { x: 174, y: 34, size: 11, rot: 16, kind: "full" },
+  { x: 186, y: 47, size: 8, rot: -22, kind: "bud" },
+  // 中段左枝末端
+  { x: 141, y: 187, size: 13, rot: -8, kind: "full" },
+  { x: 154, y: 202, size: 9, rot: 34, kind: "bud" },
+  { x: 129, y: 204, size: 10, rot: 60, kind: "half" },
+  // 下斜短梢
+  { x: 213, y: 199, size: 10, rot: -16, kind: "full" },
+  { x: 224, y: 214, size: 7, rot: 40, kind: "bud" },
+  // 中段左枝起点
+  { x: 224, y: 139, size: 11, rot: 18, kind: "full" },
+  { x: 237, y: 154, size: 8, rot: -26, kind: "bud" },
+  // 左下短梢
+  { x: 239, y: 312, size: 10, rot: 30, kind: "full" },
+  { x: 250, y: 325, size: 7, rot: -44, kind: "bud" },
+  // 右上短枝末端
+  { x: 469, y: 181, size: 12, rot: 10, kind: "full" },
+  { x: 480, y: 196, size: 8, rot: -36, kind: "bud" },
+  { x: 455, y: 196, size: 10, rot: 44, kind: "half" },
+  { x: 405, y: 170, size: 10, rot: -18, kind: "full" },
+  // 右上下垂短梢
+  { x: 434, y: 254, size: 9, rot: 22, kind: "full" },
+  { x: 441, y: 268, size: 7, rot: -30, kind: "bud" },
+  // 主干入口
+  { x: 440, y: 55, size: 13, rot: 16, kind: "full" },
+  { x: 428, y: 78, size: 9, rot: -30, kind: "bud" },
+  { x: 455, y: 84, size: 11, rot: 52, kind: "half" },
+  // 主干中段旁
+  { x: 384, y: 100, size: 11, rot: 24, kind: "full" },
+  { x: 374, y: 117, size: 8, rot: -38, kind: "bud" },
+  // 左下长枝末端
+  { x: 130, y: 424, size: 13, rot: -10, kind: "full" },
+  { x: 142, y: 439, size: 9, rot: 30, kind: "bud" },
+  { x: 117, y: 441, size: 10, rot: 62, kind: "half" },
+  { x: 193, y: 355, size: 11, rot: 14, kind: "full" },
+  { x: 208, y: 369, size: 8, rot: -24, kind: "bud" },
+  // 右下长枝末端
+  { x: 390, y: 545, size: 13, rot: 8, kind: "full" },
+  { x: 402, y: 559, size: 8, rot: -36, kind: "bud" },
+  { x: 375, y: 561, size: 10, rot: 48, kind: "half" },
+  { x: 371, y: 465, size: 11, rot: -6, kind: "full" },
+  // 主干后段
+  { x: 328, y: 511, size: 10, rot: 20, kind: "full" },
+  { x: 342, y: 526, size: 8, rot: -30, kind: "bud" },
+  { x: 350, y: 555, size: 11, rot: 44, kind: "full" },
+  { x: 366, y: 669, size: 12, rot: 12, kind: "full" },
+  { x: 379, y: 686, size: 8, rot: -38, kind: "bud" },
+];
+
+/** 背景枝梢上的几朵：整体压暗一档，用来交代前后层次 */
+const FAR_BLOSSOMS: Blossom[] = [
+  { x: 292, y: 222, size: 11, rot: -20, kind: "full" },
+  { x: 282, y: 238, size: 7, rot: 36, kind: "bud" },
+  { x: 263, y: 318, size: 10, rot: 14, kind: "half" },
+  { x: 436, y: 398, size: 9, rot: -28, kind: "full" },
+  { x: 402, y: 470, size: 10, rot: 30, kind: "half" },
+];
+
+/** 单瓣：单位长度 1，上端收圆、中间带樱花特有的小缺口，下端收到花心 */
+const PETAL_PATH =
+  "M0 0 C -0.32 -0.18 -0.56 -0.44 -0.5 -0.74 C -0.46 -0.93 -0.3 -1 -0.17 -0.95 L 0 -0.8 L 0.17 -0.95 C 0.3 -1 0.46 -0.93 0.5 -0.74 C 0.56 -0.44 0.32 -0.18 0 0 Z";
+
+/** 花苞：水滴形外壳 + 一点高光 + 两片花萼 */
+const BUD_PATH =
+  "M0 0 C -0.42 -0.18 -0.56 -0.5 -0.44 -0.78 C -0.34 -1 -0.12 -1.08 0 -1.02 C 0.12 -1.08 0.34 -1 0.44 -0.78 C 0.56 -0.5 0.42 -0.18 0 0 Z";
+const CALYX_PATH = "M0 0 C -0.26 -0.02 -0.34 -0.18 -0.26 -0.38 C -0.14 -0.24 0 -0.16 0 0 Z";
+
+/** 一朵樱花：五瓣花冠 + 花芯 + 花蕊；half 只张 3 瓣，bud 用花苞壳 */
+function BlossomMark({ x, y, size, rot, kind }: Blossom) {
+  const scale = kind === "bud" ? 0.78 : kind === "half" ? 0.9 : 1;
+  return (
+    <g className="wb-scene__blossom" transform={`translate(${x} ${y}) rotate(${rot}) scale(${size * scale})`}>
+      {kind === "bud" ? (
+        <>
+          <path className="wb-scene__bud" d={BUD_PATH} />
+          <ellipse className="wb-scene__bud-light" cx="-0.16" cy="-0.62" rx="0.16" ry="0.26" transform="rotate(-24 -0.16 -0.62)" />
+          <path className="wb-scene__blossom-calyx" d={CALYX_PATH} />
+          <path className="wb-scene__blossom-calyx" d={CALYX_PATH} transform="scale(-1 1)" />
+        </>
+      ) : (
+        <>
+          {(kind === "full" ? [0, 72, 144, 216, 288] : [-58, 0, 58]).map((deg, index) => (
+            <path
+              // 花瓣按角度定位，角度值本身是唯一 key
+              key={deg}
+              className={
+                index === 0
+                  ? "wb-scene__bloom-petal wb-scene__bloom-petal--light"
+                  : index % 2 === 1
+                    ? "wb-scene__bloom-petal wb-scene__bloom-petal--shade"
+                    : "wb-scene__bloom-petal"
+              }
+              d={PETAL_PATH}
+              transform={`rotate(${deg})`}
+            />
+          ))}
+          <circle className="wb-scene__blossom-eye" r="0.28" />
+          {(kind === "full" ? [36, 108, 180, 252, 324] : [90, 210, 330]).map((deg) => (
+            <circle className="wb-scene__blossom-stamen" key={deg} cx="0" cy="-0.42" r="0.08" transform={`rotate(${deg})`} />
+          ))}
+        </>
+      )}
+    </g>
+  );
+}
 
 function petalStyle(petal: Petal): CSSProperties {
   return {
@@ -224,13 +378,17 @@ function CraneSilhouette() {
 export function FujiScene() {
   return (
     <div className="wb-home__scene" aria-hidden="true">
-      <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
-        {/* 星点：静态小圆，只提气氛，不抢山体 */}
+      {/* 星点单独一层铺满视口：不跟山体一起缩放，窄屏也不会被压进山脚 */}
+      <svg className="wb-scene__stars" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
         {STARS.map(([cx, cy, r, opacity], index) => (
           // 星点仅用于装饰，index 作为稳定 key
           // eslint-disable-next-line react/no-array-index-key
           <circle className="wb-scene__star" key={index} cx={cx} cy={cy} r={r} opacity={opacity} />
         ))}
+      </svg>
+      {/* 山体：meet 保证整个轮廓完整可见（山峰、左右山脚、山脚到底部），
+          多余天空由底层 CSS 渐变铺满，不出现留白 */}
+      <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" focusable="false">
         {/* 远山：最淡的一层，压在所有山体之后 */}
         <path
           className="wb-scene__range-far"
@@ -276,23 +434,35 @@ export function FujiScene() {
       {/* 文案侧提亮层：左侧柔和过渡，右半段完全透明，山体与花瓣不受影响 */}
       <div className="wb-scene__veil" />
 
-      {/* 右侧前景樱花枝：静态 SVG，花瓣从枝头区域出发 */}
+      {/* 地平线以下的夜雾：山脚完整保留轮廓，只把最底部渐隐到夜空色，
+          页脚文字始终落在深底上 */}
+      <div className="wb-scene__ground" />
+
+      {/* 右侧樱花枝：背景枯枝先铺一层，前景主枝与花朵压在上面。
+          枝条全部由分段 stroke 拼成，宽度逐段收细，模拟主干到末梢的锥度 */}
       <svg className="wb-scene__branch" viewBox="0 0 520 900" preserveAspectRatio="xMaxYMin meet" focusable="false">
-        <g fill="none" strokeLinecap="round">
-          <path className="wb-scene__branch-wood" strokeWidth="10" d="M520 20 C 452 42 402 70 356 112 C 322 143 300 176 296 218" />
-          <path className="wb-scene__branch-wood-soft" strokeWidth="4.5" d="M392 78 C 352 64 312 64 268 76" />
-          <path className="wb-scene__branch-wood-soft" strokeWidth="4.5" d="M344 122 C 308 114 274 118 232 134" />
-          <path className="wb-scene__branch-wood-soft" strokeWidth="4.5" d="M300 210 C 320 248 334 286 330 330" />
-          <path className="wb-scene__branch-wood-soft" strokeWidth="4" d="M310 250 C 282 274 252 292 214 300" />
-          <path className="wb-scene__branch-wood-soft" strokeWidth="3.6" d="M332 328 C 312 352 296 368 278 386" />
+        <g className="wb-scene__branch-far" fill="none">
+          {FAR_BRANCHES.map((segment) => (
+            <path key={segment.d} strokeWidth={segment.width} d={segment.d} />
+          ))}
         </g>
-        {BLOSSOMS.map(([cx, cy, r], index) => (
-          // 花簇仅用于装饰，index 作为稳定 key
-          // eslint-disable-next-line react/no-array-index-key
-          <g key={index}>
-            <circle className="wb-scene__bloom" cx={cx} cy={cy} r={r} />
-            <circle className="wb-scene__bloom-core" cx={cx - r * 0.2} cy={cy - r * 0.2} r={r * 0.34} />
-          </g>
+        <g opacity="0.62">
+          {FAR_BLOSSOMS.map((blossom) => (
+            <BlossomMark key={`${blossom.x}-${blossom.y}-${blossom.kind}`} {...blossom} />
+          ))}
+        </g>
+        <g fill="none">
+          {MAIN_BRANCHES.map((segment) => (
+            <path
+              key={segment.d}
+              className={segment.width >= 4 ? "wb-scene__branch-wood" : "wb-scene__branch-wood-soft"}
+              strokeWidth={segment.width}
+              d={segment.d}
+            />
+          ))}
+        </g>
+        {BLOSSOMS.map((blossom) => (
+          <BlossomMark key={`${blossom.x}-${blossom.y}-${blossom.kind}`} {...blossom} />
         ))}
       </svg>
 

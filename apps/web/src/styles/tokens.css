@@ -60,47 +60,83 @@
   --info-text: #3f5b7a;
   --info-fill: #8fa3bf;
 
-  /* ---------- 首页夜间场景（深靛蓝 / 午夜蓝，与干玫瑰主色相称） ---------- */
-  /* 天空自上而下变亮一点点，地平线带一丝暖灰紫，避免整块死板 */
-  --night-sky-900: #10142a;
-  --night-sky-800: #161b33;
-  --night-sky-700: #1e2440;
-  --night-horizon: #3b3450;
-  /* 远山 → 伴峰 → 主峰 → 阴影，明度分层保留山体体积 */
-  --night-ridge-far: #2e3758;
-  --night-ridge-mid: #28314f;
-  --night-peak: #333e60;
-  --night-peak-shadow: #252c47;
-  --night-peak-left: #242b46;
-  --night-foothill: #0d1226;
-  /* 月光冷白的雪顶与冷影 */
-  --night-snow: #dfe9f7;
-  --night-snow-shade: #b9c9de;
-  --night-haze: #8f93b3;
+  /* ---------- 首页场景：富士山 / 樱花 / 仙鹤（改版前原色，不随背景变化） ---------- */
+  /* 山体：远山 → 主峰 → 阴影，浅蓝灰一套，明度递减拉开景深 */
+  --fuji-100: #dfeaf4;
+  --fuji-200: #cddeec;
+  --fuji-300: #b7cde0;
+  --fuji-400: #9db8d0;
+  --fuji-500: #84a1bd;
+  --fuji-600: #6b87a4;
+  --fuji-ridge-far: #d5e4f0;
+  --fuji-ridge-mid: #c4d8e8;
+  /* 雪顶接近白，只压一层极浅冷影 */
+  --fuji-snow: #f7fbfe;
+  --fuji-snow-shade: #e8f2fa;
+  --fuji-mist: #ffffff;
+  /* 樱花：花簇与枝条原色 + 花瓣三层色阶 */
+  --sakura-100: #fbe6ee;
+  --sakura-200: #f5cad8;
+  --sakura-300: #eeacc4;
+  --sakura-wood: #8b6a77;
+  --sakura-wood-soft: #ab8b97;
+  --sakura-bloom: #f9d7e3;
+  --sakura-bloom-core: #f2b8ce;
+  /* 花瓣光晕是纯装饰，从花瓣色阶派生，不额外引入新色相 */
+  --sakura-glow: color-mix(in srgb, var(--sakura-200) 32%, transparent);
+  /* 仙鹤：深蓝灰剪影原色；压在深色天空上辨识度偏低，按用户要求先保留原色 */
+  --crane-ink: #45607a;
+  --crane-ink-soft: #74909f;
+  --crane-crown: #b4544b;
+
+  /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
+  /* 参考图取色 https://img95.699pic.com/photo/50041/1295.jpg_wh300.jpg：
+     天空主色 #9CCAFC（H≈211°、S≈64%、L≈80%），中段 #A0CDFC，地平线 #A7CEF9，
+     深蓝湖山带 #3D73B9（H≈214°）。背景保留“夜空底色”，因此只把同一蓝色相
+     压到 L≈13%–30% 做明度映射，不改色相，避免回到旧版靛紫调 */
+  --sky-night-900: #101c33;
+  --sky-night-800: #16253f;
+  --sky-night-700: #1d3050;
+  --sky-night-horizon: #2c456e;
   --night-star: #d6dcf0;
-  --night-scene-sky: linear-gradient(
+  --home-scene-sky: linear-gradient(
     180deg,
-    var(--night-sky-900) 0%,
-    var(--night-sky-800) 44%,
-    var(--night-sky-700) 72%,
-    var(--night-horizon) 100%
+    var(--sky-night-900) 0%,
+    var(--sky-night-800) 44%,
+    var(--sky-night-700) 72%,
+    var(--sky-night-horizon) 100%
   );
 
-  /* 文案侧压暗层：左侧深色近乎不透，向右自然散开；不再用浅色提亮 */
+  /* 文案侧压暗层：左侧深色近乎不透，向右散开；遮罩色取自天空 token，
+     这样压到浅色山体上仍是深底，文字对比度不依赖山体明度 */
   --home-night-veil: linear-gradient(
     96deg,
-    rgba(13, 16, 32, 0.95) 0%,
-    rgba(13, 16, 32, 0.9) 22%,
-    rgba(15, 19, 36, 0.55) 40%,
-    rgba(15, 19, 36, 0) 62%
+    color-mix(in srgb, var(--sky-night-900) 95%, transparent) 0%,
+    color-mix(in srgb, var(--sky-night-900) 90%, transparent) 22%,
+    color-mix(in srgb, var(--sky-night-800) 58%, transparent) 42%,
+    color-mix(in srgb, var(--sky-night-800) 24%, transparent) 58%,
+    transparent 74%
   );
-  /* 移动端文案在下半屏，改为自下而上的压暗 */
+  /* 移动端文案居中、山体完整压在底部：遮罩只在文字带轻压一层，
+     下落到山体带时回落到几乎透明，保证山体完整可见 */
   --home-night-veil-mobile: linear-gradient(
     180deg,
-    rgba(11, 14, 28, 0) 12%,
-    rgba(11, 14, 28, 0.5) 40%,
-    rgba(11, 14, 28, 0.92) 66%,
-    rgba(11, 14, 28, 0.97) 100%
+    transparent 0%,
+    color-mix(in srgb, var(--sky-night-900) 40%, transparent) 18%,
+    color-mix(in srgb, var(--sky-night-900) 72%, transparent) 36%,
+    color-mix(in srgb, var(--sky-night-900) 74%, transparent) 64%,
+    color-mix(in srgb, var(--sky-night-900) 38%, transparent) 74%,
+    color-mix(in srgb, var(--sky-night-900) 8%, transparent) 84%,
+    transparent 100%
+  );
+
+  /* 地平线夜雾：从透明渐隐到夜空色，只服务底部页脚的深底 */
+  --home-ground-fade: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--sky-night-800) 34%, transparent) 34%,
+    color-mix(in srgb, var(--sky-night-900) 84%, transparent) 72%,
+    var(--sky-night-900) 100%
   );
 
   /* 夜间文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
@@ -120,21 +156,8 @@
   --night-danger-border: rgba(226, 128, 128, 0.42);
   --night-danger-text: #ffc6c6;
   --night-disabled-bg: rgba(255, 255, 255, 0.12);
-
-  /* 夜色里的樱花：花瓣提亮，并给一层静态极轻光晕（不是 blur） */
-  --sakura-night-100: #ffe2ee;
-  --sakura-night-200: #fac9dd;
-  --sakura-night-300: #f0a8c6;
-  --sakura-glow: rgba(250, 200, 222, 0.3);
-  --sakura-wood-night: #d3bccb;
-  --sakura-wood-night-soft: #b79daa;
-  --sakura-bloom-night: #f9d3e2;
-  --sakura-bloom-core-night: #f0aecd;
-
-  /* 仙鹤：月光冷白剪影，压在深靛蓝天空上 */
-  --crane-ink-night: #dbe5f3;
-  --crane-ink-night-soft: #a8bbd4;
-  --crane-crown-night: #e4776c;
+  /* 右下角题词落在浅色山脊上，用一小块深色底保证可读（纯装饰文字） */
+  --night-caption-surface: color-mix(in srgb, var(--sky-night-900) 62%, transparent);
 
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",

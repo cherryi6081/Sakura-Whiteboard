@@ -56,7 +56,7 @@
   flex-direction: column;
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
-  background: var(--night-sky-900);
+  background: var(--sky-night-900);
   /* 首页作用域内把全局文字 token 切成夜色版，子元素（含状态条）自动跟随 */
   --text-primary: var(--night-text-primary);
   --text-secondary: var(--night-text-secondary);
@@ -139,7 +139,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--sakura-night-300);
+  background: var(--sakura-300);
 }
 
 .wb-home__headline {
@@ -199,7 +199,7 @@
   height: 4px;
   margin-top: 8px;
   border-radius: 50%;
-  background: var(--sakura-night-300);
+  background: var(--sakura-300);
   flex: none;
 }
 
@@ -223,11 +223,19 @@
   pointer-events: none;
   user-select: none;
   isolation: isolate;
-  background: var(--night-scene-sky);
+  background: var(--home-scene-sky);
 }
 
-/* 山体：slice 铺满视口，多余部分左右裁切，不会出现上/下留边 */
+/* 山体：meet 完整呈现（山峰、左右山脚、山脚贴底），天空由 CSS 渐变补满 */
 .wb-scene__mountains {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 星点单独铺满视口，不随山体缩放 */
+.wb-scene__stars {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -238,48 +246,48 @@
   fill: var(--night-star);
 }
 
+/* 山体恢复改版前浅蓝一套：背景再怎么变，山体与雪顶都用 --fuji-* 原色 */
 .wb-scene__range-far {
-  fill: var(--night-ridge-far);
+  fill: var(--fuji-ridge-far);
   opacity: 0.92;
 }
 
 .wb-scene__range-mid {
-  fill: var(--night-ridge-mid);
-  opacity: 0.88;
+  fill: var(--fuji-ridge-mid);
+  opacity: 0.86;
 }
 
 .wb-scene__peak-left {
-  fill: var(--night-peak-left);
-  opacity: 0.9;
+  fill: var(--fuji-400);
+  opacity: 0.42;
 }
 
 .wb-scene__haze {
-  fill: var(--night-haze);
-  opacity: 0.14;
+  fill: var(--fuji-mist);
+  opacity: 0.16;
 }
 
 .wb-scene__fuji {
-  fill: var(--night-peak);
+  fill: var(--fuji-300);
 }
 
 .wb-scene__fuji-shadow {
-  fill: var(--night-peak-shadow);
-  opacity: 0.85;
+  fill: var(--fuji-400);
+  opacity: 0.55;
 }
 
 .wb-scene__snow {
-  fill: var(--night-snow);
-  opacity: 0.94;
+  fill: var(--fuji-snow);
 }
 
 .wb-scene__snow-shadow {
-  fill: var(--night-snow-shade);
-  opacity: 0.45;
+  fill: var(--fuji-snow-shade);
+  opacity: 0.7;
 }
 
 .wb-scene__foothill {
-  fill: var(--night-foothill);
-  opacity: 0.55;
+  fill: var(--fuji-600);
+  opacity: 0.3;
 }
 
 /* 文案侧压暗：左侧近乎不透明，向右散开，山体右半段不受影响 */
@@ -287,6 +295,17 @@
   position: absolute;
   inset: 0;
   background: var(--home-night-veil);
+}
+
+/* 地平线夜雾：只压最底部一条，渐变本身走天空 token，
+   山脚轮廓在地平线以上仍然完整可见，页脚落在深底上 */
+.wb-scene__ground {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: clamp(96px, 16vh, 168px);
+  background: var(--home-ground-fade);
 }
 
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
@@ -298,23 +317,59 @@
   width: min(44%, 560px);
   height: 80%;
   overflow: visible;
+  /* 折线枝条：拐点用 miter 保留硬角，端点用 butt 直接接管下一段，不做圆角过渡 */
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+  stroke-miterlimit: 10;
 }
 
-/* 深底上枝条改为浅梅灰，保留木质轮廓 */
+/* 枝条与花簇恢复改版前原色，不跟着背景提亮 */
 .wb-scene__branch-wood {
-  stroke: var(--sakura-wood-night);
+  stroke: var(--sakura-wood);
 }
 
 .wb-scene__branch-wood-soft {
-  stroke: var(--sakura-wood-night-soft);
+  stroke: var(--sakura-wood-soft);
 }
 
-.wb-scene__bloom {
-  fill: var(--sakura-bloom-night);
+/* 背景层枝条：更细更淡，和前景枝形成前后两组 */
+.wb-scene__branch-far {
+  stroke: var(--sakura-wood-soft);
+  opacity: 0.48;
 }
 
-.wb-scene__bloom-core {
-  fill: var(--sakura-bloom-core-night);
+/* 花朵：五瓣带缺口的花冠；花瓣按深浅分三档，花芯与花蕊再压一层 */
+.wb-scene__bloom-petal {
+  fill: var(--sakura-bloom);
+}
+
+.wb-scene__bloom-petal--shade {
+  fill: var(--sakura-200);
+}
+
+.wb-scene__bloom-petal--light {
+  fill: var(--sakura-100);
+}
+
+.wb-scene__blossom-eye {
+  fill: var(--sakura-bloom-core);
+}
+
+.wb-scene__blossom-stamen {
+  fill: var(--sakura-300);
+}
+
+/* 花苞：深一档的花瓣色 + 一点高光 + 花萼 */
+.wb-scene__bud {
+  fill: var(--sakura-bloom-core);
+}
+
+.wb-scene__bud-light {
+  fill: var(--sakura-100);
+}
+
+.wb-scene__blossom-calyx {
+  fill: var(--sakura-wood-soft);
 }
 
 /* ---------- 花瓣：三条曲线路径，逐片不同时长与旋转系数 ---------- */
@@ -373,16 +428,17 @@
   );
 }
 
+/* 花瓣恢复原先的樱花色阶；光晕是纯背景装饰，保留 */
 .wb-scene__petal--light .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-night-100), var(--sakura-night-200));
+  background: linear-gradient(150deg, var(--sakura-100), var(--sakura-200));
 }
 
 .wb-scene__petal--mid .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-night-200), var(--sakura-night-300));
+  background: linear-gradient(150deg, var(--sakura-200), var(--sakura-300));
 }
 
 .wb-scene__petal--deep .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-night-300), var(--rose-300));
+  background: linear-gradient(150deg, var(--sakura-300), var(--rose-400));
 }
 
 /* 只动 transform / opacity：合成器线程处理，不触发布局与重绘。
@@ -498,8 +554,9 @@
   transform: scaleX(-1);
 }
 
+/* 仙鹤恢复改版前深蓝灰原色；深色天空下辨识度会明显下降，数值见交付说明 */
 .wb-crane__body {
-  fill: var(--crane-ink-night);
+  fill: var(--crane-ink);
 }
 
 .wb-crane__wing {
@@ -509,26 +566,26 @@
 }
 
 .wb-crane__wing--far {
-  fill: var(--crane-ink-night-soft);
+  fill: var(--crane-ink-soft);
   animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
 }
 
 .wb-crane__wing--near {
-  fill: var(--crane-ink-night);
+  fill: var(--crane-ink);
   animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
 }
 
 .wb-crane__beak {
-  fill: var(--crane-ink-night);
+  fill: var(--crane-ink);
 }
 
 .wb-crane__crown {
-  fill: var(--crane-crown-night);
+  fill: var(--crane-crown);
 }
 
 .wb-crane__leg {
   fill: none;
-  stroke: var(--crane-ink-night);
+  stroke: var(--crane-ink);
   stroke-width: 2.4;
   stroke-linecap: round;
 }
@@ -598,8 +655,11 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   letter-spacing: 0.12em;
-  color: var(--night-text-weak);
-  opacity: 0.85;
+  /* 题词压在浅色山脊上，补一块深色小底 + 亮一档文字 */
+  padding: 4px 10px;
+  color: var(--night-text-secondary);
+  background: var(--night-caption-surface);
+  border-radius: var(--radius-pill);
 }
 
 .wb-home__foot {
@@ -628,7 +688,7 @@
 
 .wb-home__nav-link:hover {
   color: var(--night-eyebrow-ink);
-  border-bottom-color: var(--sakura-night-300);
+  border-bottom-color: var(--sakura-300);
 }
 
 .wb-home__nav-link--strong {
@@ -698,8 +758,10 @@
     gap: var(--space-3);
   }
 
+  /* 移动端文案居中：山体按 meet 完整压在底部 219px 一带，
+     文案抬到中段就不会压住山峰，山体完整可见 */
   .wb-home__stage {
-    align-items: flex-end;
+    align-items: center;
     padding: 0 var(--space-4) var(--space-6);
   }
 
