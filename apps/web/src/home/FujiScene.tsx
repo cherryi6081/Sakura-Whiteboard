@@ -410,58 +410,68 @@ function craneStyle(crane: Crane): CSSProperties {
  * 结构层次：
  * - 身体：一条闭环路径，从尾羽收束处起笔，经背部、S 形脖子（先陡后缓再前伸）到头部下沿，
  *   再沿颈下沿回到胸口，最后沿胸腹起伏收进尾根；尾羽另用三根短羽片收尖。
- * - 翅膀：远侧翼（压在身体后方、色压淡一档）向上后方展开，近侧翼（最前、原色）向下后方展开；
+ * - 翅膀：远侧翼（向上后方高举、白羽面）在后，近侧翼（白覆羽 + 墨黑后缘 + 翼尖分叉黑羽）在前；
  *   两者都把初级飞羽拆成单根可辨的羽片，近侧翼再加两组次级飞羽与根部短覆羽。
- * - 头颈：独立头形 + 长喙 + 眼位 + 头顶红冠，颈后有转折。
+ * - 头颈：独立头形 + 长喙 + 眼位 + 头顶红冠，颈上有向头部收束的墨色楔形。
  * - 腿脚：大腿—胫—脚趾三段，关节处折角，脚趾分开并向后收。
- * - 羽毛分层用极细的浅色结构线（同一鹤色 token 的浅档），不新增色相。
+ * - 配色按参考图：白羽面、冷灰羽影、墨黑飞羽与尾羽、朱红顶冠、石板灰喙、墨色腿。
+ *   白羽本身在浅蓝天空上不足 3:1，由 --crane-plume-edge 羽缘描边承担可辨性。
  */
 function CraneSilhouette() {
   return (
     <svg className="wb-crane__svg" viewBox="0 0 120 72" focusable="false">
-      {/* 腿脚：髋—膝—踝三段折线 + 分开的脚趾，向后收拢；先画，压在身体与翅膀之下 */}
-      <path className="wb-crane__leg" d="M26 41 L 17 45 L 9 48 M9 48 L 3 49 M9 48 L 6 51" />
-      <path className="wb-crane__leg" d="M28 43 L 20 47 L 13 51 M13 51 L 7 52 M13 51 L 10 54" />
+      {/* 腿脚：髋—膝—踝三段折线 + 分开的脚趾，按图拉长、向后收；先画，压在身体与翅膀之下 */}
+      <path className="wb-crane__leg" d="M30 43 L20 47 L8 52 M8 52 L2 53.5 M8 52 L4 55" />
+      <path className="wb-crane__leg" d="M32 44.5 L23 49 L12 55 M12 55 L6 56.5 M12 55 L8 58" />
 
-      {/* 远侧翅膀：向上后方展开、色压淡一档；翼面平滑，翼尖三根羽片从翼内长出，羽轴用深一档细线 */}
+      {/* 远侧翅膀：按图向上后方高举，翼面为整块白羽，翼尖三片羽瓣略压冷灰，羽轴浅灰细线 */}
       <g className="wb-crane__wing wb-crane__wing--far">
-        <path d="M69 30 C 65 23 59 16 52 10 C 47 6 42 3 37 1 L 30 7 C 37 10 43 15 49 20 C 55 25 62 28 69 30 Z" />
-        <path d="M42 13 L 24 5 L 26 10 L 45 17 Z" />
-        <path d="M38 9 L 21 2 L 23 7 L 41 13 Z" />
-        <path d="M34 5 L 19 0 L 21 5 L 37 10 Z" />
-        <path className="wb-crane__feather wb-crane__feather--deep" d="M56 24 L 34 5 M53 27 L 31 8" />
+        <path d="M67 29 C 61 22 54 15 47 9 C 41 4 36 1 31 0 L 22 7 C 29 11 36 17 43 23 C 50 28 59 31 67 32 Z" />
+        <path className="wb-crane__shade" d="M31 1 L 23.5 8 L 25.5 9.5 L 33 2.5 Z" />
+        <path className="wb-crane__shade" d="M36 3 L 28 11 L 30 12.5 L 38 4.5 Z" />
+        <path className="wb-crane__shade" d="M41 6 L 33 14 L 35 15.5 L 43 7.5 Z" />
+        <path className="wb-crane__feather" d="M60 26 C 54 20 47 13 40 7 M57 28 C 51 22 44 15 37 9" />
       </g>
 
-      {/* 尾羽：三根短羽片从尾根向后收尖 */}
-      <path className="wb-crane__body" d="M28 37 L 14 34 L 15 38 L 29 41 Z" />
-      <path className="wb-crane__body" d="M28 40 L 12 40 L 14 44 L 28 43 Z" />
-      <path className="wb-crane__body" d="M27 43 L 14 47 L 17 50 L 29 45 Z" />
+      {/* 尾羽：两短一长的白羽片从尾根向后收尖，羽缘带冷板岩描边 */}
+      <path className="wb-crane__body" d="M28 37.5 L 18 35.5 L 19 38.5 L 29 41 Z" />
+      <path className="wb-crane__body" d="M28 40 L 16 40.5 L 17.5 44 L 28 43 Z" />
+      <path className="wb-crane__body" d="M27 43 L 18 46.5 L 20.5 49.5 L 29 45 Z" />
 
       {/* 躯干：背线抬起、胸口前凸、腹部圆收，收进尾根 */}
       <path
         className="wb-crane__body"
-        d="M25 40 C 27 34 36 31 47 30 C 57 29.5 65 30 69 32 C 70 35 68 38 63 40 C 55 43 42 45 33 44.5 C 28 44 25 42 25 40 Z"
+        d="M26 40 C 29 34.8 38 31.6 48 30.6 C 57 29.8 65 30.4 69 32.4 C 69.6 35 67.6 37.6 62.6 39.4 C 54 42.4 42 44 34 43.4 C 29 42.8 26.5 41.6 26 40 Z"
       />
+      {/* 胸腹转折的冷灰阴影：只做体积，交给羽面浅一档的灰 */}
+      <path className="wb-crane__shade" d="M35 43.4 C 44 44 54 42.4 62.6 39.4 L 60.8 37.2 C 53 39.8 44 41.2 35.6 40.8 Z" />
+
       {/* 脖子：S 形 —— 肩侧陡起、中段外凸、近头处转平，喉侧内凹收进胸口 */}
       <path
         className="wb-crane__body"
-        d="M62 33 C 63 27.5 69 22.5 76 19.5 C 82 17 87 16.4 90 16.4 L 90 21 C 87 22.8 83 24 78 26.5 C 72 30 67 34 65 38 Z"
+        d="M63 34 C 63 27 70 21 78 17.6 C 83 15.4 88 15 91 15 L 91 19.6 C 87 20.6 83 22 79 24.4 C 73 28 68 32 66 37 Z"
       />
-      {/* 颈后转折与胸腹分界：浅色细线交代体块 */}
-      <path className="wb-crane__feather" d="M71 26.5 C 76 23.6 82 21.6 87 20.6 M62 39.5 C 54 42 45 44 37 44" />
+      {/* 颈上墨色楔形：按图从头顶沿颈上缘向后收细 */}
+      <path className="wb-crane__primary" d="M90.8 15.8 L 81 19.8 L 74 24 L 75.6 25.6 L 82.6 21.6 L 91.4 17.8 Z" />
+      {/* 颈后转折与胸腹分界：浅灰细线交代体块 */}
+      <path className="wb-crane__feather" d="M71 26.4 C 76 23 82 20.6 87 19.6 M62 39.4 C 54 41.8 45 43.6 37 43.6" />
 
-      {/* 头颈：头形 + 长喙 + 眼位 + 头顶红冠（冠压在头顶，不留缝） */}
-      <circle className="wb-crane__body" cx="93.5" cy="19.5" r="4.3" />
-      <path className="wb-crane__beak" d="M96.5 18 L 115 14.6 L 115.8 16.4 L 97.5 21.6 Z" />
-      <ellipse className="wb-crane__crown" cx="93" cy="16" rx="2.5" ry="1.5" transform="rotate(-12 93 16)" />
-      <circle className="wb-crane__eye" cx="95" cy="19.2" r="0.9" />
+      {/* 头颈：白羽头形 + 石板灰长喙 + 墨色眼位 + 头顶朱红冠（冠压在头顶，不留缝） */}
+      <circle className="wb-crane__body" cx="94.5" cy="17.2" r="3.2" />
+      <path className="wb-crane__beak" d="M96.9 14.8 L 116.8 12.2 L 117.2 13.4 L 97.6 18.6 Z" />
+      <ellipse className="wb-crane__crown" cx="94.2" cy="14.6" rx="2.2" ry="0.95" transform="rotate(-12 94.2 14.6)" />
+      <circle className="wb-crane__eye" cx="95.6" cy="17" r="0.8" />
 
-      {/* 近侧翅膀：向下后方展开；翼面平滑、后缘是一排分开的初级飞羽尖，根部叠短覆羽 */}
+      {/* 近侧翅膀（最近、压在最前）：白覆羽 + 后缘整块墨黑飞羽 + 翼尖四根细长分叉黑羽 */}
       <g className="wb-crane__wing wb-crane__wing--near">
-        <path d="M67 28 C 61 34 55 41 49 48 C 44 53 39 57 35 60 L 45 63 L 49 57 L 52 60 L 55 52 L 58 55 L 60 47 L 63 50 Z" />
-        {/* 羽轴：向羽尖发散的浅色极细线；覆羽：根部的短促层叠 */}
-        <path className="wb-crane__feather" d="M63 32 C 57 38 49 47 41 54 M60 30 C 54 36 46 45 38 52" />
-        <path className="wb-crane__feather" d="M62 33 C 58 35 54 38 50 41 M64 35 C 60 37 56 40 52 43" />
+        <path d="M67 29 C 58 33 48 40 39 48 C 33 53 28 57 24 60 L 40 63 C 48 57 57 50 63 43 C 66 40 68 35 67 29 Z" />
+        <path className="wb-crane__primary" d="M64 40 C 56 46 47 53 38 59 L 24 60 L 40 63 L 48 55 L 55 51 L 61 45 Z" />
+        <path className="wb-crane__primary" d="M40 59 L 29 69 L 26 66 L 36 57 Z" />
+        <path className="wb-crane__primary" d="M44 58 L 35 70 L 31.5 66.5 L 40 56 Z" />
+        <path className="wb-crane__primary" d="M48 55 L 41 70 L 37.5 66.5 L 44 53 Z" />
+        <path className="wb-crane__primary" d="M52 52 L 47 67 L 43.5 63.5 L 48.5 49 Z" />
+        {/* 覆羽：只画在白覆羽区域，浅灰极细线 */}
+        <path className="wb-crane__feather" d="M64 33 C 60 36 56 39 53 42 M65 36 C 61 39 58 42 55 45" />
       </g>
     </svg>
   );

@@ -87,10 +87,18 @@
   --branch-brown-500: #9c8171;
   /* 花瓣光晕是纯装饰，从花瓣色阶派生，不额外引入新色相 */
   --sakura-glow: color-mix(in srgb, var(--sakura-200) 32%, transparent);
-  /* 仙鹤：深蓝灰剪影原色；浅粉天空下是“浅底深物”，实测对比 4.0–6.3，保持不变 */
-  --crane-ink: #45607a;
-  --crane-ink-soft: #74909f;
-  --crane-crown: #b4544b;
+  /* 仙鹤：按参考图重新取样的丹顶鹤配色 —— 近白羽面 + 冷灰羽影 + 墨黑飞羽/尾羽
+     + 朱红顶冠 + 石板灰喙 + 墨色腿脚。白羽本身在浅蓝天空上只有 1.0–1.8，
+     所以按“同色相压明度”的思路给羽缘一档冷板岩灰（--crane-plume-edge），
+     由描边承担 3:1 以上的可辨性；其余承形部件全部独立过 3:1，实测见交付说明 */
+  --crane-plume: #faf8f5;
+  --crane-plume-shade: #d5dde3;
+  --crane-plume-fold: #b9c6cf;
+  --crane-plume-edge: #334554;
+  --crane-quill: #1b1e22;
+  --crane-beak: #3e454c;
+  --crane-crown: #8f251d;
+  --crane-leg: #23262a;
 
   /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
   /* 浅蓝渐变：色相统一在蓝里（H≈203°–208°），只用明度做天顶→地平线过渡：

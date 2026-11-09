@@ -563,9 +563,14 @@
   transform: scaleX(-1);
 }
 
-/* 仙鹤恢复改版前深蓝灰原色；深色天空下辨识度会明显下降，数值见交付说明 */
-.wb-crane__body {
-  fill: var(--crane-ink);
+/* 白羽：近白羽面 + 冷板岩羽缘。羽缘是这套配色在浅蓝天上的可辨性来源（≥3:1），
+   白羽本身按图保持近白，不再压深成灰蓝鸟 */
+.wb-crane__body,
+.wb-crane__wing {
+  fill: var(--crane-plume);
+  stroke: var(--crane-plume-edge);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
 }
 
 .wb-crane__wing {
@@ -575,34 +580,38 @@
   will-change: transform;
 }
 
-/* 远翼先画、压淡一档；近翼最前、用原色 */
+/* 远翼先画、近翼最前，运动时序沿用原参数 */
 .wb-crane__wing--far {
-  fill: var(--crane-ink-soft);
   animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
 }
 
 .wb-crane__wing--near {
-  fill: var(--crane-ink);
   animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
 }
 
-/* 羽毛分层：浅一档的极细结构线；画在浅色远翼上时换回深档才可见 */
-.wb-crane__feather {
-  fill: none;
-  stroke: var(--crane-ink-soft);
-  stroke-width: 0.8;
-  stroke-linecap: butt;
-  opacity: 0.6;
+/* 羽面阴影：翼下与胸腹转折的冷灰，只负责体积，不参与对比度分级 */
+.wb-crane__shade {
+  fill: var(--crane-plume-shade);
+  stroke: none;
 }
 
-.wb-crane__feather--deep {
-  stroke: var(--crane-ink);
-  stroke-width: 0.9;
-  opacity: 0.6;
+/* 墨黑飞羽 / 尾羽：对应参考图里近翼后缘的大块黑羽与翼尖分叉 */
+.wb-crane__primary {
+  fill: var(--crane-quill);
+  stroke: none;
+}
+
+/* 羽毛分层：浅一档的极细结构线，只画在羽面内部 */
+.wb-crane__feather {
+  fill: none;
+  stroke: var(--crane-plume-fold);
+  stroke-width: 0.8;
+  stroke-linecap: butt;
+  opacity: 0.9;
 }
 
 .wb-crane__beak {
-  fill: var(--crane-ink);
+  fill: var(--crane-beak);
 }
 
 .wb-crane__crown {
@@ -610,14 +619,14 @@
 }
 
 .wb-crane__eye {
-  fill: var(--crane-ink-soft);
+  fill: var(--crane-quill);
 }
 
 /* 细长的腿：细线 + 关节折角 + 分开的脚趾，飞行时向后收 */
 .wb-crane__leg {
   fill: none;
-  stroke: var(--crane-ink);
-  stroke-width: 1.7;
+  stroke: var(--crane-leg);
+  stroke-width: 1.25;
   stroke-linecap: round;
   stroke-linejoin: miter;
 }
