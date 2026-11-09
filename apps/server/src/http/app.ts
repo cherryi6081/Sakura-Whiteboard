@@ -5,6 +5,7 @@ import { boardsRouter } from './routes/boards.js';
 import { authRouter } from './routes/auth.js';
 import { guestRouter } from './routes/guest.js';
 import { sharesRouter } from './routes/shares.js';
+import { assetsRouter } from './routes/assets.js';
 import { attachIdentity } from '../auth/identity.js';
 import { errorHandler, notFound } from './middlewares/error.js';
 
@@ -20,6 +21,7 @@ export function createApp() {
   app.use('/api', authRouter);
   app.use('/api', guestRouter);
   app.use('/api', sharesRouter);
+  app.use('/api', assetsRouter);
   app.use('/api', boardsRouter);
 
   app.use(notFound);

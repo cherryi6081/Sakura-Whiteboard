@@ -30,6 +30,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   // express.json() 等中间件抛出的客户端错误会自带 4xx status（如非法 JSON = 400）
   const bodyError = err as { status?: number; code?: string; type?: string };
   if (typeof bodyError.status === 'number' && bodyError.status >= 400 && bodyError.status < 500) {
+    // body-parser 的体积上限：图片上传必须给出可区分的错误码，不能被兜成 BAD_REQUEST
+    if (bodyError.type === 'entity.too.large') {
+      res.status(413).json({ error: { code: 'FILE_TOO_LARGE', message: '上传内容超过大小上限' } });
+      return;
+    }
     const code = bodyError.type === 'entity.parse.failed' ? 'MALFORMED_JSON' : 'BAD_REQUEST';
     res.status(bodyError.status).json({ error: { code, message: code === 'MALFORMED_JSON' ? 'malformed json' : 'bad request' } });
     return;
