@@ -83,6 +83,21 @@
   height: 100%;
 }
 
+/* 品牌图标：樱花 + 画笔花苞，水平居中悬在峰顶上方。
+   场景 SVG 按 xMidYMax meet 渲染，渲染高度 = min(100vw × 9/16, 100dvh)、底边贴住视口底；
+   峰顶在 viewBox y=208，距底 692/900 = 0.769，所以"视口底 → 峰顶"正是 0.769 × 场景高度。
+   图标底边再抬 clamp(14px, 4vh, 44px) 的呼吸间距；宽度 8vw 并在 44–116px 收口，
+   窄屏取下限而不是写死像素，既不溢出也不会缩到看不清。DOM 顺序让它压在场景之上、
+   樱花枝与花瓣之下（花瓣会自然地从它前面飘过），不加 z-index */
+.wb-scene__mark {
+  position: absolute;
+  left: 50%;
+  bottom: calc(min(56.25vw, 100dvh) * 0.769 + clamp(14px, 4vh, 44px));
+  width: clamp(44px, 8vw, 116px);
+  height: auto;
+  transform: translateX(-50%);
+}
+
 /* 山体恢复改版前浅蓝一套：背景再怎么变，山体与雪顶都用 --fuji-* 原色 */
 .wb-scene__fuji {
   fill: var(--fuji-300);
