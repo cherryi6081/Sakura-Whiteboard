@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build -w @whiteboard/shared",
     "test": "vitest run --pool=forks --poolOptions.forks.singleFork=true"
   },
   "dependencies": {

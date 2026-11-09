@@ -32,6 +32,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # pretest 会先构建 @whiteboard/shared（package main 指向 dist，CI 里没有历史产物）
       # Windows / Node 22 上用默认线程池会栈溢出；固定 forks + 单 fork（Linux 上同样适用，保证两端口径一致）
       - run: npm run test -w @whiteboard/server
       - run: npm run test -w @whiteboard/web
