@@ -595,6 +595,11 @@
   stroke: none;
 }
 
+/* 体侧纵深用的极轻羽面影：同一色相，只压 55% 不透明度，避免变成灰块 */
+.wb-crane__shade--soft {
+  opacity: 0.55;
+}
+
 /* 墨黑飞羽 / 尾羽：对应参考图里近翼后缘的大块黑羽与翼尖分叉 */
 .wb-crane__primary {
   fill: var(--crane-quill);
