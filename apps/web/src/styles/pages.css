@@ -56,12 +56,12 @@
   flex-direction: column;
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
-  background: var(--sky-night-900);
-  /* 首页作用域内把全局文字 token 切成夜色版，子元素（含状态条）自动跟随 */
-  --text-primary: var(--night-text-primary);
-  --text-secondary: var(--night-text-secondary);
-  --text-weak-readable: var(--night-text-weak);
-  --text-disabled: var(--night-text-disabled);
+  background: var(--sky-dawn-900);
+  /* 首页作用域内把文字 token 切成浅底可读的深色版，子元素（含状态条）自动跟随 */
+  --text-primary: var(--day-text-primary);
+  --text-secondary: var(--day-text-secondary);
+  --text-weak-readable: var(--day-text-weak);
+  --text-disabled: var(--neutral-500);
 }
 
 /* 顶栏与页脚压在场景之上，导航与版权始终可点 */
@@ -130,8 +130,8 @@
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   letter-spacing: 0.08em;
-  color: var(--night-eyebrow-ink);
-  background: var(--night-eyebrow-bg);
+  color: var(--day-eyebrow-ink);
+  background: var(--day-eyebrow-bg);
   border-radius: var(--radius-pill);
 }
 
@@ -186,11 +186,11 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   color: var(--text-secondary);
-  /* 半透明深色底板：实际叠色对比度见交付表格 */
-  background: var(--night-card-surface);
-  border: 1px solid var(--night-line);
+  /* 半透明白粉浮层：叠在浅粉天空与山体上都成立，实际叠色对比度见交付表格 */
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--day-card-shadow);
 }
 
 .wb-home__point::before {
@@ -234,18 +234,6 @@
   height: 100%;
 }
 
-/* 星点单独铺满视口，不随山体缩放 */
-.wb-scene__stars {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.wb-scene__star {
-  fill: var(--night-star);
-}
-
 /* 山体恢复改版前浅蓝一套：背景再怎么变，山体与雪顶都用 --fuji-* 原色 */
 .wb-scene__fuji {
   fill: var(--fuji-300);
@@ -271,7 +259,7 @@
   opacity: 0.26;
 }
 
-/* 湖面渐变：色标全部由 --fuji-* 与 --sky-night-* 派生，不写死色值 */
+/* 湖面渐变：色标全部由 --fuji-* 与 --sky-dawn-* 派生，不写死色值 */
 .wb-scene__lake-stop-0 {
   stop-color: var(--lake-100);
 }
@@ -288,20 +276,20 @@
   stop-color: var(--lake-700);
 }
 
-/* 倒影往下渐隐：用湖面色压一层，越往下越淡 */
+/* 倒影往下渐隐：用近白粉的湖面色压一层，越往下越淡 */
 .wb-scene__ref-stop-0 {
-  stop-color: var(--sky-night-800);
+  stop-color: var(--sky-dawn-horizon);
   stop-opacity: 0;
 }
 
 .wb-scene__ref-stop-1 {
-  stop-color: var(--sky-night-800);
-  stop-opacity: 0.34;
+  stop-color: var(--sky-dawn-horizon);
+  stop-opacity: 0.36;
 }
 
 .wb-scene__ref-stop-2 {
-  stop-color: var(--sky-night-900);
-  stop-opacity: 0.66;
+  stop-color: var(--sky-dawn-horizon);
+  stop-opacity: 0.7;
 }
 
 .wb-scene__lake-line {
@@ -682,10 +670,10 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   letter-spacing: 0.12em;
-  /* 题词压在浅色山脊上，补一块深色小底 + 亮一档文字 */
+  /* 题词压在浅色山脊/水面上，补一块白粉小底 + 深色字 */
   padding: 4px 10px;
-  color: var(--night-text-secondary);
-  background: var(--night-caption-surface);
+  color: var(--rose-900);
+  background: var(--day-caption-surface);
   border-radius: var(--radius-pill);
 }
 
@@ -701,67 +689,29 @@
   font-size: var(--text-footer);
   line-height: var(--lh-footer);
   letter-spacing: 0.02em;
-  color: var(--text-weak-readable);
+  /* 页脚落在湖底最深的一档浅蓝上，用主色深档保住 4.5 */
+  color: var(--rose-900);
 }
 
 .wb-home__note {
   margin-top: var(--space-3);
 }
 
-/* ---------- 夜间首页：品牌、导航、状态条与按钮的深底适配 ---------- */
+/* ---------- 浅粉首页：品牌、导航与题词在浅底上的收口 ---------- */
 .wb-home .wb-brand {
-  color: var(--night-text-primary);
+  color: var(--rose-900);
 }
 
 .wb-home__nav-link:hover {
-  color: var(--night-eyebrow-ink);
-  border-bottom-color: var(--sakura-300);
+  color: var(--rose-800);
+  border-bottom-color: var(--rose-500);
 }
 
 .wb-home__nav-link--strong {
-  color: var(--night-eyebrow-ink);
+  color: var(--rose-800);
 }
 
-.wb-home .wb-banner--warning {
-  color: var(--night-warning-text);
-  background: var(--night-warning-bg);
-  border-color: var(--night-warning-border);
-}
-
-.wb-home .wb-inline-note--warning {
-  color: var(--night-warning-text);
-  background: var(--night-warning-bg);
-  border-color: var(--night-warning-border);
-}
-
-.wb-home .wb-inline-note--danger {
-  color: var(--night-danger-text);
-  background: var(--night-danger-bg);
-  border-color: var(--night-danger-border);
-}
-
-.wb-home .wb-btn--ghost {
-  color: var(--night-text-secondary);
-}
-
-.wb-home .wb-btn--ghost:hover:not(:disabled) {
-  color: var(--night-text-primary);
-  background: var(--night-hover-surface);
-}
-
-.wb-home .wb-btn--danger-text {
-  color: var(--night-danger-text);
-}
-
-.wb-home .wb-btn--danger-text:hover:not(:disabled) {
-  background: var(--night-danger-bg);
-}
-
-.wb-home .wb-btn--primary:disabled {
-  color: var(--night-text-disabled);
-  background: var(--night-disabled-bg);
-  border-color: transparent;
-}
+/* 状态条与按钮不再做深底适配：直接沿用全局浅底一套 token */
 
 /* 平板：场景仍是整页背景，只收紧文案区留白，避免文案贴边 */
 @media (max-width: 900px) {

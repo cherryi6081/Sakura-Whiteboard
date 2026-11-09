@@ -81,57 +81,51 @@
   --sakura-bloom-core: #f2b8ce;
   /* 花瓣光晕是纯装饰，从花瓣色阶派生，不额外引入新色相 */
   --sakura-glow: color-mix(in srgb, var(--sakura-200) 32%, transparent);
-  /* 仙鹤：深蓝灰剪影原色；压在深色天空上辨识度偏低，按用户要求先保留原色 */
+  /* 仙鹤：深蓝灰剪影原色；浅粉天空下是“浅底深物”，实测对比 4.0–6.3，保持不变 */
   --crane-ink: #45607a;
   --crane-ink-soft: #74909f;
   --crane-crown: #b4544b;
 
   /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
-  /* 单一蓝色相（H≈217°±1），只用明度做天顶→地平线过渡：
-     天顶 #081427(L≈9%) → #0d1c34(L≈13%) → #122343(L≈17%) → 地平线 #1a3055(L≈22%)，
-     全部比山体（--fuji-300 L≈75%）暗得多，形成“亮山压深天”，不再混入紫调 */
-  --sky-night-900: #081427;
-  --sky-night-800: #0d1c34;
-  --sky-night-700: #122343;
-  --sky-night-horizon: #1a3055;
-  --night-star: #d6dcf0;
+  /* 浅樱粉渐变：色相统一在粉里（H≈333°–340°），只用明度做天顶→地平线过渡：
+     天顶 #f4d3e0(L≈89%) → #f8dfe9(92%) → #fbe9f1(95%) → 地平线 #fdf4f7(98%)。
+     山体 --fuji-300 是浅蓝(L≈75%)，压在近白粉地平线上仍留出轮廓差，
+     近岸再用 --fuji-600 暗带压一道，避免山体被粉色吃掉 */
+  --sky-dawn-900: #f4d3e0;
+  --sky-dawn-800: #f8dfe9;
+  --sky-dawn-700: #fbe9f1;
+  --sky-dawn-horizon: #fdf4f7;
   --home-scene-sky: linear-gradient(
     180deg,
-    var(--sky-night-900) 0%,
-    var(--sky-night-800) 46%,
-    var(--sky-night-700) 74%,
-    var(--sky-night-horizon) 100%
+    var(--sky-dawn-900) 0%,
+    var(--sky-dawn-800) 46%,
+    var(--sky-dawn-700) 74%,
+    var(--sky-dawn-horizon) 100%
   );
 
   /* ---------- 湖面 / 倒影（由山体与天空 token 派生，不写死色值） ---------- */
-  /* 近岸偏亮、远处偏深；倒影整体比山体低一档明度，
-     靠 token 混色 + 分段透明度实现，不用滤镜 */
-  --lake-100: color-mix(in srgb, var(--fuji-300) 36%, var(--sky-night-800));
-  --lake-300: color-mix(in srgb, var(--fuji-500) 26%, var(--sky-night-700));
-  --lake-500: color-mix(in srgb, var(--fuji-600) 20%, var(--sky-night-800));
-  --lake-700: color-mix(in srgb, var(--fuji-600) 18%, var(--sky-night-900));
-  --lake-horizon: color-mix(in srgb, var(--fuji-100) 46%, transparent);
-  --lake-ripple: color-mix(in srgb, var(--fuji-100) 56%, transparent);
+  /* 浅色水面但比天空深一档：近岸最浅、湖底最深，倒影由山体色叠在水面上，
+     比山体浅一档又比水面亮一档，读起来是“淡镜子”而不是另一座山 */
+  --lake-100: color-mix(in srgb, var(--fuji-400) 55%, var(--sky-dawn-horizon));
+  --lake-300: color-mix(in srgb, var(--fuji-500) 62%, var(--sky-dawn-horizon));
+  --lake-500: color-mix(in srgb, var(--fuji-500) 72%, var(--sky-dawn-horizon));
+  --lake-700: color-mix(in srgb, var(--fuji-600) 62%, var(--sky-dawn-horizon));
+  /* 水面反光与波纹是白色高光，用 --paper 半透明派生 */
+  --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
+  --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
 
-  /* 夜间文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
-  --night-text-primary: #f5f2f7;
-  --night-text-secondary: #ded7e6;
-  --night-text-weak: #c4bccd;
-  --night-text-disabled: #9c95a8;
-  --night-card-surface: rgba(23, 29, 50, 0.82);
-  --night-line: rgba(224, 199, 214, 0.18);
-  --night-hover-surface: rgba(255, 255, 255, 0.07);
-  --night-eyebrow-bg: rgba(232, 168, 194, 0.14);
-  --night-eyebrow-ink: #f3bcd2;
-  --night-warning-bg: rgba(197, 138, 64, 0.16);
-  --night-warning-border: rgba(223, 174, 110, 0.42);
-  --night-warning-text: #f6d3a2;
-  --night-danger-bg: rgba(198, 84, 84, 0.16);
-  --night-danger-border: rgba(226, 128, 128, 0.42);
-  --night-danger-text: #ffc6c6;
-  --night-disabled-bg: rgba(255, 255, 255, 0.12);
-  /* 右下角题词落在浅色山脊上，用一小块深色底保证可读（纯装饰文字） */
-  --night-caption-surface: color-mix(in srgb, var(--sky-night-900) 62%, transparent);
+  /* 浅底文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
+  --day-text-primary: var(--rose-900);
+  --day-text-secondary: var(--neutral-800);
+  --day-text-weak: var(--neutral-700);
+  /* 半透明白粉浮层：叠在浅粉天空与浅蓝山体上都能托住深色文字 */
+  --day-card-surface: color-mix(in srgb, var(--paper) 74%, transparent);
+  --day-card-line: color-mix(in srgb, var(--rose-600) 22%, transparent);
+  --day-card-shadow: 0 1px 2px rgba(90, 42, 63, 0.06), 0 8px 22px rgba(90, 42, 63, 0.07);
+  --day-eyebrow-bg: color-mix(in srgb, var(--rose-600) 12%, transparent);
+  --day-eyebrow-ink: var(--rose-800);
+  /* 右下角题词压在浅色山脊/水面上，用一小块白粉底托住深色字（纯装饰文字） */
+  --day-caption-surface: color-mix(in srgb, var(--paper) 74%, transparent);
 
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",

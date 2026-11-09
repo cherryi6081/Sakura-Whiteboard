@@ -115,30 +115,6 @@ const CRANES: Crane[] = [
   },
 ];
 
-/** 夜空星点：[x, y, r, opacity]，静态，不做闪烁动画 */
-const STARS: Array<[number, number, number, number]> = [
-  [90, 60, 1.6, 0.7],
-  [240, 140, 2, 0.55],
-  [368, 84, 1.2, 0.4],
-  [520, 44, 1.4, 0.65],
-  [612, 176, 1.8, 0.5],
-  [728, 96, 1.1, 0.35],
-  [846, 48, 1.5, 0.6],
-  [998, 128, 2.2, 0.5],
-  [1104, 62, 1.3, 0.4],
-  [1230, 158, 1.9, 0.55],
-  [1352, 88, 1.2, 0.38],
-  [1478, 46, 1.7, 0.62],
-  [1560, 132, 1.4, 0.45],
-  [164, 236, 1.2, 0.3],
-  [644, 262, 1.5, 0.34],
-  [1150, 246, 1.3, 0.3],
-  [1410, 220, 1.8, 0.36],
-  [300, 318, 1.1, 0.26],
-  [762, 330, 1.3, 0.24],
-  [1320, 312, 1.5, 0.28],
-];
-
 /**
  * 枝条分段：每段是一条**纯直线折线**（只用 M / L，不用任何贝塞尔），
  * 段内保留拐点，所以转折处是硬角；同一根枝由粗到细拆成 2–5 段，
@@ -318,9 +294,9 @@ function MountainShapes() {
  * 交界处就出现水面常见的错位台阶；越往下压缩比越小、越淡。
  */
 const REFLECTION_BANDS = [
-  { id: "wb-ref-0", y: 566, height: 100, dx: 0, scale: 0.72, opacity: 0.62 },
-  { id: "wb-ref-1", y: 666, height: 84, dx: 10, scale: 0.66, opacity: 0.46 },
-  { id: "wb-ref-2", y: 750, height: 96, dx: -14, scale: 0.58, opacity: 0.34 },
+  { id: "wb-ref-0", y: 566, height: 100, dx: 0, scale: 0.72, opacity: 0.46 },
+  { id: "wb-ref-1", y: 666, height: 84, dx: 10, scale: 0.66, opacity: 0.33 },
+  { id: "wb-ref-2", y: 750, height: 96, dx: -14, scale: 0.58, opacity: 0.22 },
 ];
 
 /** 静态水面波纹：[x, y, 宽度, 不透明度]，只有形状没有动画；靠近水线的更亮更长，往下逐渐变细变淡 */
@@ -480,14 +456,6 @@ function CraneSilhouette() {
 export function FujiScene() {
   return (
     <div className="wb-home__scene" aria-hidden="true">
-      {/* 星点单独一层铺满视口：不跟山体一起缩放，窄屏也不会被压进山脚 */}
-      <svg className="wb-scene__stars" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
-        {STARS.map(([cx, cy, r, opacity], index) => (
-          // 星点仅用于装饰，index 作为稳定 key
-          // eslint-disable-next-line react/no-array-index-key
-          <circle className="wb-scene__star" key={index} cx={cx} cy={cy} r={r} opacity={opacity} />
-        ))}
-      </svg>
       {/* 山 + 湖面倒映：viewBox 里同时排进山峰、两侧山脚、水线与湖底，
           meet 保证整组完整可见；天空由底层 CSS 渐变铺满，不留白边 */}
       <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" focusable="false">
