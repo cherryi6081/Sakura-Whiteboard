@@ -575,18 +575,26 @@
 
 .wb-crane__wing {
   transform-box: view-box;
-  /* 肩点：与两翼路径的肩端 (68,31) 对齐，振翅绕肩转动 */
-  transform-origin: 68px 31px;
+  /* 肩点：与两翼的翼根 (67,31) 对齐，振翅绕肩转动，翼根只在肩窝里小幅摆动 */
+  transform-origin: 67px 31px;
   will-change: transform;
 }
 
-/* 远翼先画、近翼最前，运动时序沿用原参数 */
+/* 远翼先画（在躯干之下），近翼最后画（在躯干之上）；运动参数沿用原相位 */
 .wb-crane__wing--far {
   animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
 }
 
 .wb-crane__wing--near {
   animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
+}
+
+/* 翼面羽片：白羽面 + 比本体更细的羽缘，靠细分界线而不是粗描边表达层叠 */
+.wb-crane__scale {
+  fill: var(--crane-plume);
+  stroke: var(--crane-plume-edge);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
 }
 
 /* 羽面阴影：翼下与胸腹转折的冷灰，只负责体积，不参与对比度分级 */

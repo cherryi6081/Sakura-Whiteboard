@@ -257,9 +257,44 @@ const WATERLINE = 566;
  * 雪顶覆盖到山体上部约三分之一，雪线下沿是一排尖角状的融雪边。
  * 倒影直接复用这一组路径做垂直镜像，所以倒影轮廓与山体、雪顶严格对应。
  */
+/**
+ * 雪线：一排宽窄不等的融雪齿（从左到右），窄深齿（880 / 922）像下滑的雪舌，
+ * 宽浅齿（838 / 886 / 748）像融塌的雪檐下沿。
+ *
+ * 这里只定义“雪线下沿”，不定义雪顶形状：雪顶由山体轮廓 body 与这条雪线求交派生
+ * （见 SNOW_CLIP + MountainShapes）。雪线向左右各延伸出山体之外再向上闭合，
+ * 所以交线的左右端点必然落在左坡/右坡轮廓线上，左右坡换坡度时也不会再露岩缝。
+ */
+const SNOW_TEETH: Array<[number, number]> = [
+  [704, 322],
+  [726, 318],
+  [748, 344],
+  [766, 308],
+  [780, 336],
+  [794, 306],
+  [806, 340],
+  [828, 312],
+  [838, 352],
+  [862, 306],
+  [880, 362],
+  [886, 316],
+  [910, 305],
+  [922, 342],
+  [930, 298],
+];
+
+/** 雪线以上区域：融雪齿两端各横伸到山体之外，再向上闭合成一个裁切区 */
+const SNOW_CLIP = [
+  `M-240 ${SNOW_TEETH[0][1]}`,
+  ...SNOW_TEETH.map(([x, y]) => `L${x} ${y}`),
+  `L1840 ${SNOW_TEETH[SNOW_TEETH.length - 1][1]}`,
+  "L1840 -240 L-240 -240 Z",
+].join(" ");
+
 const MOUNTAIN_PATHS = {
   // 峰顶不是尖点：从左坡 (744,244) 收到 (792,208)，向右平出到 (816,212) 再下坡，
-  // 形成参考图里那种极短的山顶平台；左右坡各留一个换坡度的转折（520/646 与 1010）
+  // 形成参考图里那种极短的山顶平台；左右坡各留一个换坡度的转折（520/646 与 1010）。
+  // 雪顶直接复用这一条轮廓做裁切，不再另写一套左右端点，换坡点改了也不会错位
   body: "M170 566 L356 468 L520 380 L646 308 L744 244 L792 208 L816 212 L872 252 L1010 338 L1238 468 L1400 566 Z",
   // 背光面：外沿贴右坡，内沿是分水脊。脊线不再是一根直线，从峰顶经过
   // (830,270)(868,330)(930,400)(1000,462)(1080,512) 几个换坡点落到右山脚，
@@ -268,14 +303,7 @@ const MOUNTAIN_PATHS = {
     "M792 208 L816 212 L872 252 L1010 338 L1238 468 L1400 566 L1180 566 " +
     "L1150 545 L1080 512 L1000 462 L930 400 L868 330 L830 270 Z",
   band: "M170 566 L300 534 L520 506 L760 496 L1040 500 L1250 516 L1400 566 Z",
-  // 雪顶：雪线两端落在山体轮廓内侧，上沿贴着山脊但整体向内收 9–20 单位，
-  // 避免雪边压到山体轮廓线。下沿只有 8 个融雪齿，宽窄与深浅刻意不等：
-  // 窄深齿（922 / 880）像下滑的雪舌，宽浅齿（886 / 838 / 748）像融塌的雪檐下沿
-  snow:
-    "M704 324 L740 290 L764 256 L792 208 L816 212 L860 244 L902 274 L930 298 " +
-    "L922 342 L910 305 L886 316 L880 362 L862 306 L838 352 L828 312 L806 340 L794 306 " +
-    "L780 336 L766 308 L748 344 L726 318 L704 322 Z",
-  // 背光雪面：从峰顶沿右侧雪脊下到雪线右端，再顺着融雪齿回收到雪脊内侧
+  // 背光雪面：外沿贴右侧雪脊（与 body 共用峰顶与右坡点），内沿顺融雪齿回收到雪脊内侧
   snowShadow:
     "M792 208 L816 212 L860 244 L902 274 L930 298 L922 342 L910 305 L886 316 L880 362 " +
     "L862 306 L838 352 L828 312 L820 286 L810 250 Z",
@@ -291,10 +319,14 @@ function MountainShapes() {
       <path className="wb-scene__fuji" d={MOUNTAIN_PATHS.body} />
       <path className="wb-scene__fuji-shadow" d={MOUNTAIN_PATHS.shadow} />
       <path className="wb-scene__foothill" d={MOUNTAIN_PATHS.band} />
-      {/* 雪与岩的接触影：整块雪往下错 9 单位，被雪本体盖住后只在融雪齿下沿
-          留下一条窄影，雪就不是“贴”在岩面上，而是压出厚度 */}
-      <path className="wb-scene__snow-contact" d={MOUNTAIN_PATHS.snow} transform="translate(0 9)" />
-      <path className="wb-scene__snow" d={MOUNTAIN_PATHS.snow} />
+      {/* 雪顶 = 山体轮廓 ∩ 雪线以上区域：上沿就是 body 本身，左右两端由轮廓线决定，
+          不再手写雪顶端点，也就不会再在左坡露出岩缝 */}
+      <g transform="translate(0 9)">
+        {/* 雪与岩的接触影：整块雪本体（含轮廓）先整体下错 9 单位，被雪盖住后
+            只在融雪齿下沿留一条窄影，雪就不是“贴”在岩面上，而是压出厚度 */}
+        <path className="wb-scene__snow-contact" d={MOUNTAIN_PATHS.body} clipPath="url(#wb-snow-clip)" />
+      </g>
+      <path className="wb-scene__snow" d={MOUNTAIN_PATHS.body} clipPath="url(#wb-snow-clip)" />
       <path className="wb-scene__snow-shadow" d={MOUNTAIN_PATHS.snowShadow} />
       <path className="wb-scene__snow-fold" d={MOUNTAIN_PATHS.snowFolds} />
       <path className="wb-scene__snow-crest" d={MOUNTAIN_PATHS.snowCrest} />
@@ -404,15 +436,65 @@ function craneStyle(crane: Crane): CSSProperties {
   } as CSSProperties;
 }
 
+/** 一片羽毛：羽根沿翼后缘张开 width，两侧略带弧度，羽端收成一个尖点 */
+function featherPath(root: [number, number], tip: [number, number], width: number): string {
+  const [rx, ry] = root;
+  const [tx, ty] = tip;
+  const dx = tx - rx;
+  const dy = ty - ry;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * (width / 2);
+  const ny = (dx / len) * (width / 2);
+  const mx = rx + dx * 0.55;
+  const my = ry + dy * 0.55;
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const p = (x: number, y: number) => `${round(x)} ${round(y)}`;
+  return (
+    `M${p(rx + nx, ry + ny)} ` +
+    `Q${p(mx + nx * 0.8, my + ny * 0.8)} ${p(tx, ty)} ` +
+    `Q${p(mx - nx * 0.8, my - ny * 0.8)} ${p(rx - nx, ry - ny)} Z`
+  );
+}
+
+type Feather = { root: [number, number]; tip: [number, number]; width: number };
+
+/** 远翼翼尖：三片分开的羽片，长度与朝向逐片错开，靠近躯干的一段被躯干遮住 */
+const FAR_TIP_FEATHERS: Feather[] = [
+  { root: [36, 2.4], tip: [25.4, 0.6], width: 4.2 },
+  { root: [33.2, 4.6], tip: [21.8, 3.6], width: 4.2 },
+  { root: [30.6, 6.8], tip: [19, 7.6], width: 4 },
+];
+
+/** 近翼初级飞羽：沿翼后缘从翼尖向体侧逐根排布，羽端尖、长度与方向略有参差 */
+const NEAR_PRIMARIES: Feather[] = [
+  { root: [40, 54.8], tip: [24.6, 57.6], width: 3 },
+  { root: [41.6, 52.8], tip: [25.8, 60.8], width: 3 },
+  { root: [43.2, 50.8], tip: [28.4, 63.2], width: 3 },
+  { root: [44.8, 48.8], tip: [32, 64.2], width: 3 },
+  { root: [46.4, 46.8], tip: [35.8, 63], width: 2.8 },
+];
+
+/** 近翼次级飞羽：靠体侧的一组更短的白羽，压在初级飞羽根部上，形成层叠 */
+const NEAR_SECONDARIES: Feather[] = [
+  { root: [48.6, 44.4], tip: [43, 49.2], width: 4 },
+  { root: [50.6, 41.8], tip: [45.4, 46.6], width: 4 },
+  { root: [52.6, 39.4], tip: [47.8, 44.4], width: 3.8 },
+];
+
 /**
  * 仙鹤剪影（细化版）：朝右绘制，由 CSS `scaleX(-1)` 镜像成向左飞。
  *
- * 结构层次：
+ * 绘制顺序就是前后层次（先画的在下面）：
+ * 腿脚 → 远翼 → 尾羽 → 颈 → 躯干（含明暗）→ 近翼 → 头颈细节。
  * - 躯干：多点控制的自绘轮廓——胸骨龙骨是最前凸点，胸到腹收进去、腹部圆而下垂，
  *   背线自肩向后逐渐下压，尾根一点收束并与尾羽衔接；体侧另压一道极轻的羽面影做纵深。
  * - 颈：先画、颈根压进胸口，由躯干覆盖接缝，颈根粗、向前上方引出，与胸口形成颈-胸夹角。
- * - 翅膀：远侧翼（向上后方高举、白羽面）在后，近侧翼（白覆羽 + 墨黑后缘 + 翼尖分叉黑羽）在前；
- *   两者都把初级飞羽拆成单根可辨的羽片，近侧翼再加两组次级飞羽与根部短覆羽。
+ * - 远翼：整组画在躯干之前，只有与躯干相交的根部被遮挡，其余轮廓完整；
+ *   翼面分主羽面 + 三片分开的翼尖羽 + 两道羽轴 + 一道后缘分层线。
+ * - 近翼：整组画在躯干之后（最上层），翼根搭在肩与体侧上、始终不被躯干切断；
+ *   翼面分覆盖羽区（白）与飞羽区（墨黑）：前缘一道连续轮廓、五根逐根分离的初级飞羽、
+ *   三根更短的次级飞羽压在其根部，羽间只用同色相极细线分界，另有一道极轻的翼下羽面影。
+ * - 两翼都以肩点 (67,31) 为旋转轴，旋转时翼根只在肩窝里小幅摆动，不会穿进躯干。
  * - 头颈：独立头形 + 长喙 + 眼位 + 头顶红冠，颈上有向头部收束的墨色楔形。
  * - 腿脚：髋点收在腹线内侧，大腿—胫—脚趾三段，关节处折角，脚趾分开并向后收。
  * - 配色按参考图：白羽面、冷灰羽影、墨黑飞羽与尾羽、朱红顶冠、石板灰喙、墨色腿。
@@ -421,33 +503,29 @@ function craneStyle(crane: Crane): CSSProperties {
 function CraneSilhouette() {
   return (
     <svg className="wb-crane__svg" viewBox="0 0 120 72" focusable="false">
-      {/* 腿脚：髋点收在腹线内侧（33/35,42 一带），先画，被躯干盖住根部，读作从腹下引出 */}
+      {/* 腿脚：髋点收在腹线内侧（33/35,42 一带），先画，被躯干与近翼盖住根部 */}
       <path className="wb-crane__leg" d="M33 42 L21 47 L8 52 M8 52 L2 53.5 M8 52 L4 55" />
       <path className="wb-crane__leg" d="M35 42.8 L23 48.5 L12 55 M12 55 L6 56.5 M12 55 L8 58" />
 
-      {/* 远侧翅膀：按图向上后方高举，翼面为整块白羽，羽轴用浅灰细线 */}
+      {/* 远翼：整体在躯干之下，只在与躯干相交处被遮挡；翼面 + 三片分开的翼尖羽 + 羽轴 */}
       <g className="wb-crane__wing wb-crane__wing--far">
-        <path d="M67 29 C 61 22 54 15 47 9 C 41 4 36 1 31 0 L 22 7 C 29 11 36 17 43 23 C 50 28 59 31 67 32 Z" />
-        <path className="wb-crane__feather" d="M60 26 C 54 20 47 13 40 7 M57 28 C 51 22 44 15 37 9" />
+        <path d="M67 29.6 C 61.4 22.6 54.4 15.2 47.4 9.4 C 43.2 6 39.4 3.2 36.2 1.8 L 30.4 6.8 C 33.8 9.6 37.6 13.4 42 17.6 C 47.8 23 55.6 27.8 67 31.4 Z" />
+        {FAR_TIP_FEATHERS.map((feather) => (
+          <path
+            key={`far-${feather.tip[0]}-${feather.tip[1]}`}
+            className="wb-crane__scale"
+            d={featherPath(feather.root, feather.tip, feather.width)}
+          />
+        ))}
+        <path className="wb-crane__feather" d="M60.6 26.4 C 54.6 20.8 48.2 15 41.8 9.8" />
+        <path className="wb-crane__feather" d="M57 28.6 C 51.2 23.2 45.4 17.8 39.6 12.8" />
+        <path className="wb-crane__feather" d="M43 18 C 47 21 51.8 24.2 57 26.6" />
       </g>
 
       {/* 尾羽：两短一长的白羽片从尾根向后收尖，羽缘带冷板岩描边；根部被躯干盖住，不断口 */}
       <path className="wb-crane__body" d="M31 37.8 L 18 35.5 L 19 38.5 L 32 41 Z" />
       <path className="wb-crane__body" d="M31 40.4 L 16 40.5 L 17.5 44 L 31 42.8 Z" />
       <path className="wb-crane__body" d="M30 42.8 L 18 46.5 L 20.5 49.5 L 32 44.2 Z" />
-
-      {/* 近侧翅膀：画在躯干之前，翼根被躯干盖住，只露出腹侧以外的翼面与墨黑飞羽，
-          读作“从体侧向后下方展开”，不切碎躯干轮廓 */}
-      <g className="wb-crane__wing wb-crane__wing--near">
-        <path d="M64 30.5 C 56 34 47 41 39 47 C 34 51 29 55 25 57 L 33 59 L 39 53 L 44 56 L 48 49 L 52 51 L 56 44 L 59 45 L 64 36 Z" />
-        <path className="wb-crane__primary" d="M63 35 C 57 40 50 46 42 51 C 37 54 32 56 27 57.5 L 33 59 L 39 53 L 44 56 L 48 49 L 52 51 L 56 44 L 59 45 L 63 37 Z" />
-        <path className="wb-crane__primary" d="M36 54 L 25 64 L 21.5 60 L 32 51 Z" />
-        <path className="wb-crane__primary" d="M40 54 L 31 66 L 27.5 62 L 36 50 Z" />
-        <path className="wb-crane__primary" d="M44 52 L 37 66 L 33.5 62 L 40 48 Z" />
-        <path className="wb-crane__primary" d="M48 49 L 43 64 L 39.5 60 L 43 45 Z" />
-        {/* 覆羽：只画在白覆羽区域，浅灰极细线 */}
-        <path className="wb-crane__feather" d="M61 33 C 57 35 52 39 48 43 M62 35 C 58 37 54 41 50 45" />
-      </g>
 
       {/* 脖子：先画，颈根（64,32.2 → 69.6,34.4）压进胸口，由躯干盖住接缝；
           上缘自肩陡起、中段外凸，下缘向胸骨前端斜落，与胸口形成颈-胸夹角 */}
@@ -476,6 +554,36 @@ function CraneSilhouette() {
       {/* 颈后转折：浅灰细线交代颈根与胸口的体块分界 */}
       <path className="wb-crane__feather" d="M72 26 C 76.5 23 82 20.6 86.5 19.6" />
 
+      {/* 近翼：画在躯干之后，压在身上；翼根（66,31.4 → 52.6,38.6）从肩搭到体侧，
+          不会被躯干切断。翼面是翼根最宽、向翼尖收窄的楔形，后缘挂五根初级飞羽 + 三根次级飞羽 */}
+      <g className="wb-crane__wing wb-crane__wing--near">
+        <path d="M66 31.4 C 62.6 30.6 58.6 31.4 55.4 33.4 C 50.6 36.4 44.6 41.6 39.6 46.6 C 37.4 48.8 35.6 49.8 34.8 50.2 L 39.4 55.8 C 41.4 52.8 44 49.4 47 46.2 C 49.6 43.4 51.4 40.8 52.6 38.6 C 56 34.6 61 32.4 66 31.4 Z" />
+        {/* 翼下厚度：贴着后缘内侧的一道极轻羽面影，交代覆羽压在飞羽上的落差 */}
+        <path
+          className="wb-crane__shade wb-crane__shade--soft"
+          d="M40.8 54.4 C 43 51 45.8 47.6 49 44.6 C 51 42.6 52.4 40.8 53.4 39.4 L 51.8 38.6 C 50.8 40 49.4 41.6 47.6 43.4 C 44.6 46.4 42.2 49.8 40.2 53 Z"
+        />
+        {/* 覆羽分层：两道沿翼展方向的细线，交代内侧覆羽区 */}
+        <path className="wb-crane__feather" d="M58.6 33.6 C 54.6 36.2 50.6 40.4 47 44.6" />
+        <path className="wb-crane__feather" d="M56.2 32.6 C 52.4 35.4 48.4 39.6 45 43.8" />
+        {/* 初级飞羽：逐根分离，羽端尖、长度与朝向递变，是翼尖最快的识别特征 */}
+        {NEAR_PRIMARIES.map((feather) => (
+          <path
+            key={`near-primary-${feather.tip[0]}-${feather.tip[1]}`}
+            className="wb-crane__primary"
+            d={featherPath(feather.root, feather.tip, feather.width)}
+          />
+        ))}
+        {/* 次级飞羽：压住初级飞羽根部的一组短白羽，边缘用细线而不是粗描边 */}
+        {NEAR_SECONDARIES.map((feather) => (
+          <path
+            key={`near-secondary-${feather.tip[0]}-${feather.tip[1]}`}
+            className="wb-crane__scale"
+            d={featherPath(feather.root, feather.tip, feather.width)}
+          />
+        ))}
+      </g>
+
       {/* 头颈：白羽头形 + 石板灰长喙 + 墨色眼位 + 头顶朱红冠（冠压在头顶，不留缝） */}
       <circle className="wb-crane__body" cx="94.5" cy="17.2" r="3.2" />
       <path className="wb-crane__beak" d="M96.9 14.8 L 116.8 12.2 L 117.2 13.4 L 97.6 18.6 Z" />
@@ -492,6 +600,10 @@ export function FujiScene() {
           meet 保证整组完整可见；天空由底层 CSS 渐变铺满，不留白边 */}
       <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" focusable="false">
         <defs>
+          {/* 雪顶裁切区：只保留雪线以上部分。山体本体与倒影共用这一条，两端自然落在轮廓上 */}
+          <clipPath id="wb-snow-clip">
+            <path d={SNOW_CLIP} />
+          </clipPath>
           <linearGradient id="wb-lake-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" className="wb-scene__lake-stop-0" />
             <stop offset="28%" className="wb-scene__lake-stop-1" />
