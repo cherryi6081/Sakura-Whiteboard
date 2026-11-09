@@ -261,7 +261,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </div>
         </div>
 
-        {isGuest ? <GuestBadge /> : null}
+        {isGuest && !readonly ? <GuestBadge /> : null}
         {readonly ? (
           <span className="wb-badge wb-badge--readonly" data-testid="readonly-badge">
             <IconLock />
@@ -315,9 +315,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
         ) : null}
 
         <button
-          className="wb-btn wb-btn--primary wb-btn--sm"
+          className="wb-btn wb-btn--primary wb-btn--sm wb-board__share"
           type="button"
           data-testid="share-open"
+          aria-label={readonly ? "复制链接" : "分享"}
+          title={readonly ? "复制链接" : "分享"}
           onClick={() => {
             if (readonly) {
               void navigator.clipboard.writeText(window.location.href).catch(() => {});
@@ -327,7 +329,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           }}
         >
           {readonly ? <IconCopy /> : <IconShare />}
-          {readonly ? "复制链接" : "分享"}
+          <span className="wb-board__share-text">{readonly ? "复制链接" : "分享"}</span>
         </button>
       </header>
 
@@ -342,7 +344,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </div>
       ) : null}
 
-      {isGuest && !bannerDismissed ? (
+      {isGuest && !readonly && !bannerDismissed ? (
         <SaveToAccountBanner
           onLogin={() => {
             window.location.href = `/login?next=${encodeURIComponent(pageHref)}`;

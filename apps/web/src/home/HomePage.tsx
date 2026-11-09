@@ -118,6 +118,8 @@ export function HomePage() {
           <li className="wb-home__point">多标签页各自独立，不会互相覆盖</li>
           <li className="wb-home__point">手机可直接触控绘制</li>
         </ul>
+        {/* 移动端按 §4.1 收成一行文案，不换三行 */}
+        <p className="wb-home__points-line">实时协作 · 多标签独立 · 手机可画</p>
       </main>
 
       <footer className="wb-home__foot">白板 v0.3 · 画布渲染 Built on Excalidraw</footer>

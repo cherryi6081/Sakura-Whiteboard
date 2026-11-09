@@ -111,6 +111,15 @@
   flex: none;
 }
 
+/* 移动端专用的单行能力点（桌面隐藏，见响应式块） */
+.wb-home__points-line {
+  display: none;
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-secondary);
+}
+
 .wb-home__foot {
   margin-top: auto;
   padding: var(--space-6) var(--space-8);
@@ -668,8 +677,36 @@
     line-height: var(--lh-title);
   }
 
+  /* 移动端：主按钮全宽 48 高；能力点收成一行文案（§4.1） */
+  .wb-home__action > .wb-btn {
+    align-self: stretch;
+    height: var(--control-h-xl);
+  }
+
+  .wb-home__points {
+    display: none;
+  }
+
+  .wb-home__points-line {
+    display: block;
+  }
+
   .wb-home__foot {
     padding: var(--space-4);
+  }
+
+  /* 移动端提示条：文字独占一行，操作按钮落到第二行右侧，避免 3 行窄柱 */
+  .wb-banner {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .wb-boards__banner {
+    flex-wrap: wrap;
+  }
+
+  .wb-boards__banner > span:first-child {
+    flex: 1 1 100%;
   }
 
   .wb-board__topbar {
@@ -680,6 +717,24 @@
 
   .wb-board__name {
     max-width: 180px;
+  }
+
+  /* 移动端顶栏只留「返回 + 板名 + 头像 + 分享图标」；状态点、游客徽标、登录链接让位（§5.4） */
+  .wb-board__name-sub,
+  .wb-board__topbar > .wb-badge--guest,
+  .wb-board__topbar > .wb-link,
+  .wb-board__status {
+    display: none;
+  }
+
+  .wb-board__share {
+    width: 40px;
+    flex: none;
+    padding: 0;
+  }
+
+  .wb-board__share-text {
+    display: none;
   }
 
   .wb-board__statusbar {
