@@ -277,6 +277,45 @@
   height: 30%;
 }
 
+/* ---------- 花瓣入水涟漪 ---------- */
+/* 只铺在水线以下：高度与 .wb-scene__water 完全一致，顶边就是水线；
+   overflow:hidden 再兜一层，任何一部分都不可能出现在天空或山体本体上。
+   层级 2 与枝条同层但 DOM 在枝条之后，压在倒影和水面亮线之上、飘落花瓣（3）之下 */
+.wb-scene__ripples {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: calc(0.371111 * min(56.25vw, 100dvh));
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 单个落点：由脚本按花瓣落点写 left；圆环以这个点为圆心 */
+.wb-scene__ripple {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+/* 一圈极淡的椭圆水纹：横向 44px、纵向 14px，水面透视下自然拉长；
+   颜色取湖面高光档 --lake-ripple，不用纯白硬描边。
+   动画只动 transform / opacity，初始 opacity:0，没挂动画的落点不会显形 */
+.wb-scene__ripple-ring {
+  position: absolute;
+  left: -22px;
+  top: -7px;
+  width: 44px;
+  height: 14px;
+  border: 1px solid var(--lake-ripple);
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
   stroke: var(--branch-brown-900);
@@ -581,6 +620,11 @@
 /* 减少动效：花瓣全部停掉，只保留静态山景、樱花枝与提亮层 */
 @media (prefers-reduced-motion: reduce) {
   .wb-scene__petal {
+    display: none;
+  }
+
+  /* 花瓣不飘了，涟漪也跟着一起隐藏（脚本同时不会创建涟漪动画） */
+  .wb-scene__ripples {
     display: none;
   }
 }

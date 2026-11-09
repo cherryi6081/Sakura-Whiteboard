@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import {
   LEFT_FAR_PAINT,
   LEFT_FAR_TREE,
@@ -20,6 +20,19 @@ import {
   type Blossom,
   type BranchSegment,
 } from "./fujiBranches";
+import {
+  INNER_PEAK_OPACITY,
+  INNER_SPLASH_DELAY,
+  INNER_SPLASH_SECONDS,
+  MAX_CONCURRENT_DESKTOP,
+  MAX_CONCURRENT_MOBILE,
+  MIN_RIPPLE_X_GAP,
+  OUTER_PEAK_OPACITY,
+  OUTER_SPLASH_SECONDS,
+  planRipples,
+  splashFrames,
+  type RippleInput,
+} from "./petalRipples";
 
 /**
  * 首页右下角题词。呈现已从首页移除（节点与 `.wb-scene__caption` 样式一并删除），
@@ -44,7 +57,7 @@ export const SCENE_CAPTION = "富士山下，樱花落时。";
 type PetalPath = "a" | "b" | "c" | "d";
 type PetalTone = "light" | "mid" | "deep";
 
-type Petal = {
+export type Petal = {
   /** 起点水平位置（%） */
   left: number;
   /** 起点垂直位置（%），负数从画面上方进入 */
@@ -62,7 +75,7 @@ type Petal = {
   path: PetalPath;
 };
 
-const PETALS: Petal[] = [
+export const PETALS: Petal[] = [
   // 画面上方进入的：横跨全景缓慢飘落
   { left: 6, top: -6, size: 13, dur: 24, delay: -9, spin: 0.8, opacity: 0.42, tone: "light", path: "a" },
   { left: 14, top: -12, size: 18, dur: 20, delay: -3, spin: 1.1, opacity: 0.72, tone: "mid", path: "b" },
@@ -98,7 +111,7 @@ const PETALS: Petal[] = [
  * 时长与延迟刻意不与右侧重合（右侧多为整数秒的整数倍负延迟），摆动方向统一向右下，
  * 避免从左侧落下时立刻被甩出画面。路径只用 b（右下弧）与 d（先右后回摆的缓 S 弧）。
  */
-const LEFT_PETALS: Petal[] = [
+export const LEFT_PETALS: Petal[] = [
   { left: 3, top: -8, size: 14, dur: 27, delay: -5.5, spin: 0.75, opacity: 0.45, tone: "light", path: "b" },
   { left: 9, top: 12, size: 19, dur: 21, delay: -13.5, spin: 1.05, opacity: 0.76, tone: "mid", path: "d" },
   { left: 15, top: -12, size: 12, dur: 29, delay: -20.5, spin: 0.8, opacity: 0.4, tone: "light", path: "d" },
@@ -349,7 +362,11 @@ const PETAL_SWAY: Record<PetalPath, { dir: 1 | -1; left: number; right: number }
   d: { dir: 1, left: 0, right: 1 },
 };
 
-function petalStyle(petal: Petal): CSSProperties {
+/**
+ * 每片花瓣实际用到的横向摆幅与纵向落距。
+ * 涟漪落点要和花瓣轨迹严格对齐，所以这两项抽成公共函数，CSS 变量与涟漪计算共用同一份数值。
+ */
+export function petalGeometry(petal: Petal) {
   const { dir, left, right } = PETAL_SWAY[petal.path];
   // 左右各留 3% 余量：花瓣中心始终在 3%–97% 之间
   const roomLeft = Math.max(0, petal.left - 3);
@@ -359,6 +376,12 @@ function petalStyle(petal: Petal): CSSProperties {
   const sway = dir * Math.min(base, limit);
   // 终点统一落在 92% 高度：整段轨迹都在视口内，透明度先归零再结束，不会被底部裁断
   const fall = Math.max(20, 92 - petal.top);
+  // 与写进 CSS 变量的精度一致，涟漪按同一组数字复算落点
+  return { sway: +sway.toFixed(2), fall: +fall.toFixed(2) };
+}
+
+function petalStyle(petal: Petal): CSSProperties {
+  const { sway, fall } = petalGeometry(petal);
   return {
     "--p-top": `${petal.top}%`,
     "--p-left": `${petal.left}%`,
@@ -367,12 +390,134 @@ function petalStyle(petal: Petal): CSSProperties {
     "--p-delay": `${petal.delay}s`,
     "--p-spin": petal.spin,
     "--p-opacity": petal.opacity,
-    "--p-sway": `${+sway.toFixed(2)}vw`,
-    "--p-fall": `${+fall.toFixed(2)}vh`,
+    "--p-sway": `${sway}vw`,
+    "--p-fall": `${fall}vh`,
   } as CSSProperties;
 }
 
+/** 桌面端全量花瓣：右侧 26 片在前、左侧 10 片在后，下标就是涟漪占位元素的顺序 */
+const ALL_PETALS: ReadonlyArray<Petal> = [...PETALS, ...LEFT_PETALS];
+
+/** 移动端仍可见的花瓣数量，与 pages.css 的 nth-child 收口一一对应 */
+const MOBILE_RIGHT_VISIBLE = 12;
+const MOBILE_LEFT_VISIBLE = 5;
+
+/** 并发统计的时间窗口（秒）：覆盖 14–29s 的各种周期 */
+const RIPPLE_HORIZON = 900;
+
 export function FujiScene() {
+  const rippleLayer = useRef<HTMLDivElement>(null);
+
+  /**
+   * 涟漪的排布。为什么放在 effect 里而不是渲染时算：
+   * 入水时刻取决于水线，水线随视口宽高比变化（16:9 ≈ 66.6%、超宽屏 ≈ 62.9%、4:3 ≈ 72.2%、
+   * 手机 ≈ 90.4%），只能在使用 `window.innerWidth / innerHeight` 时计算。
+   * 这里只在挂载、窗口尺寸变化和 reduce 偏好切换时重排，不做任何逐帧监听；
+   * 动画本身交给合成器（只动 transform / opacity），与花瓣同周期同延迟，长期不漂移。
+   */
+  useEffect(() => {
+    const layer = rippleLayer.current;
+    if (!layer) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const slots = Array.from(layer.children) as HTMLElement[];
+    let animations: Animation[] = [];
+    let frame = 0;
+
+    const clear = () => {
+      for (const animation of animations) animation.cancel();
+      animations = [];
+      for (const slot of slots) slot.style.left = "0%";
+    };
+
+    const build = () => {
+      clear();
+      if (reduce.matches) return;
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // 与 .wb-scene__water 同一套公式：内容高度 = min(16:9 宽, 视口高)
+      const contentH = Math.min(0.5625 * vw, vh);
+      const waterlinePct = ((vh - 0.371111 * contentH) / vh) * 100;
+      const contentW = (contentH / 900) * 1600;
+      // 山体倒影只铺在 SVG 内容宽度内，超宽屏两翼不落涟漪
+      const minX = Math.max(0, ((vw - contentW) / 2 / vw) * 100);
+      const maxX = 100 - minX;
+      const mobile = vw <= 767;
+
+      const inputs: RippleInput[] = [];
+      for (let key = 0; key < ALL_PETALS.length; key++) {
+        const petal = ALL_PETALS[key];
+        const localIndex = key < PETALS.length ? key : key - PETALS.length;
+        const visible = mobile
+          ? localIndex < (key < PETALS.length ? MOBILE_RIGHT_VISIBLE : MOBILE_LEFT_VISIBLE)
+          : true;
+        if (!visible) continue;
+        const geometry = petalGeometry(petal);
+        inputs.push({
+          key,
+          left: petal.left,
+          top: petal.top,
+          dur: petal.dur,
+          delay: petal.delay,
+          size: petal.size,
+          path: petal.path,
+          sway: geometry.sway,
+          fall: geometry.fall,
+        });
+      }
+
+      const plans = planRipples(inputs, {
+        waterlinePct,
+        vh,
+        minX,
+        maxX,
+        xGap: MIN_RIPPLE_X_GAP,
+        cap: mobile ? MAX_CONCURRENT_MOBILE : MAX_CONCURRENT_DESKTOP,
+        horizon: RIPPLE_HORIZON,
+      });
+
+      for (const plan of plans) {
+        const slot = slots[plan.key];
+        if (!slot) continue;
+        slot.style.left = `${plan.x.toFixed(2)}%`;
+        const rings = Array.from(slot.children) as HTMLElement[];
+        const timing = { duration: plan.cycle * 1000, delay: plan.delay * 1000, iterations: Infinity };
+        // 外圈、内圈各一条动画：周期与延迟都跟花瓣一致，只在入水时刻张开一次
+        animations.push(
+          rings[0].animate(splashFrames(plan.at, plan.cycle, OUTER_SPLASH_SECONDS, OUTER_PEAK_OPACITY), timing),
+          rings[1].animate(
+            splashFrames(
+              plan.at + INNER_SPLASH_DELAY / plan.cycle,
+              plan.cycle,
+              INNER_SPLASH_SECONDS,
+              INNER_PEAK_OPACITY,
+            ),
+            timing,
+          ),
+        );
+      }
+    };
+
+    // 尺寸拖动时合并到下一帧，避免连续 resize 反复重建动画
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        build();
+      });
+    };
+
+    build();
+    window.addEventListener("resize", schedule);
+    reduce.addEventListener("change", build);
+    return () => {
+      window.removeEventListener("resize", schedule);
+      reduce.removeEventListener("change", build);
+      if (frame) cancelAnimationFrame(frame);
+      clear();
+    };
+  }, []);
+
   return (
     <div className="wb-home__scene" aria-hidden="true">
       {/* 水天延展层：天空渐变已由 .wb-home__scene 的 CSS 背景铺满整个视口，
@@ -504,6 +649,18 @@ export function FujiScene() {
           <BlossomMark key={`r-${blossom.segmentId}-${blossom.t}-${index}`} {...blossom} />
         ))}
       </svg>
+
+      {/* 花瓣入水涟漪：整层只铺在水线以下（高度与 .wb-scene__water 一致），
+          每个占位点由 effect 在初始化 / resize 时写 left，并挂上与花瓣同周期的两圈动画。
+          没有落到水面的花瓣不会挂动画，对应占位点保持 opacity:0 */}
+      <div className="wb-scene__ripples" ref={rippleLayer}>
+        {ALL_PETALS.map((_petal, key) => (
+          <span className="wb-scene__ripple" key={key}>
+            <i className="wb-scene__ripple-ring" />
+            <i className="wb-scene__ripple-ring" />
+          </span>
+        ))}
+      </div>
 
       <div className="wb-scene__petals">
         {PETALS.map((petal, index) => (
