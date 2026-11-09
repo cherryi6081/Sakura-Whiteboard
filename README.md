@@ -53,21 +53,49 @@ docs/           开发文档（接口契约、数据模型、决策记录）
 
 ## 运行方式
 
-### 方式一：本地开发（前后端分开）
+### 方式一：本地开发（热更新，推荐日常改代码用）
 
-需要 Node 22、PostgreSQL 16、Redis 7（没有 PG/Redis 时可以只用 compose 起这两个）：
+前端 Vite dev server 做 HMR（改 TSX/CSS 即时生效，不刷新页面），后端 `tsx watch` 跑 TS 源码（改完自动重启），PostgreSQL / Redis 直接复用容器实例，**不重建、不碰数据卷**。
+
+前提：Node 22；`cp .env.example .env`（README 不写真实密钥，按文件内注释填即可，仓库里已有 `.env` 的跳过）。
+
+1）**只停 api 容器，保留 pg/redis**（compose 里 api 没有 `restart` 自愈策略，`stop` 后不会被拉起）：
 
 ```bash
-cp .env.example .env
-docker compose -f deploy/docker-compose.yml up -d postgres redis   # 已有本机 PG/Redis 可跳过
-
-npm ci
-npm run migrate
-npm run dev -w @whiteboard/server   # API :8080
-npm run dev -w @whiteboard/web      # Vite :5173，/api 与 /socket.io 代理到 8080
+docker compose -f deploy/docker-compose.yml stop api
+docker compose -f deploy/docker-compose.yml ps      # 期望：wb-postgres / wb-redis 仍是 (healthy)
 ```
 
-打开 <http://127.0.0.1:5173>。开发期前端是 Vite dev server（HMR、快速反馈），不做静态构建；API 不托管前端。
+2）**一条命令起前后端**（推荐，单终端，输出带 `[api]` / `[web]` 前缀，Ctrl+C 一起停）：
+
+```bash
+npm run dev
+```
+
+等价的双终端方式（想分开看日志时用）：
+
+```bash
+npm run dev:server   # API :8080，tsx watch，改后端自动重启
+npm run dev:web      # Vite :5173，/api 与 /socket.io 代理到 8080
+```
+
+3）访问：
+
+- 前端 <http://127.0.0.1:5173>（**只访问这个**，HMR 挂在这里；Vite 已把 `/api`、`/socket.io` 代理到 `127.0.0.1:8080`，可用 `VITE_API_TARGET` 改目标）
+- 后端 <http://127.0.0.1:8080/api/health>
+
+4）**结束开发，切回容器模式**：
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build     # 重建并接管 8080
+```
+
+常见坑：
+
+- **端口被占**：5173 被残留 Vite 占用会报 `Port 5173 is already in use`（`strictPort: true` 不会自动换端口），先 `taskkill /PID <pid> /T /F`；8080 被占通常是 api 容器没停，回到第 1 步。
+- **`.env` 缺失**：后端启动会直接报 `GUEST_COOKIE_SECRET` 等缺失；`tsx watch` 下改 `.env` 需要重启进程（watch 只监听源码）。
+- **dev server ≠ 静态产物**：`npm run dev` 提供的是内存中的模块图（HMR），不产出 `apps/web/dist`；容器里的前端来自 build 阶段产物，所以"本地 5173 正常、8080 还是旧页面"是没重建镜像，不是缓存。
+- **数据库**：复用容器里的库（`localhost:5432`），schema 由已跑过的迁移保证；新拉分支后先 `npm run migrate`。
 
 ### 方式二：容器一键起（生产形态）
 
@@ -108,6 +136,9 @@ docker compose -f deploy/docker-compose.yml up -d
 - `GET /api/nope` → `404 {"error":{"code":"NOT_FOUND"...}}`，说明 SPA fallback 没有吞掉 `/api` 路由。
 - 无头 Chrome 打开 `http://127.0.0.1:8080/` 首页正常渲染（标题、按钮与入口链接齐全），控制台无报错。
 - 默认路径**连续重建两次**，`docker compose ps` 两次都是 `0.0.0.0:8080->8080`（未漂到 8081）；叠加 `deploy/docker-compose.scale.yml` 后 `--scale api=2` 两个实例都 healthy、8080/8081 各自 `/api/health` `ok:true`，随后缩回单实例恢复 8080。
+- 开发态（2026-11-09 本机实跑）：`docker compose stop api` 后 `wb-postgres` / `wb-redis` 仍 `(healthy)`；`npm run dev` 同时起 `5173`（Vite）与 `8080`（tsx watch），`GET 5173/api/health` 经代理返回 `ok:true`。
+- 前端 HMR：同一页面不刷新（`performance.now()` 从 375 涨到 19009、`navStart` 仍为 0），改 `HomePage.tsx` 的 eyebrow 文案后 DOM 即时变化，还原后随之恢复。
+- 后端 watch：改 `health.ts` 的 `service` 字段后进程自动重启（`uptimeSec` 归零），`/api/health` 立即返回新值，还原后恢复 `whiteboard-api`。
 
 ## 环境变量
 
@@ -132,6 +163,9 @@ docker compose -f deploy/docker-compose.yml up -d
 ## 常用命令
 
 ```bash
+npm run dev            # 单终端同时起前端 HMR(5173) + 后端 watch(8080)
+npm run dev:server     # 只起后端（tsx watch）
+npm run dev:web        # 只起前端（vite）
 npm run typecheck      # shared 先构建，再对 server / web 做 tsc --noEmit
 npm test               # server + web 单测（vitest，固定 forks + 单 fork）
 npm run build          # shared → server（tsc）→ web（vite build）
