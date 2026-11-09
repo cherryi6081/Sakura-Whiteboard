@@ -140,8 +140,8 @@ export const FLASH_SPLASH_SECONDS = 0.5;
 export const OUTER_PEAK_OPACITY = 0.5;
 export const INNER_PEAK_OPACITY = 0.34;
 export const FLASH_PEAK_OPACITY = 0.62;
-/** 同时存在的涟漪上限：桌面 8、移动端 6（每片只是 3 个 transform/opacity 圆环，开销很小） */
-export const MAX_CONCURRENT_DESKTOP = 8;
+/** 同时存在的涟漪上限：桌面 10、移动端 6（每片只是 3 个 transform/opacity 圆环，开销很小） */
+export const MAX_CONCURRENT_DESKTOP = 10;
 export const MAX_CONCURRENT_MOBILE = 6;
 /**
  * 「同时存在」按肉眼还能分辨的那一段算：外圈 1.7s 里只有约 1.2s 高于 30% 峰值，
@@ -285,17 +285,49 @@ function trimRipples(candidates: RipplePlan[], cap: number, horizon: number): Ri
 /** 判断两片涟漪是否在时间上真正重叠只看 300s，已经覆盖十几个周期，足够代表长期行为 */
 const OVERLAP_HORIZON = 300;
 
+/** 每个输入花瓣的去向，用来核对「多少落点被剔除、为什么被剔除」 */
+export type RippleStats = {
+  /** 参与计算的花瓣（已按移动端可见数收口） */
+  inputs: number;
+  /** 入水时刻不在周期内部（花瓣在载入时已经落到水线以下，或到周期结束都没到水线） */
+  outsideCycle: number;
+  /** 入水横坐标越出可视水面 */
+  outsideX: number;
+  /** 与前一片同时、同地，被横向间距挡掉 */
+  blockedByGap: number;
+  /** 并发上限裁剪掉的 */
+  droppedByCap: number;
+  /** 最终挂上动画的落点数 */
+  kept: number;
+};
+
 export function planRipples(inputs: ReadonlyArray<RippleInput>, options: PlanOptions): RipplePlan[] {
+  return planRippleSet(inputs, options).plans;
+}
+
+export function planRippleSet(
+  inputs: ReadonlyArray<RippleInput>,
+  options: PlanOptions,
+): { plans: RipplePlan[]; stats: RippleStats } {
   const { waterlinePct, vh, minX, maxX, xGap, cap, horizon } = options;
 
-  const candidates: RipplePlan[] = inputs
-    .map((input) => {
-      const at = waterTime(input, waterlinePct, vh);
-      const x = input.left + input.sway * sideAtTime(input.path, at);
-      return { key: input.key, x, at, cycle: input.dur, delay: input.delay, size: input.size };
-    })
-    // 入水点必须真的落在周期内部；横向必须落在山体倒影所在的水域
-    .filter((plan) => plan.at > 0.001 && plan.at < 0.999 && plan.x >= minX && plan.x <= maxX);
+  let outsideCycle = 0;
+  let outsideX = 0;
+  const candidates: RipplePlan[] = [];
+  for (const input of inputs) {
+    const at = waterTime(input, waterlinePct, vh);
+    const x = input.left + input.sway * sideAtTime(input.path, at);
+    if (!(at > 0.001 && at < 0.999)) {
+      outsideCycle++;
+      continue;
+    }
+    // 水线以下是整片水面（含超宽屏两侧的 CSS 湖带），只有真的越出视口才剔除
+    if (x < minX || x > maxX) {
+      outsideX++;
+      continue;
+    }
+    candidates.push({ key: input.key, x, at, cycle: input.dur, delay: input.delay, size: input.size });
+  }
 
   candidates.sort((a, b) => b.size - a.size || a.x - b.x);
 
@@ -317,15 +349,30 @@ export function planRipples(inputs: ReadonlyArray<RippleInput>, options: PlanOpt
   // 横向间距只约束「同时张开」的两片：同一处水域先后入水是自然的重复涟漪，
   // 只要不同时叠在一起，就不算「叠成一坨」。这样能留下更多花瓣，把空档压下去
   const chosen: RipplePlan[] = [];
+  let blockedByGap = 0;
   for (const candidate of candidates) {
     const blocked = chosen.some(
       (plan) => Math.abs(plan.x - candidate.x) < xGap && collide(plan, candidate),
     );
-    if (blocked) continue;
+    if (blocked) {
+      blockedByGap++;
+      continue;
+    }
     chosen.push(candidate);
   }
 
-  return trimRipples(chosen, cap, horizon).sort((a, b) => a.x - b.x);
+  const kept = trimRipples(chosen, cap, horizon).sort((a, b) => a.x - b.x);
+  return {
+    plans: kept,
+    stats: {
+      inputs: inputs.length,
+      outsideCycle,
+      outsideX,
+      blockedByGap,
+      droppedByCap: chosen.length - kept.length,
+      kept: kept.length,
+    },
+  };
 }
 
 

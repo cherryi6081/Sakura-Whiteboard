@@ -14,6 +14,7 @@ import {
   countConcurrent,
   longestGapSeconds,
   petalFade,
+  planRippleSet,
   planRipples,
   splashFrames,
   timeAtDown,
@@ -24,13 +25,21 @@ import {
 
 const PATHS: PetalPath[] = ["a", "b", "c", "d"];
 
-/** 与 FujiScene 的 effect 完全一致的水线与倒影范围换算 */
+/**
+ * 与 FujiScene 的 effect 完全一致：触发区域是水线以下的整片水面（0–100%），
+ * 不再按山体倒影的 16:9 内容宽度收窄
+ */
 function viewport(width: number, height: number) {
   const contentH = Math.min(0.5625 * width, height);
-  const contentW = (contentH / 900) * 1600;
   const waterlinePct = ((height - 0.371111 * contentH) / height) * 100;
-  const minX = Math.max(0, ((width - contentW) / 2 / width) * 100);
-  return { waterlinePct, minX, maxX: 100 - minX, mobile: width <= 767, vh: height };
+  return { waterlinePct, minX: 0, maxX: 100, mobile: width <= 767, vh: height };
+}
+
+/** 超宽屏两侧 CSS 湖带的边界：内容区（16:9）之外的左右两翼 */
+function wingBounds(width: number, height: number) {
+  const contentW = (Math.min(0.5625 * width, height) / 900) * 1600;
+  const wing = Math.max(0, ((width - contentW) / 2 / width) * 100);
+  return { left: wing, right: 100 - wing };
 }
 
 /** 组装涟漪输入，移动端按 pages.css 的 nth-child 收口过滤 */
@@ -210,24 +219,42 @@ describe("涟漪落点与并发", () => {
     expect(mobilePlans.length).toBeLessThanOrEqual(rippleInputs(390, 844).length);
   });
 
-  it("输出各视口的涟漪数量、并发峰值与最长空档（供人工核对）", () => {
+  it.each(VIEWPORTS)("%i×%i：左右两翼（16:9 内容区之外）也能落涟漪", (width, height) => {
+    const { options } = optionsFor(width, height);
+    const { plans } = planRippleSet(rippleInputs(width, height), options);
+    const { left, right } = wingBounds(width, height);
+    if (left <= 0) {
+      // 非超宽屏没有 CSS 湖带，整幅画面都是水面
+      expect(plans.every((plan) => plan.x >= 0 && plan.x <= 100)).toBe(true);
+      return;
+    }
+    const leftWing = plans.filter((plan) => plan.x < left).length;
+    const rightWing = plans.filter((plan) => plan.x > right).length;
+    expect(leftWing).toBeGreaterThan(0);
+    expect(rightWing).toBeGreaterThan(0);
+  });
+
+  it("输出各视口的落点去向、并发峰值与最长空档（供人工核对）", () => {
     const rows = VIEWPORTS.map(([width, height]) => {
       const { cap, gapPx, options } = optionsFor(width, height);
-      const plans = planRipples(rippleInputs(width, height), options);
-      const minSpacing = plans.reduce(
-        (min, plan, index) => (index === 0 ? min : Math.min(min, plan.x - plans[index - 1].x)),
-        Infinity,
-      );
+      const { plans, stats } = planRippleSet(rippleInputs(width, height), options);
+      const { left, right } = wingBounds(width, height);
       return {
         视口: `${width}×${height}`,
         水线: `${options.waterlinePct.toFixed(1)}%`,
-        候选花瓣: rippleInputs(width, height).length,
-        涟漪数: plans.length,
-        间距: `${gapPx}px`,
-        最小间距: Number.isFinite(minSpacing) ? `${((minSpacing / 100) * width).toFixed(1)}px` : "—",
-        并发峰值: countConcurrent(plans, 900, CONCURRENCY_WINDOW),
+        输入: stats.inputs,
+        挂动画: stats.kept,
+        周期外: stats.outsideCycle,
+        越界: stats.outsideX,
+        间距冲突: stats.blockedByGap,
+        并发裁剪: stats.droppedByCap,
+        左翼: plans.filter((plan) => plan.x < left).length,
+        中间: plans.filter((plan) => plan.x >= left && plan.x <= right).length,
+        右翼: plans.filter((plan) => plan.x > right).length,
         上限: cap,
+        并发峰值: countConcurrent(plans, 900, CONCURRENCY_WINDOW),
         最长空档: `${longestGapSeconds(plans, 900).toFixed(2)}s`,
+        间距: `${gapPx}px`,
       };
     });
     // eslint-disable-next-line no-console

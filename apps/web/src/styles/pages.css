@@ -292,10 +292,11 @@
   pointer-events: none;
 }
 
-/* 单个落点：由脚本按花瓣落点写 left；圆环以这个点为圆心 */
+/* 单个落点：由脚本按花瓣落点写 left；圆环以这个点为圆心。
+   top: 7px 让 44×14 的圆环在最大张开时上沿刚好贴住水线，一点都不越过湖面 */
 .wb-scene__ripple {
   position: absolute;
-  top: 4px;
+  top: 7px;
   left: 0;
   width: 0;
   height: 0;

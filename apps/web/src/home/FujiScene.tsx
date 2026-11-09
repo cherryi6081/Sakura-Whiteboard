@@ -447,10 +447,6 @@ export function FujiScene() {
       // 与 .wb-scene__water 同一套公式：内容高度 = min(16:9 宽, 视口高)
       const contentH = Math.min(0.5625 * vw, vh);
       const waterlinePct = ((vh - 0.371111 * contentH) / vh) * 100;
-      const contentW = (contentH / 900) * 1600;
-      // 山体倒影只铺在 SVG 内容宽度内，超宽屏两翼不落涟漪
-      const minX = Math.max(0, ((vw - contentW) / 2 / vw) * 100);
-      const maxX = 100 - minX;
       const mobile = vw <= 767;
 
       const inputs: RippleInput[] = [];
@@ -502,8 +498,10 @@ export function FujiScene() {
       const plans = planRipples(inputs, {
         waterlinePct,
         vh,
-        minX,
-        maxX,
+        // 触发区域是「水线以下的整片水面」：超宽屏两侧的 CSS 湖带也是水，
+        // 涟漪层本身已经铺满全宽，所以左右边缘同样要能落涟漪
+        minX: 0,
+        maxX: 100,
         // 间距用 px 定，换算成视口百分比；移动端屏幕窄，间距收得更小才能保证任意 4s 内都有涟漪
         xGap: ((mobile ? MIN_RIPPLE_X_GAP_PX_MOBILE : MIN_RIPPLE_X_GAP_PX) / vw) * 100,
         cap: mobile ? MAX_CONCURRENT_MOBILE : MAX_CONCURRENT_DESKTOP,
