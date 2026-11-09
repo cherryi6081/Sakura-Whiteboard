@@ -57,14 +57,12 @@
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
   background: var(--sky-blue-top);
-  /* 首页作用域内把文字 token 切成浅底可读的深色版，子元素（含状态条）自动跟随 */
+  /* 首页作用域内把文字 token 切成浅底可读的深色版（纯展示页没有次级/禁用文字） */
   --text-primary: var(--day-text-primary);
   --text-secondary: var(--day-text-secondary);
-  --text-weak-readable: var(--day-text-weak);
-  --text-disabled: var(--neutral-500);
 }
 
-/* 顶栏与页脚压在场景之上，导航与版权始终可点 */
+/* 顶栏与页脚压在场景之上；首页是纯展示页，里面没有可聚焦/可点击元素 */
 .wb-home__top {
   position: relative;
   z-index: 2;
@@ -76,11 +74,13 @@
   padding: var(--space-4) var(--space-8);
 }
 
+/* 顶栏词条组：只是纯文本标注，不承接任何交互，所以没有 hover / 焦点 / 下划线 */
 .wb-home__nav {
+  margin: 0;
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  /* 顶栏落在顶部深蓝里：导航自成一枚浅色胶囊，深色链接始终合在浅底上 */
+  /* 顶栏落在顶部深蓝里：词条组自成一枚浅色胶囊，深色文字始终合在浅底上 */
   padding: 6px 14px;
   background: var(--day-card-surface);
   border: 1px solid var(--day-card-line);
@@ -88,24 +88,14 @@
   box-shadow: var(--day-card-shadow);
 }
 
-.wb-home__nav-link {
+.wb-home__nav-item {
   padding: 2px 0;
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   color: var(--text-secondary);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition:
-    color var(--dur-base) var(--ease-standard),
-    border-color var(--dur-base) var(--ease-standard);
 }
 
-.wb-home__nav-link:hover {
-  color: var(--rose-700);
-  border-bottom-color: var(--rose-300);
-}
-
-.wb-home__nav-link--strong {
+.wb-home__nav-item--strong {
   font-weight: 600;
   color: var(--rose-700);
 }
@@ -166,14 +156,6 @@
   font-size: var(--text-subtitle);
   line-height: var(--lh-subtitle);
   color: var(--text-secondary);
-}
-
-.wb-home__action {
-  margin-top: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3);
 }
 
 /* 能力点做成三张小卡：填补信息密度，又不会堆成一堵墙 */
@@ -339,7 +321,7 @@
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
 .wb-scene__branch {
   position: absolute;
-  /* 从右上角下方一点进入，避开顶栏导航，避免枝条压住“登录/注册” */
+  /* 从右上角下方一点进入，避开顶栏词条，避免枝条压住“我的白板 / 登录 / 注册” */
   top: 7%;
   right: 0;
   width: min(44%, 560px);
@@ -583,22 +565,9 @@
   color: var(--rose-900);
 }
 
-.wb-home__note {
-  margin-top: var(--space-3);
-}
-
-/* ---------- 浅粉首页：品牌、导航与题词在浅底上的收口 ---------- */
+/* ---------- 浅粉首页：品牌与题词在浅底上的收口 ---------- */
 .wb-home .wb-brand {
   color: var(--rose-900);
-}
-
-.wb-home__nav-link:hover {
-  color: var(--rose-800);
-  border-bottom-color: var(--rose-500);
-}
-
-.wb-home__nav-link--strong {
-  color: var(--rose-800);
 }
 
 /* 状态条与按钮不再做深底适配：直接沿用全局浅底一套 token */
@@ -1334,12 +1303,7 @@
     gap: var(--space-3);
   }
 
-  /* 移动端：主按钮全宽 48 高；能力点收成一行文案（§4.1） */
-  .wb-home__action > .wb-btn {
-    align-self: stretch;
-    height: var(--control-h-xl);
-  }
-
+  /* 移动端：能力点收成一行文案（§4.1） */
   .wb-home__points {
     display: none;
   }

@@ -132,7 +132,6 @@
   /* 浅底文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
   --day-text-primary: var(--rose-900);
   --day-text-secondary: var(--neutral-800);
-  --day-text-weak: var(--neutral-700);
   /* 半透明白粉浮层：叠在浅蓝天空与浅蓝山体上都成立，实际叠色对比度见交付表格 */
   --day-card-surface: color-mix(in srgb, var(--paper) 74%, transparent);
   --day-card-line: color-mix(in srgb, var(--rose-600) 22%, transparent);
