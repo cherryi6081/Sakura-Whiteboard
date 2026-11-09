@@ -11,3 +11,7 @@ _downloads/
 
 # 验证脚本与输出（M2 spike）：仅忽略临时脚本与日志，可复用实现保留在 apps/web/src/spike/
 apps/web/.spike/
+
+# 本地上传的图片资产（v1.1 本地磁盘驱动）
+apps/server/.storage/
+*.storage/

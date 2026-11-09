@@ -28,6 +28,12 @@ const EnvSchema = z.object({
   INSTANCE_ID: z.string().default(() => hostname()),
   DB_POOL_MAX: z.coerce.number().int().positive().max(50).default(10),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  /** 图片资产落盘根目录（本地磁盘驱动）；相对路径以进程 cwd 为基准。 */
+  STORAGE_ROOT: z.string().min(1).default('.storage'),
+  /** 签名 URL 的 HMAC 密钥；缺省复用 SESSION_SECRET（生产建议单独配置并可轮换）。 */
+  ASSET_URL_SECRET: z.string().min(32).optional(),
+  /** 签名 URL 有效期（秒），应短于浏览器 HTTP 缓存时间。 */
+  ASSET_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

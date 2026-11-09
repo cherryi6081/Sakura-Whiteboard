@@ -9,8 +9,11 @@ export type SharePermission = (typeof SHARE_PERMISSIONS)[number];
 export const OP_KINDS = ['upsert', 'delete', 'zindex'] as const;
 export type OpKind = (typeof OP_KINDS)[number];
 
-/** 与 `0001_init.sql` 中 `elements.type` 的 check 约束保持一致。 */
-export const ELEMENT_TYPES = ['rectangle', 'ellipse', 'diamond', 'arrow', 'text', 'freedraw', 'note'] as const;
+/**
+ * 与 `0004_assets.sql` 中 `elements.type` 的 check 约束保持一致。
+ * `image` 是 v1.1 图片元素，元素本身只存 `fileId`（= assets.id），不存 base64。
+ */
+export const ELEMENT_TYPES = ['rectangle', 'ellipse', 'diamond', 'arrow', 'text', 'freedraw', 'note', 'image'] as const;
 
 export const LIMITS = {
   /** 单条 op 载荷上限（字节） */
@@ -23,7 +26,15 @@ export const LIMITS = {
   resyncThreshold: 500,
   /** 白板 ID 长度与字符集 */
   boardIdPattern: /^[A-Za-z0-9_-]{12}$/,
+  /** 单张图片上限 5MB（与 `0004_assets.sql` 的 check 一致） */
+  assetMaxBytes: 5 * 1024 * 1024,
+  /** 单板图片总量上限 50MB */
+  assetBoardQuotaBytes: 50 * 1024 * 1024,
 } as const;
+
+/** 图片白名单：不收 SVG（避免内嵌脚本造成存储型 XSS）。顺序即错误提示里的可用类型。 */
+export const ASSET_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+export type AssetMime = (typeof ASSET_MIME_TYPES)[number];
 
 export const ERROR_CODES = {
   NOT_FOUND: 'NOT_FOUND',
@@ -36,6 +47,11 @@ export const ERROR_CODES = {
   NO_PERMISSION: 'NO_PERMISSION',
   KICKED: 'KICKED',
   INTERNAL: 'INTERNAL',
+  /* 图片资产（v1.1）：语义化的上传失败口径，前端据此给可重试/不可重试的提示 */
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+  BOARD_QUOTA_EXCEEDED: 'BOARD_QUOTA_EXCEEDED',
+  STORAGE_UNAVAILABLE: 'STORAGE_UNAVAILABLE',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
