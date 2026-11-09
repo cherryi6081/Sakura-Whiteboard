@@ -89,6 +89,7 @@
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 0;
   height: calc(0.371111 * min(56.25vw, 100dvh));
   background-image:
     linear-gradient(
@@ -121,6 +122,7 @@
 .wb-scene__mountains {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
 }
@@ -210,6 +212,8 @@
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
 .wb-scene__branch {
   position: absolute;
+  /* 枝条在花瓣之下、山体之上：花瓣从枝前飘过，不会被枝干或山体遮住 */
+  z-index: 2;
   /* 从右上角下方一点进入，让枝条自然地从画面外伸进来 */
   top: 7%;
   right: 0;
@@ -283,11 +287,15 @@
   fill: var(--branch-brown-500);
 }
 
-/* ---------- 花瓣：三条曲线路径，逐片不同时长与旋转系数 ---------- */
+/* ---------- 花瓣：四条曲线路径，逐片不同时长与旋转系数 ---------- */
+/* 层级显式声明（不依赖 DOM 顺序）：水天延展层 0 < 山体 1 < 枝条 2 < 花瓣 3。
+   花瓣整组压在场景最上层，任何一片都不会被水层、山体或枝条盖住 */
 .wb-scene__petals {
   position: absolute;
   inset: 0;
+  z-index: 3;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .wb-scene__petal {
@@ -369,18 +377,18 @@
     opacity: var(--p-opacity);
   }
   34% {
-    transform: translate3d(-11vw, 20vh, 0) rotate(calc(110deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.38), calc(var(--p-fall) * 0.26), 0) rotate(calc(110deg * var(--p-spin)));
     animation-timing-function: ease-in-out;
   }
   68% {
-    transform: translate3d(-19vw, 47vh, 0) rotate(calc(220deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.66), calc(var(--p-fall) * 0.6), 0) rotate(calc(220deg * var(--p-spin)));
     animation-timing-function: ease-in;
   }
   92% {
     opacity: var(--p-opacity);
   }
   100% {
-    transform: translate3d(-29vw, 78vh, 0) rotate(calc(330deg * var(--p-spin)));
+    transform: translate3d(var(--p-sway), var(--p-fall), 0) rotate(calc(330deg * var(--p-spin)));
     opacity: 0;
   }
 }
@@ -395,18 +403,18 @@
     opacity: var(--p-opacity);
   }
   32% {
-    transform: translate3d(9vw, 22vh, 0) rotate(calc(-95deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.39), calc(var(--p-fall) * 0.28), 0) rotate(calc(-95deg * var(--p-spin)));
     animation-timing-function: ease-in-out;
   }
   66% {
-    transform: translate3d(16vw, 50vh, 0) rotate(calc(-200deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.7), calc(var(--p-fall) * 0.63), 0) rotate(calc(-200deg * var(--p-spin)));
     animation-timing-function: ease-in;
   }
   92% {
     opacity: var(--p-opacity);
   }
   100% {
-    transform: translate3d(23vw, 80vh, 0) rotate(calc(-300deg * var(--p-spin)));
+    transform: translate3d(var(--p-sway), var(--p-fall), 0) rotate(calc(-300deg * var(--p-spin)));
     opacity: 0;
   }
 }
@@ -421,18 +429,18 @@
     opacity: var(--p-opacity);
   }
   36% {
-    transform: translate3d(7vw, 20vh, 0) rotate(calc(90deg * var(--p-spin)));
+    transform: translate3d(var(--p-sway), calc(var(--p-fall) * 0.26), 0) rotate(calc(90deg * var(--p-spin)));
     animation-timing-function: ease-in-out;
   }
   70% {
-    transform: translate3d(-5vw, 46vh, 0) rotate(calc(190deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * -0.71), calc(var(--p-fall) * 0.59), 0) rotate(calc(190deg * var(--p-spin)));
     animation-timing-function: ease-in;
   }
   92% {
     opacity: var(--p-opacity);
   }
   100% {
-    transform: translate3d(6vw, 78vh, 0) rotate(calc(300deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.86), var(--p-fall), 0) rotate(calc(300deg * var(--p-spin)));
     opacity: 0;
   }
 }
@@ -448,18 +456,18 @@
     opacity: var(--p-opacity);
   }
   37% {
-    transform: translate3d(4vw, 21vh, 0) rotate(calc(85deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.67), calc(var(--p-fall) * 0.27), 0) rotate(calc(85deg * var(--p-spin)));
     animation-timing-function: ease-in-out;
   }
   71% {
-    transform: translate3d(1.5vw, 47vh, 0) rotate(calc(190deg * var(--p-spin)));
+    transform: translate3d(calc(var(--p-sway) * 0.25), calc(var(--p-fall) * 0.59), 0) rotate(calc(190deg * var(--p-spin)));
     animation-timing-function: ease-in;
   }
   91% {
     opacity: var(--p-opacity);
   }
   100% {
-    transform: translate3d(6vw, 79vh, 0) rotate(calc(300deg * var(--p-spin)));
+    transform: translate3d(var(--p-sway), var(--p-fall), 0) rotate(calc(300deg * var(--p-spin)));
     opacity: 0;
   }
 }
