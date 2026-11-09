@@ -71,14 +71,17 @@
   /* 雪顶接近白，只压一层极浅冷影 */
   --fuji-snow: #f7fbfe;
   --fuji-snow-shade: #e8f2fa;
-  /* 樱花：花簇与枝条原色 + 花瓣三层色阶 */
+  /* 樱花：花簇与花瓣三层色阶（枝条改用下方独立棕色系，不再跟着花走） */
   --sakura-100: #fbe6ee;
   --sakura-200: #f5cad8;
   --sakura-300: #eeacc4;
-  --sakura-wood: #8b6a77;
-  --sakura-wood-soft: #ab8b97;
   --sakura-bloom: #f9d7e3;
   --sakura-bloom-core: #f2b8ce;
+  /* 枝条 / 花萼：木棕色系。色相压在中性暖棕（H≈22°–25°），
+     饱和度只到 19%–26%，所以在浅粉天空上不偏红发脏、也不偏黄发土。
+     深档给主干与粗侧枝，浅档给末梢细枝；背景枝用浅档再叠 0.48 透明度 */
+  --branch-brown-900: #6d5340;
+  --branch-brown-500: #9c8171;
   /* 花瓣光晕是纯装饰，从花瓣色阶派生，不额外引入新色相 */
   --sakura-glow: color-mix(in srgb, var(--sakura-200) 32%, transparent);
   /* 仙鹤：深蓝灰剪影原色；浅粉天空下是“浅底深物”，实测对比 4.0–6.3，保持不变 */
@@ -87,29 +90,28 @@
   --crane-crown: #b4544b;
 
   /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
-  /* 浅樱粉渐变：色相统一在粉里（H≈333°–340°），只用明度做天顶→地平线过渡：
-     天顶 #f4d3e0(L≈89%) → #f8dfe9(92%) → #fbe9f1(95%) → 地平线 #fdf4f7(98%)。
-     山体 --fuji-300 是浅蓝(L≈75%)，压在近白粉地平线上仍留出轮廓差，
-     近岸再用 --fuji-600 暗带压一道，避免山体被粉色吃掉 */
-  --sky-dawn-900: #f4d3e0;
-  --sky-dawn-800: #f8dfe9;
-  --sky-dawn-700: #fbe9f1;
-  --sky-dawn-horizon: #fdf4f7;
+  /* 浅蓝渐变：色相统一在蓝里（H≈203°–208°），只用明度做天顶→地平线过渡：
+     天顶 #cfe5f6(L≈89%) → #ddedfa(92%) → #eaf5fd(95%) → 地平线 #f5fbff(98%)。
+     山体 --fuji-300 明度约 80%，低于天顶 9 个百分点，靠这段明度差让山“浮”在天空里 */
+  --sky-blue-top: #cfe5f6;
+  --sky-blue-mid: #ddedfa;
+  --sky-blue-low: #eaf5fd;
+  --sky-blue-horizon: #f5fbff;
   --home-scene-sky: linear-gradient(
     180deg,
-    var(--sky-dawn-900) 0%,
-    var(--sky-dawn-800) 46%,
-    var(--sky-dawn-700) 74%,
-    var(--sky-dawn-horizon) 100%
+    var(--sky-blue-top) 0%,
+    var(--sky-blue-mid) 46%,
+    var(--sky-blue-low) 74%,
+    var(--sky-blue-horizon) 100%
   );
 
   /* ---------- 湖面 / 倒影（由山体与天空 token 派生，不写死色值） ---------- */
-  /* 浅色水面但比天空深一档：近岸最浅、湖底最深，倒影由山体色叠在水面上，
-     比山体浅一档又比水面亮一档，读起来是“淡镜子”而不是另一座山 */
-  --lake-100: color-mix(in srgb, var(--fuji-400) 55%, var(--sky-dawn-horizon));
-  --lake-300: color-mix(in srgb, var(--fuji-500) 62%, var(--sky-dawn-horizon));
-  --lake-500: color-mix(in srgb, var(--fuji-500) 72%, var(--sky-dawn-horizon));
-  --lake-700: color-mix(in srgb, var(--fuji-600) 62%, var(--sky-dawn-horizon));
+  /* 水面仍比天空深一档，且是纯蓝灰、无粉色混入，所以不会发紫；
+     近岸最浅、湖底最深，倒影由山体色叠在水面上，读起来是“淡镜子”而不是另一座山 */
+  --lake-100: color-mix(in srgb, var(--fuji-400) 55%, var(--sky-blue-horizon));
+  --lake-300: color-mix(in srgb, var(--fuji-500) 60%, var(--sky-blue-horizon));
+  --lake-500: color-mix(in srgb, var(--fuji-500) 70%, var(--sky-blue-horizon));
+  --lake-700: color-mix(in srgb, var(--fuji-600) 50%, var(--sky-blue-horizon));
   /* 水面反光与波纹是白色高光，用 --paper 半透明派生 */
   --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
   --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
@@ -118,7 +120,7 @@
   --day-text-primary: var(--rose-900);
   --day-text-secondary: var(--neutral-800);
   --day-text-weak: var(--neutral-700);
-  /* 半透明白粉浮层：叠在浅粉天空与浅蓝山体上都能托住深色文字 */
+  /* 半透明白粉浮层：叠在浅蓝天空与浅蓝山体上都成立，实际叠色对比度见交付表格 */
   --day-card-surface: color-mix(in srgb, var(--paper) 74%, transparent);
   --day-card-line: color-mix(in srgb, var(--rose-600) 22%, transparent);
   --day-card-shadow: 0 1px 2px rgba(90, 42, 63, 0.06), 0 8px 22px rgba(90, 42, 63, 0.07);

@@ -56,7 +56,7 @@
   flex-direction: column;
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
-  background: var(--sky-dawn-900);
+  background: var(--sky-blue-top);
   /* 首页作用域内把文字 token 切成浅底可读的深色版，子元素（含状态条）自动跟随 */
   --text-primary: var(--day-text-primary);
   --text-secondary: var(--day-text-secondary);
@@ -259,7 +259,7 @@
   opacity: 0.26;
 }
 
-/* 湖面渐变：色标全部由 --fuji-* 与 --sky-dawn-* 派生，不写死色值 */
+/* 湖面渐变：色标全部由 --fuji-* 与 --sky-blue-* 派生，不写死色值 */
 .wb-scene__lake-stop-0 {
   stop-color: var(--lake-100);
 }
@@ -276,20 +276,20 @@
   stop-color: var(--lake-700);
 }
 
-/* 倒影往下渐隐：用近白粉的湖面色压一层，越往下越淡 */
+/* 倒影往下渐隐：用近白蓝的湖面色压一层，越往下越淡 */
 .wb-scene__ref-stop-0 {
-  stop-color: var(--sky-dawn-horizon);
+  stop-color: var(--sky-blue-horizon);
   stop-opacity: 0;
 }
 
 .wb-scene__ref-stop-1 {
-  stop-color: var(--sky-dawn-horizon);
+  stop-color: var(--sky-blue-horizon);
   stop-opacity: 0.36;
 }
 
 .wb-scene__ref-stop-2 {
-  stop-color: var(--sky-dawn-horizon);
-  stop-opacity: 0.7;
+  stop-color: var(--sky-blue-horizon);
+  stop-opacity: 0.58;
 }
 
 .wb-scene__lake-line {
@@ -315,18 +315,18 @@
   stroke-miterlimit: 10;
 }
 
-/* 枝条与花簇恢复改版前原色，不跟着背景提亮 */
+/* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
-  stroke: var(--sakura-wood);
+  stroke: var(--branch-brown-900);
 }
 
 .wb-scene__branch-wood-soft {
-  stroke: var(--sakura-wood-soft);
+  stroke: var(--branch-brown-500);
 }
 
-/* 背景层枝条：更细更淡，和前景枝形成前后两组 */
+/* 背景层枝条：用浅档再降透明度，和前景枝形成前后两组 */
 .wb-scene__branch-far {
-  stroke: var(--sakura-wood-soft);
+  stroke: var(--branch-brown-500);
   opacity: 0.48;
 }
 
@@ -360,8 +360,9 @@
   fill: var(--sakura-100);
 }
 
+/* 花萼跟着枝条同源，用棕色浅档 */
 .wb-scene__blossom-calyx {
-  fill: var(--sakura-wood-soft);
+  fill: var(--branch-brown-500);
 }
 
 /* ---------- 花瓣：三条曲线路径，逐片不同时长与旋转系数 ---------- */
