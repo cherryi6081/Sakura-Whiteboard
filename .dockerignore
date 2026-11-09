@@ -1,5 +1,7 @@
 **/node_modules
 **/dist
+**/.spike
+**/shots
 .env
 .env.*
 !.env.example

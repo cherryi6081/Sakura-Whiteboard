@@ -34,6 +34,8 @@ const EnvSchema = z.object({
   ASSET_URL_SECRET: z.string().min(32).optional(),
   /** 签名 URL 有效期（秒），应短于浏览器 HTTP 缓存时间。 */
   ASSET_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
+  /** 前端静态产物目录（生产镜像由 API 同源托管）；缺省不托管，交给 Vite dev server。 */
+  WEB_DIST: z.string().min(1).optional(),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
