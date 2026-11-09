@@ -51,6 +51,9 @@ export function HomePage() {
 
   return (
     <div className="wb-home">
+      {/* 场景铺满整个视口，绝对定位在内容之下；aria-hidden + pointer-events: none */}
+      <FujiScene />
+
       <header className="wb-home__top">
         <a className="wb-brand" href="/">
           <span className="wb-brand__mark" aria-hidden>
@@ -130,8 +133,6 @@ export function HomePage() {
           {/* 移动端按 §4.1 收成一行文案，不换三行 */}
           <p className="wb-home__points-line">实时协作 · 多标签独立 · 手机可画</p>
         </main>
-
-        <FujiScene />
       </div>
 
       <footer className="wb-home__foot">

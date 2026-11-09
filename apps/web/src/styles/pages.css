@@ -49,16 +49,20 @@
 
 /* ============ 首页 / 入口 ============ */
 .wb-home {
+  position: relative;
   min-height: 100%;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(720px at 16% 6%, var(--rose-50), transparent 62%),
-    radial-gradient(900px at 92% 92%, var(--fuji-sky-100), transparent 62%),
-    var(--bg);
+  /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
+  isolation: isolate;
+  background: var(--bg);
 }
 
+/* 顶栏与页脚压在场景之上，导航与版权始终可点 */
 .wb-home__top {
+  position: relative;
+  z-index: 2;
   flex: none;
   display: flex;
   align-items: center;
@@ -95,22 +99,19 @@
   color: var(--rose-700);
 }
 
-/* 左右分区：左文案 + 右场景，占满剩余高度，避免大面积空白 */
+/* 整页铺满：场景是绝对定位的背景层，文案直接叠在场景左侧 */
 .wb-home__stage {
   flex: 1;
-  display: grid;
-  grid-template-columns: minmax(360px, 0.86fr) 1.14fr;
+  display: flex;
   align-items: center;
-  gap: clamp(var(--space-6), 4vw, var(--space-12));
-  padding: 0 var(--space-8) var(--space-8);
+  padding: 0 clamp(var(--space-8), 7vw, 112px) var(--space-12);
   min-height: 0;
 }
 
 .wb-home__main {
   width: 100%;
-  max-width: 560px;
-  justify-self: center;
-  padding: clamp(var(--space-8), 6vh, var(--space-16)) 0;
+  max-width: 600px;
+  padding: clamp(var(--space-8), 4vh, var(--space-12)) 0;
   position: relative;
   z-index: 1;
 }
@@ -180,7 +181,8 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   color: var(--text-secondary);
-  background: var(--paper);
+  /* 半透明底板，避免白卡在整页场景上显得生硬 */
+  background: var(--home-card-surface);
   border: 1px solid var(--rose-100);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
@@ -205,30 +207,46 @@
   color: var(--text-secondary);
 }
 
-/* ---------- 右侧场景：浅蓝富士山 + 樱花 ---------- */
+/* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 + 仙鹤 ---------- */
+/* 铺满方式：绝对定位 + inset:0，随 .wb-home 的 100dvh 撑满整个首页视口；
+   内部 overflow: hidden 既裁掉出界的鹤与花瓣，也不影响文案层 */
 .wb-home__scene {
-  position: relative;
-  align-self: stretch;
-  min-height: clamp(420px, 62vh, 680px);
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  user-select: none;
   isolation: isolate;
-  background: var(--home-sky-gradient);
-  border: 1px solid var(--fuji-200);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--home-scene-shadow);
+  background: var(--home-scene-sky);
 }
 
+/* 山体：slice 铺满视口，多余部分左右裁切，不会出现上/下留边 */
 .wb-scene__mountains {
   position: absolute;
-  inset: auto 0 0;
+  inset: 0;
   width: 100%;
-  height: 82%;
+  height: 100%;
 }
 
-.wb-scene__range {
-  fill: var(--fuji-200);
-  opacity: 0.75;
+.wb-scene__range-far {
+  fill: var(--fuji-ridge-far);
+  opacity: 0.92;
+}
+
+.wb-scene__range-mid {
+  fill: var(--fuji-ridge-mid);
+  opacity: 0.86;
+}
+
+.wb-scene__peak-left {
+  fill: var(--fuji-400);
+  opacity: 0.42;
+}
+
+.wb-scene__haze {
+  fill: var(--fuji-mist);
+  opacity: 0.16;
 }
 
 .wb-scene__fuji {
@@ -244,16 +262,51 @@
   fill: var(--fuji-snow);
 }
 
+.wb-scene__snow-shadow {
+  fill: var(--fuji-snow-shade);
+  opacity: 0.7;
+}
+
 .wb-scene__foothill {
-  fill: var(--fuji-500);
-  opacity: 0.38;
+  fill: var(--fuji-600);
+  opacity: 0.3;
 }
 
-.wb-scene__mist {
-  fill: var(--fuji-mist);
-  opacity: 0.2;
+/* 文案侧提亮：横向渐变，左侧几乎不透、右侧完全透明，不糊山体 */
+.wb-scene__veil {
+  position: absolute;
+  inset: 0;
+  background: var(--home-hero-veil);
 }
 
+/* 右侧前景樱花枝：静态 SVG，锚在右上角 */
+.wb-scene__branch {
+  position: absolute;
+  /* 从右上角下方一点进入，避开顶栏导航，避免枝条压住“登录/注册” */
+  top: 7%;
+  right: 0;
+  width: min(44%, 560px);
+  height: 80%;
+  overflow: visible;
+}
+
+.wb-scene__branch-wood {
+  stroke: var(--sakura-wood);
+}
+
+.wb-scene__branch-wood-soft {
+  stroke: var(--sakura-wood-soft);
+}
+
+.wb-scene__bloom {
+  fill: var(--sakura-bloom);
+}
+
+.wb-scene__bloom-core {
+  fill: var(--sakura-bloom-core);
+}
+
+/* ---------- 花瓣：三条曲线路径，逐片不同时长与旋转系数 ---------- */
 .wb-scene__petals {
   position: absolute;
   inset: 0;
@@ -262,14 +315,29 @@
 
 .wb-scene__petal {
   position: absolute;
-  top: 0;
+  top: var(--p-top);
   left: var(--p-left);
   width: var(--p-size);
   height: calc(var(--p-size) * 0.94);
   margin-left: calc(var(--p-size) / -2);
   opacity: 0;
   will-change: transform, opacity;
-  animation: wb-petal-fall var(--p-duration) linear var(--p-delay) infinite;
+  animation-duration: var(--p-dur);
+  animation-delay: var(--p-delay);
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+
+.wb-scene__petal--a {
+  animation-name: wb-petal-path-a;
+}
+
+.wb-scene__petal--b {
+  animation-name: wb-petal-path-b;
+}
+
+.wb-scene__petal--c {
+  animation-name: wb-petal-path-c;
 }
 
 .wb-scene__petal-inner {
@@ -289,8 +357,6 @@
     0% 40%,
     16% 13%
   );
-  animation: wb-petal-sway var(--p-sway) ease-in-out var(--p-delay) infinite alternate;
-  will-change: transform;
 }
 
 .wb-scene__petal--light .wb-scene__petal-inner {
@@ -305,47 +371,221 @@
   background: linear-gradient(150deg, var(--sakura-300), var(--rose-400));
 }
 
+/* 只动 transform / opacity：合成器线程处理，不触发布局与重绘。
+   每段 keyframe 单独声明 timing-function：起步 ease-in（风推起动慢）、
+   中段 ease-in-out、末段 ease-in（重力加速），首尾透明度归零，出界即销毁重发 */
+@keyframes wb-petal-path-a {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+    animation-timing-function: ease-in;
+  }
+  7% {
+    opacity: var(--p-opacity);
+  }
+  34% {
+    transform: translate3d(-11vw, 20vh, 0) rotate(calc(110deg * var(--p-spin)));
+    animation-timing-function: ease-in-out;
+  }
+  68% {
+    transform: translate3d(-19vw, 47vh, 0) rotate(calc(220deg * var(--p-spin)));
+    animation-timing-function: ease-in;
+  }
+  92% {
+    opacity: var(--p-opacity);
+  }
+  100% {
+    transform: translate3d(-29vw, 78vh, 0) rotate(calc(330deg * var(--p-spin)));
+    opacity: 0;
+  }
+}
+
+@keyframes wb-petal-path-b {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+    animation-timing-function: ease-in;
+  }
+  7% {
+    opacity: var(--p-opacity);
+  }
+  32% {
+    transform: translate3d(9vw, 22vh, 0) rotate(calc(-95deg * var(--p-spin)));
+    animation-timing-function: ease-in-out;
+  }
+  66% {
+    transform: translate3d(16vw, 50vh, 0) rotate(calc(-200deg * var(--p-spin)));
+    animation-timing-function: ease-in;
+  }
+  92% {
+    opacity: var(--p-opacity);
+  }
+  100% {
+    transform: translate3d(23vw, 80vh, 0) rotate(calc(-300deg * var(--p-spin)));
+    opacity: 0;
+  }
+}
+
+@keyframes wb-petal-path-c {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+    animation-timing-function: ease-in;
+  }
+  7% {
+    opacity: var(--p-opacity);
+  }
+  36% {
+    transform: translate3d(7vw, 20vh, 0) rotate(calc(90deg * var(--p-spin)));
+    animation-timing-function: ease-in-out;
+  }
+  70% {
+    transform: translate3d(-5vw, 46vh, 0) rotate(calc(190deg * var(--p-spin)));
+    animation-timing-function: ease-in;
+  }
+  92% {
+    opacity: var(--p-opacity);
+  }
+  100% {
+    transform: translate3d(6vw, 78vh, 0) rotate(calc(300deg * var(--p-spin)));
+    opacity: 0;
+  }
+}
+
+/* ---------- 仙鹤：沿弧线缓慢飞离，出画后淡入重生 ---------- */
+.wb-scene__cranes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.wb-crane {
+  position: absolute;
+  top: var(--c-top);
+  left: 0;
+  width: var(--c-size);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: wb-crane-path var(--c-dur) linear var(--c-delay) infinite;
+}
+
+/* 起伏与振翅叠在路径运动之上：路径负责大位移，内层只做小幅摆动 */
+.wb-crane__bob {
+  animation: wb-crane-bob var(--c-bob) ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.wb-crane__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.wb-crane__body {
+  fill: var(--crane-ink);
+}
+
+.wb-crane__wing {
+  transform-box: view-box;
+  transform-origin: 52px 32px;
+  will-change: transform;
+}
+
+.wb-crane__wing--far {
+  fill: var(--crane-ink-soft);
+  animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
+}
+
+.wb-crane__wing--near {
+  fill: var(--crane-ink);
+  animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
+}
+
+.wb-crane__beak {
+  fill: var(--crane-ink);
+}
+
+.wb-crane__crown {
+  fill: var(--crane-crown);
+}
+
+.wb-crane__leg {
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+@keyframes wb-crane-path {
+  0% {
+    transform: translate3d(-26vw, 7vh, 0) rotate(-2deg);
+    opacity: 0;
+    animation-timing-function: ease-out;
+  }
+  7% {
+    opacity: var(--c-opacity);
+  }
+  34% {
+    transform: translate3d(24vw, var(--c-lift1), 0) rotate(3deg);
+    animation-timing-function: ease-in-out;
+  }
+  68% {
+    transform: translate3d(66vw, var(--c-lift2), 0) rotate(-3deg);
+    animation-timing-function: ease-in;
+  }
+  94% {
+    opacity: var(--c-opacity);
+  }
+  100% {
+    transform: translate3d(118vw, calc(var(--c-lift2) - 8vh), 0) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes wb-crane-bob {
+  0% {
+    transform: translate3d(0, -4px, 0);
+  }
+  100% {
+    transform: translate3d(0, 4px, 0);
+  }
+}
+
+@keyframes wb-crane-flap-near {
+  0% {
+    transform: rotate(-14deg);
+  }
+  100% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes wb-crane-flap-far {
+  0% {
+    transform: rotate(8deg);
+  }
+  100% {
+    transform: rotate(-10deg);
+  }
+}
+
 .wb-scene__caption {
   position: absolute;
-  right: var(--space-6);
-  bottom: var(--space-6);
+  right: clamp(var(--space-6), 5vw, 72px);
+  bottom: clamp(var(--space-6), 6vh, 64px);
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   letter-spacing: 0.12em;
   color: var(--fuji-500);
-  opacity: 0.85;
-}
-
-/* 只动 transform / opacity：合成器线程处理，不触发布局与重绘 */
-@keyframes wb-petal-fall {
-  0% {
-    transform: translate3d(0, -14vh, 0);
-    opacity: 0;
-  }
-  6% {
-    opacity: var(--p-opacity);
-  }
-  88% {
-    opacity: var(--p-opacity);
-  }
-  100% {
-    transform: translate3d(0, 104vh, 0);
-    opacity: 0;
-  }
-}
-
-@keyframes wb-petal-sway {
-  from {
-    transform: translate3d(calc(var(--p-drift) * -1), 0, 0) rotate(calc(var(--p-rotate) * -1));
-  }
-  to {
-    transform: translate3d(var(--p-drift), 0, 0) rotate(var(--p-rotate));
-  }
+  opacity: 0.82;
 }
 
 .wb-home__foot {
+  position: relative;
+  z-index: 2;
   flex: none;
   display: flex;
   flex-wrap: wrap;
@@ -362,33 +602,35 @@
   margin-top: var(--space-3);
 }
 
-/* 平板：两侧并排会挤，场景落到文案下方成为一条“山景带”
-   单列时让场景行吃掉剩余高度，避免文案与山景之间出现大片空白 */
+/* 平板：场景仍是整页背景，只收紧文案区留白，避免文案贴边 */
 @media (max-width: 900px) {
   .wb-home__stage {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-    align-items: start;
-    gap: var(--space-6);
-    padding: 0 var(--space-6) var(--space-6);
+    padding: 0 var(--space-6) var(--space-8);
   }
 
   .wb-home__main {
-    justify-self: start;
-    max-width: 620px;
-    padding: var(--space-8) 0 0;
-  }
-
-  .wb-home__scene {
-    min-height: clamp(240px, 36vh, 340px);
+    max-width: 560px;
+    padding: var(--space-8) 0;
   }
 }
 
-/* 移动端：花瓣减少到 8 个，场景保留静态山景，避免小屏掉帧 */
+/* 移动端：文案落到下半屏，配自下而上的提亮层；花瓣减半、鹤放慢缩小 */
 @media (max-width: 767px) {
+  .wb-home__top {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .wb-home__nav {
+    gap: var(--space-3);
+  }
+
   .wb-home__stage {
-    padding: 0 var(--space-4) var(--space-4);
-    gap: var(--space-4);
+    align-items: flex-end;
+    padding: 0 var(--space-4) var(--space-6);
+  }
+
+  .wb-home__main {
+    padding: var(--space-4) 0 0;
   }
 
   .wb-home__headline {
@@ -409,32 +651,37 @@
     display: block;
   }
 
-  .wb-home__scene {
-    min-height: 220px;
-    border-radius: var(--radius-lg);
+  /* 移动端文案在下半屏，改为纵向提亮，山体上半部分保持干净 */
+  .wb-scene__veil {
+    background: var(--home-hero-veil-mobile);
   }
 
-  .wb-scene__petal:nth-child(n + 9) {
+  /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
+  .wb-scene__petal:nth-child(n + 13) {
     display: none;
   }
 
+  /* 鹤保留两只，但缩小并放慢，避免小屏上过快划过 */
+  .wb-crane {
+    scale: 0.78;
+    animation-duration: 56s;
+  }
+
+  .wb-scene__branch {
+    width: 58%;
+    height: 72%;
+  }
+
   .wb-scene__caption {
-    right: var(--space-4);
-    bottom: var(--space-4);
-    font-size: var(--text-micro);
-    line-height: var(--lh-micro);
+    display: none;
   }
 }
 
-/* 减少动效：花瓣停止（场景保留静态山景）；页面内其它过渡同样归零 */
+/* 减少动效：花瓣与鹤全部停掉，只保留静态山景、樱花枝与提亮层 */
 @media (prefers-reduced-motion: reduce) {
-  .wb-scene__petal {
-    animation: none;
-    opacity: 0;
-  }
-
-  .wb-scene__petal-inner {
-    animation: none;
+  .wb-scene__petal,
+  .wb-crane {
+    display: none;
   }
 }
 
