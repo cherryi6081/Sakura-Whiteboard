@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createBoard } from "../boards/boardsApi";
 import { recordRecentBoard } from "../boards/recentBoards";
 import { IconAlert } from "../ui/icons";
+import { FujiScene } from "./FujiScene";
 
 /**
  * 首页 / 入口：**免注册直接开板**是唯一主行动点（视觉方案 §4.1）。
@@ -50,14 +51,25 @@ export function HomePage() {
 
   return (
     <div className="wb-home">
-      <div className="wb-home__top">
+      <header className="wb-home__top">
         <a className="wb-brand" href="/">
           <span className="wb-brand__mark" aria-hidden>
             白
           </span>
           白板
         </a>
-      </div>
+        <nav className="wb-home__nav" aria-label="账户入口">
+          <a className="wb-home__nav-link" href="/boards">
+            我的白板
+          </a>
+          <a className="wb-home__nav-link" href="/login">
+            登录
+          </a>
+          <a className="wb-home__nav-link wb-home__nav-link--strong" href="/register">
+            注册
+          </a>
+        </nav>
+      </header>
 
       {offline ? (
         <div className="wb-banner wb-banner--warning" role="status">
@@ -66,63 +78,67 @@ export function HomePage() {
         </div>
       ) : null}
 
-      <main className="wb-home__main">
-        <h1 className="wb-display">打开就能画。</h1>
-        <p className="wb-home__lead">不用注册。想留住它，再登录。</p>
+      <div className="wb-home__stage">
+        <main className="wb-home__main">
+          <p className="wb-home__eyebrow">
+            <span className="wb-home__eyebrow-dot" aria-hidden />
+            免注册 · 打开即画
+          </p>
+          <h1 className="wb-home__headline">打开就能画。</h1>
+          <p className="wb-home__lead">不用注册。想留住它，再登录。</p>
 
-        <div className="wb-home__action">
-          {quotaFull ? (
-            <a className="wb-btn wb-btn--primary wb-btn--lg" href="/login?next=%2Fboards">
-              登录并继续
-            </a>
-          ) : (
-            <button
-              className="wb-btn wb-btn--primary wb-btn--lg"
-              type="button"
-              onClick={() => void start()}
-              disabled={busy || offline}
-              data-testid="home-create-board"
-            >
-              {busy ? <span className="wb-spinner" aria-hidden /> : null}
-              {busy ? (slow ? "还在连接…" : "正在准备画布…") : "直接开一块板"}
-            </button>
-          )}
+          <div className="wb-home__action">
+            {quotaFull ? (
+              <a className="wb-btn wb-btn--primary wb-btn--lg" href="/login?next=%2Fboards">
+                登录并继续
+              </a>
+            ) : (
+              <button
+                className="wb-btn wb-btn--primary wb-btn--lg"
+                type="button"
+                onClick={() => void start()}
+                disabled={busy || offline}
+                data-testid="home-create-board"
+              >
+                {busy ? <span className="wb-spinner" aria-hidden /> : null}
+                {busy ? (slow ? "还在连接…" : "正在准备画布…") : "直接开一块板"}
+              </button>
+            )}
 
-          {error ? (
-            <div className={`wb-inline-note wb-inline-note--${error.kind === "quota" ? "warning" : "danger"}`} role="alert">
-              <IconAlert />
-              <span>{error.message}</span>
-              {error.kind === "error" ? (
-                <button className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text" type="button" onClick={() => void start()}>
-                  重试
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
-            <a className="wb-link" href="/boards">
-              我的白板
-            </a>
-            <a className="wb-link" href="/login">
-              登录
-            </a>
-            <a className="wb-link" href="/register">
-              注册
-            </a>
+            {error ? (
+              <div className={`wb-inline-note wb-inline-note--${error.kind === "quota" ? "warning" : "danger"}`} role="alert">
+                <IconAlert />
+                <span>{error.message}</span>
+                {error.kind === "error" ? (
+                  <button
+                    className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text"
+                    type="button"
+                    onClick={() => void start()}
+                  >
+                    重试
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        </div>
 
-        <ul className="wb-home__points">
-          <li className="wb-home__point">多人实时协作，改动即时可见</li>
-          <li className="wb-home__point">多标签页各自独立，不会互相覆盖</li>
-          <li className="wb-home__point">手机可直接触控绘制</li>
-        </ul>
-        {/* 移动端按 §4.1 收成一行文案，不换三行 */}
-        <p className="wb-home__points-line">实时协作 · 多标签独立 · 手机可画</p>
-      </main>
+          <ul className="wb-home__points">
+            <li className="wb-home__point">多人实时协作，改动即时可见</li>
+            <li className="wb-home__point">多标签页各自独立，不会互相覆盖</li>
+            <li className="wb-home__point">手机可直接触控绘制</li>
+          </ul>
+          {/* 移动端按 §4.1 收成一行文案，不换三行 */}
+          <p className="wb-home__points-line">实时协作 · 多标签独立 · 手机可画</p>
+        </main>
 
-      <footer className="wb-home__foot">白板 v0.3 · 画布渲染 Built on Excalidraw</footer>
+        <FujiScene />
+      </div>
+
+      <footer className="wb-home__foot">
+        <span>白板 v0.3</span>
+        <span aria-hidden>·</span>
+        <span>画布渲染 Built on Excalidraw</span>
+      </footer>
     </div>
   );
 }
