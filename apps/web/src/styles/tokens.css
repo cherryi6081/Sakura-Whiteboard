@@ -128,6 +128,9 @@
   /* 水面反光与波纹是白色高光，用 --paper 半透明派生 */
   --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
   --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
+  /* 入水涟漪用的高光档：不透明、带一点点湖面蓝，比 --lake-ripple 更亮，
+     放大到 2px 描边后仍与湖面静态水纹同色系，不会变成纯白硬边 */
+  --lake-ripple-hi: color-mix(in srgb, var(--paper) 92%, var(--sky-blue-horizon));
 
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",

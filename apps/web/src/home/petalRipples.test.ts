@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { LEFT_PETALS, PETALS, petalGeometry } from "./FujiScene";
 import {
+  CONCURRENCY_WINDOW,
   INNER_PEAK_OPACITY,
   INNER_SPLASH_SECONDS,
   MAX_CONCURRENT_DESKTOP,
   MAX_CONCURRENT_MOBILE,
-  MIN_RIPPLE_X_GAP,
+  MAX_RIPPLE_GAP_SECONDS,
+  MIN_RIPPLE_X_GAP_PX,
+  MIN_RIPPLE_X_GAP_PX_MOBILE,
   OUTER_PEAK_OPACITY,
   OUTER_SPLASH_SECONDS,
   countConcurrent,
+  longestGapSeconds,
+  petalFade,
   planRipples,
   splashFrames,
   timeAtDown,
+  waterTime,
   type PetalPath,
   type RippleInput,
 } from "./petalRipples";
@@ -28,12 +34,13 @@ function viewport(width: number, height: number) {
 }
 
 /** 组装涟漪输入，移动端按 pages.css 的 nth-child 收口过滤 */
-function rippleInputs(mobile: boolean): RippleInput[] {
+function rippleInputs(width: number, height: number): RippleInput[] {
+  const { mobile } = viewport(width, height);
   const all = [...PETALS, ...LEFT_PETALS];
   const out: RippleInput[] = [];
   all.forEach((petal, key) => {
     const localIndex = key < PETALS.length ? key : key - PETALS.length;
-    const limit = key < PETALS.length ? 12 : 5;
+    const limit = key < PETALS.length ? 16 : 8;
     if (mobile && localIndex >= limit) return;
     const geometry = petalGeometry(petal);
     out.push({
@@ -86,6 +93,20 @@ describe("花瓣入水时刻", () => {
     expect(waterlinePct).toBeGreaterThan(90);
     expect(waterlinePct).toBeLessThan(92);
   });
+
+  it.each(VIEWPORTS)("%i×%i：花瓣在水线处才淡出，淡出窗口包住入水时刻", (width, height) => {
+    const { waterlinePct } = viewport(width, height);
+    for (const input of rippleInputs(width, height)) {
+      const at = waterTime(input, waterlinePct, height);
+      const fade = petalFade(at);
+      // 入水之前一直保持满透明度，入水之后才开始收
+      expect(fade.start).toBeLessThanOrEqual(at);
+      expect(fade.end).toBeGreaterThan(at);
+      expect(fade.end).toBeLessThanOrEqual(1);
+      // 淡出窗口很短：不会出现「花瓣在半空里慢慢淡掉」
+      expect(fade.end - fade.start).toBeLessThanOrEqual(0.04);
+    }
+  });
 });
 
 describe("涟漪关键帧", () => {
@@ -109,84 +130,104 @@ describe("涟漪关键帧", () => {
     }
   });
 
-  it("两圈的时长与峰值都在“轻微”范围内", () => {
+  it("两圈的时长与峰值都在“轻微但看得见”的范围内", () => {
     for (const seconds of [OUTER_SPLASH_SECONDS, INNER_SPLASH_SECONDS]) {
       expect(seconds).toBeGreaterThanOrEqual(1.2);
       expect(seconds).toBeLessThanOrEqual(1.8);
     }
-    expect(OUTER_PEAK_OPACITY).toBeLessThanOrEqual(0.35);
-    expect(INNER_PEAK_OPACITY).toBeLessThanOrEqual(0.35);
+    // 上一版 0.32 实测只有 9 个色阶，肉眼看不见；这里锁死「够亮但仍半透明」的区间
+    expect(OUTER_PEAK_OPACITY).toBeGreaterThanOrEqual(0.45);
+    expect(OUTER_PEAK_OPACITY).toBeLessThanOrEqual(0.6);
+    expect(INNER_PEAK_OPACITY).toBeLessThan(OUTER_PEAK_OPACITY);
   });
 });
 
 describe("涟漪落点与并发", () => {
-  it.each(VIEWPORTS)("%i×%i：落点在水线以下水域、横向不越界、并发不超上限", (width, height) => {
+  /** 与 FujiScene 完全一致的参数：移动端用更小的横向间距 */
+  const optionsFor = (width: number, height: number) => {
     const { waterlinePct, minX, maxX, mobile } = viewport(width, height);
+    const gapPx = mobile ? MIN_RIPPLE_X_GAP_PX_MOBILE : MIN_RIPPLE_X_GAP_PX;
+    const gaps = (gapPx / width) * 100;
     const cap = mobile ? MAX_CONCURRENT_MOBILE : MAX_CONCURRENT_DESKTOP;
-    const plans = planRipples(rippleInputs(mobile), {
-      waterlinePct,
-      vh: height,
-      minX,
-      maxX,
-      xGap: MIN_RIPPLE_X_GAP,
+    return {
+      mobile,
       cap,
-      horizon: 900,
-    });
+      gapPct: gaps,
+      gapPx,
+      options: { waterlinePct, vh: height, minX, maxX, xGap: gaps, cap, horizon: 900 },
+    };
+  };
 
-    expect(plans.length).toBeGreaterThan(0);
-    for (const plan of plans) {
-      expect(plan.at).toBeGreaterThan(0);
-      expect(plan.at).toBeLessThan(1);
-      expect(plan.x).toBeGreaterThanOrEqual(minX - 1e-9);
-      expect(plan.x).toBeLessThanOrEqual(maxX + 1e-9);
+  /** 只要两片在同一时刻都可见，横向就必须至少错开设定间距（12px / 5px），否则算「叠成一坨」 */
+  const assertNoBlob = (plans: ReturnType<typeof planRipples>, gapPct: number) => {
+    for (let i = 0; i < plans.length; i++) {
+      for (let j = i + 1; j < plans.length; j++) {
+        if (Math.abs(plans[i].x - plans[j].x) >= gapPct - 1e-9) continue;
+        // 展开两片的出现时刻，检查是否有重叠窗口
+        const startsOf = (plan: (typeof plans)[number]) => {
+          const phase = (((plan.delay + plan.at * plan.cycle) % plan.cycle) + plan.cycle) % plan.cycle;
+          const starts: number[] = [];
+          for (let t = phase; t < 120; t += plan.cycle) starts.push(t);
+          return starts;
+        };
+        for (const a of startsOf(plans[i])) {
+          for (const b of startsOf(plans[j])) {
+            const overlap = Math.min(a + OUTER_SPLASH_SECONDS, b + OUTER_SPLASH_SECONDS) - Math.max(a, b);
+            expect(overlap).toBeLessThanOrEqual(0);
+          }
+        }
+      }
     }
-    for (let i = 1; i < plans.length; i++) {
-      expect(plans[i].x - plans[i - 1].x).toBeGreaterThanOrEqual(MIN_RIPPLE_X_GAP - 1e-9);
-    }
-    expect(countConcurrent(plans, 900)).toBeLessThanOrEqual(cap);
-  });
+  };
+
+  it.each(VIEWPORTS)(
+    "%i×%i：落点在水线以下水域、横向不越界、并发不超上限、任意 4s 内都有涟漪",
+    (width, height) => {
+      const { cap, options } = optionsFor(width, height);
+      const plans = planRipples(rippleInputs(width, height), options);
+
+      expect(plans.length).toBeGreaterThan(0);
+      for (const plan of plans) {
+        expect(plan.at).toBeGreaterThan(0);
+        expect(plan.at).toBeLessThan(1);
+        expect(plan.x).toBeGreaterThanOrEqual(options.minX - 1e-9);
+        expect(plan.x).toBeLessThanOrEqual(options.maxX + 1e-9);
+      }
+      expect(countConcurrent(plans, 900, CONCURRENCY_WINDOW)).toBeLessThanOrEqual(cap);
+      // 4s 空档是硬指标：用户随手一瞥就应该至少看到一次
+      expect(longestGapSeconds(plans, 900)).toBeLessThanOrEqual(MAX_RIPPLE_GAP_SECONDS);
+      // 同一横坐标附近不会同时叠两圈
+      assertNoBlob(plans, options.xGap);
+    },
+  );
 
   it("移动端的涟漪数量少于桌面端", () => {
-    const desktop = viewport(1440, 900);
-    const mobile = viewport(390, 844);
-    const desktopPlans = planRipples(rippleInputs(false), {
-      ...desktop,
-      xGap: MIN_RIPPLE_X_GAP,
-      cap: MAX_CONCURRENT_DESKTOP,
-      horizon: 900,
-    });
-    const mobilePlans = planRipples(rippleInputs(true), {
-      ...mobile,
-      xGap: MIN_RIPPLE_X_GAP,
-      cap: MAX_CONCURRENT_MOBILE,
-      horizon: 900,
-    });
+    const desktop = optionsFor(1440, 900);
+    const mobile = optionsFor(390, 844);
+    const desktopPlans = planRipples(rippleInputs(1440, 900), desktop.options);
+    const mobilePlans = planRipples(rippleInputs(390, 844), mobile.options);
     expect(mobilePlans.length).toBeLessThan(desktopPlans.length);
-    expect(mobilePlans.length).toBeLessThanOrEqual(rippleInputs(true).length);
+    expect(mobilePlans.length).toBeLessThanOrEqual(rippleInputs(390, 844).length);
   });
 
-  it("输出各视口的涟漪数量与并发峰值（供人工核对）", () => {
+  it("输出各视口的涟漪数量、并发峰值与最长空档（供人工核对）", () => {
     const rows = VIEWPORTS.map(([width, height]) => {
-      const { waterlinePct, minX, maxX, mobile } = viewport(width, height);
-      const cap = mobile ? MAX_CONCURRENT_MOBILE : MAX_CONCURRENT_DESKTOP;
-      const plans = planRipples(rippleInputs(mobile), {
-        waterlinePct,
-        vh: height,
-        minX,
-        maxX,
-        xGap: MIN_RIPPLE_X_GAP,
-        cap,
-        horizon: 900,
-      });
+      const { cap, gapPx, options } = optionsFor(width, height);
+      const plans = planRipples(rippleInputs(width, height), options);
+      const minSpacing = plans.reduce(
+        (min, plan, index) => (index === 0 ? min : Math.min(min, plan.x - plans[index - 1].x)),
+        Infinity,
+      );
       return {
         视口: `${width}×${height}`,
-        水线: `${waterlinePct.toFixed(1)}%`,
-        候选花瓣: rippleInputs(mobile).length,
+        水线: `${options.waterlinePct.toFixed(1)}%`,
+        候选花瓣: rippleInputs(width, height).length,
         涟漪数: plans.length,
-        并发峰值: countConcurrent(plans, 900),
+        间距: `${gapPx}px`,
+        最小间距: Number.isFinite(minSpacing) ? `${((minSpacing / 100) * width).toFixed(1)}px` : "—",
+        并发峰值: countConcurrent(plans, 900, CONCURRENCY_WINDOW),
         上限: cap,
-        最早入水: `${(Math.min(...plans.map((p) => p.at)) * 100).toFixed(1)}%`,
-        最晚入水: `${(Math.max(...plans.map((p) => p.at)) * 100).toFixed(1)}%`,
+        最长空档: `${longestGapSeconds(plans, 900).toFixed(2)}s`,
       };
     });
     // eslint-disable-next-line no-console

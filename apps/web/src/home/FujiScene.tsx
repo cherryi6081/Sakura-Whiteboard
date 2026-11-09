@@ -21,16 +21,21 @@ import {
   type BranchSegment,
 } from "./fujiBranches";
 import {
+  FLASH_PEAK_OPACITY,
+  FLASH_SPLASH_SECONDS,
   INNER_PEAK_OPACITY,
   INNER_SPLASH_DELAY,
   INNER_SPLASH_SECONDS,
   MAX_CONCURRENT_DESKTOP,
   MAX_CONCURRENT_MOBILE,
-  MIN_RIPPLE_X_GAP,
+  MIN_RIPPLE_X_GAP_PX,
+  MIN_RIPPLE_X_GAP_PX_MOBILE,
   OUTER_PEAK_OPACITY,
   OUTER_SPLASH_SECONDS,
+  petalFade,
   planRipples,
   splashFrames,
+  waterTime,
   type RippleInput,
 } from "./petalRipples";
 
@@ -399,8 +404,8 @@ function petalStyle(petal: Petal): CSSProperties {
 const ALL_PETALS: ReadonlyArray<Petal> = [...PETALS, ...LEFT_PETALS];
 
 /** 移动端仍可见的花瓣数量，与 pages.css 的 nth-child 收口一一对应 */
-const MOBILE_RIGHT_VISIBLE = 12;
-const MOBILE_LEFT_VISIBLE = 5;
+const MOBILE_RIGHT_VISIBLE = 16;
+const MOBILE_LEFT_VISIBLE = 8;
 
 /** 并发统计的时间窗口（秒）：覆盖 14–29s 的各种周期 */
 const RIPPLE_HORIZON = 900;
@@ -420,6 +425,10 @@ export function FujiScene() {
     if (!layer) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const slots = Array.from(layer.children) as HTMLElement[];
+    const petalNodes = [
+      ...Array.from(document.querySelectorAll<HTMLElement>(".wb-scene__petals:not(.wb-scene__petals--left) .wb-scene__petal")),
+      ...Array.from(document.querySelectorAll<HTMLElement>(".wb-scene__petals--left .wb-scene__petal")),
+    ];
     let animations: Animation[] = [];
     let frame = 0;
 
@@ -453,7 +462,7 @@ export function FujiScene() {
           : true;
         if (!visible) continue;
         const geometry = petalGeometry(petal);
-        inputs.push({
+        const input: RippleInput = {
           key,
           left: petal.left,
           top: petal.top,
@@ -463,7 +472,31 @@ export function FujiScene() {
           path: petal.path,
           sway: geometry.sway,
           fall: geometry.fall,
-        });
+        };
+        inputs.push(input);
+
+        // 花瓣的透明度不能交给固定百分比的关键帧：水线随宽高比在 63%–90% 之间变化，
+        // 手机上的花瓣要到周期 98% 才穿水线，而 CSS 关键帧 92% 就开始淡出，
+        // 等于花瓣在水线之上就消失了，涟漪看起来是凭空冒出来的圆环。
+        // 这里按视口把「淡出窗口」对齐到真正的入水时刻，花瓣一定是看得见地落到水面再消失。
+        const node = petalNodes[key];
+        if (node) {
+          const fade = petalFade(waterTime(input, waterlinePct, vh));
+          const frames: Keyframe[] = [
+            { opacity: 0, offset: 0 },
+            { opacity: petal.opacity, offset: 0.05 },
+            { opacity: petal.opacity, offset: fade.start },
+            { opacity: 0, offset: fade.end },
+          ];
+          if (fade.end < 0.999) frames.push({ opacity: 0, offset: 1 });
+          animations.push(
+            node.animate(frames, {
+              duration: petal.dur * 1000,
+              delay: petal.delay * 1000,
+              iterations: Infinity,
+            }),
+          );
+        }
       }
 
       const plans = planRipples(inputs, {
@@ -471,7 +504,8 @@ export function FujiScene() {
         vh,
         minX,
         maxX,
-        xGap: MIN_RIPPLE_X_GAP,
+        // 间距用 px 定，换算成视口百分比；移动端屏幕窄，间距收得更小才能保证任意 4s 内都有涟漪
+        xGap: ((mobile ? MIN_RIPPLE_X_GAP_PX_MOBILE : MIN_RIPPLE_X_GAP_PX) / vw) * 100,
         cap: mobile ? MAX_CONCURRENT_MOBILE : MAX_CONCURRENT_DESKTOP,
         horizon: RIPPLE_HORIZON,
       });
@@ -482,7 +516,8 @@ export function FujiScene() {
         slot.style.left = `${plan.x.toFixed(2)}%`;
         const rings = Array.from(slot.children) as HTMLElement[];
         const timing = { duration: plan.cycle * 1000, delay: plan.delay * 1000, iterations: Infinity };
-        // 外圈、内圈各一条动画：周期与延迟都跟花瓣一致，只在入水时刻张开一次
+        // 三圈叠加：外圈 1.7s、内圈 1.45s（晚 0.32s）、入水瞬间 0.5s 的亮面短闪。
+        // 都跟花瓣同周期同延迟，只在入水时刻张开一次，不重影也不同拍
         animations.push(
           rings[0].animate(splashFrames(plan.at, plan.cycle, OUTER_SPLASH_SECONDS, OUTER_PEAK_OPACITY), timing),
           rings[1].animate(
@@ -492,6 +527,10 @@ export function FujiScene() {
               INNER_SPLASH_SECONDS,
               INNER_PEAK_OPACITY,
             ),
+            timing,
+          ),
+          rings[2].animate(
+            splashFrames(plan.at, plan.cycle, FLASH_SPLASH_SECONDS, FLASH_PEAK_OPACITY, 0.5),
             timing,
           ),
         );
@@ -651,13 +690,14 @@ export function FujiScene() {
       </svg>
 
       {/* 花瓣入水涟漪：整层只铺在水线以下（高度与 .wb-scene__water 一致），
-          每个占位点由 effect 在初始化 / resize 时写 left，并挂上与花瓣同周期的两圈动画。
-          没有落到水面的花瓣不会挂动画，对应占位点保持 opacity:0 */}
+          每个占位点由 effect 在初始化 / resize 时写 left，并挂上与花瓣同周期的三圈动画：
+          外圈、内圈、入水瞬间的亮面短闪。没有落到水面的花瓣不会挂动画，占位点保持 opacity:0 */}
       <div className="wb-scene__ripples" ref={rippleLayer}>
         {ALL_PETALS.map((_petal, key) => (
           <span className="wb-scene__ripple" key={key}>
             <i className="wb-scene__ripple-ring" />
             <i className="wb-scene__ripple-ring" />
+            <i className="wb-scene__ripple-ring wb-scene__ripple-flash" />
           </span>
         ))}
       </div>

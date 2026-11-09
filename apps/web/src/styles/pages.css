@@ -301,19 +301,41 @@
   height: 0;
 }
 
-/* 一圈极淡的椭圆水纹：横向 44px、纵向 14px，水面透视下自然拉长；
-   颜色取湖面高光档 --lake-ripple，不用纯白硬描边。
-   动画只动 transform / opacity，初始 opacity:0，没挂动画的落点不会显形 */
+/* 一圈淡的水纹：横向 44px、纵向 14px，水面透视下自然拉长；
+   2px 描边 + 近白高光 --lake-ripple-hi，与湖面静态水纹同一色系。
+   内部再垫一层极淡的径向渐变（中间透明、贴边才有一点点亮），让张开时像水面被托起，
+   不是实心色块。动画只动 transform / opacity，初始 opacity:0，
+   没挂动画的落点不会显形 */
 .wb-scene__ripple-ring {
   position: absolute;
   left: -22px;
   top: -7px;
   width: 44px;
   height: 14px;
-  border: 1px solid var(--lake-ripple);
+  border: 2px solid var(--lake-ripple-hi);
   border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    transparent 62%,
+    color-mix(in srgb, var(--lake-ripple-hi) 16%, transparent) 100%
+  );
   opacity: 0;
   will-change: transform, opacity;
+}
+
+/* 入水瞬间的亮面短闪：基准 22×8，0.5s 内从 0.5 倍张到 1 倍就消失。
+   它比两圈主纹更小更亮，负责把「花瓣触水」这一下点出来 */
+.wb-scene__ripple-flash {
+  left: -11px;
+  top: -4px;
+  width: 22px;
+  height: 8px;
+  border-width: 1.5px;
+  background: radial-gradient(
+    closest-side,
+    transparent 58%,
+    color-mix(in srgb, var(--lake-ripple-hi) 24%, transparent) 100%
+  );
 }
 
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
@@ -574,15 +596,16 @@
   }
 }
 
-/* 移动端：场景保持整页背景，花瓣减半 */
+/* 移动端：场景保持整页背景，花瓣减少（但仍要保证湖面每 4s 至少有一圈涟漪） */
 @media (max-width: 767px) {
-  /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
-  .wb-scene__petal:nth-child(n + 13) {
+  /* 花瓣 26 → 16：小屏少画一些，同时给涟漪留足落点 */
+  .wb-scene__petal:nth-child(n + 17) {
     display: none;
   }
 
-  /* 左枝那组只有 10 片，单独按同一比例收到 5 片；两组合计 12 + 5 = 17，不翻倍 */
-  .wb-scene__petals--left .wb-scene__petal:nth-child(n + 6) {
+  /* 左枝那组只有 10 片，单独按同一比例收到 8 片；两组合计 16 + 8 = 24，
+     比桌面 36 片少，涟漪落点也同步减少 */
+  .wb-scene__petals--left .wb-scene__petal:nth-child(n + 9) {
     display: none;
   }
 
