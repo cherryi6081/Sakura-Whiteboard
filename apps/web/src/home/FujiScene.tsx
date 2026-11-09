@@ -20,7 +20,7 @@ export const SCENE_CAPTION = "富士山下，樱花落时。";
  * 模拟风推 + 重力加速；旋转角度按 `--p-spin` 逐片放大，避免整齐划一。
  */
 
-type PetalPath = "a" | "b" | "c";
+type PetalPath = "a" | "b" | "c" | "d";
 type PetalTone = "light" | "mid" | "deep";
 
 type Petal = {
@@ -70,6 +70,24 @@ const PETALS: Petal[] = [
   { left: 84, top: 37, size: 13, dur: 24, delay: -5, spin: 0.9, opacity: 0.52, tone: "light", path: "a" },
   { left: 91, top: 32, size: 18, dur: 17, delay: -15, spin: 1.15, opacity: 0.72, tone: "mid", path: "a" },
   { left: 96, top: 40, size: 15, dur: 22, delay: -7, spin: 1, opacity: 0.6, tone: "deep", path: "b" },
+];
+
+/**
+ * 左侧飘落花瓣：与右侧同属一套花瓣与动画，但起点集中在左半屏、数量更少（10 片 vs 26 片），
+ * 时长与延迟刻意不与右侧重合（右侧多为整数秒的整数倍负延迟），摆动方向统一向右下，
+ * 避免从左侧落下时立刻被甩出画面。路径只用 b（右下弧）与 d（先右后回摆的缓 S 弧）。
+ */
+const LEFT_PETALS: Petal[] = [
+  { left: 3, top: -8, size: 14, dur: 27, delay: -5.5, spin: 0.75, opacity: 0.45, tone: "light", path: "b" },
+  { left: 9, top: 12, size: 19, dur: 21, delay: -13.5, spin: 1.05, opacity: 0.76, tone: "mid", path: "d" },
+  { left: 15, top: -12, size: 12, dur: 29, delay: -20.5, spin: 0.8, opacity: 0.4, tone: "light", path: "d" },
+  { left: 21, top: 6, size: 16, dur: 17, delay: -3.5, spin: 1.2, opacity: 0.68, tone: "deep", path: "b" },
+  { left: 27, top: -4, size: 22, dur: 15, delay: -16.5, spin: 0.9, opacity: 0.84, tone: "mid", path: "d" },
+  { left: 33, top: 18, size: 13, dur: 25, delay: -8.5, spin: 1.25, opacity: 0.52, tone: "light", path: "b" },
+  { left: 38, top: 2, size: 17, dur: 19, delay: -23.5, spin: 1, opacity: 0.7, tone: "deep", path: "d" },
+  { left: 12, top: 28, size: 12, dur: 24, delay: -11.5, spin: 0.95, opacity: 0.44, tone: "light", path: "b" },
+  { left: 24, top: 33, size: 15, dur: 18, delay: -18.5, spin: 1.1, opacity: 0.6, tone: "mid", path: "b" },
+  { left: 41, top: 24, size: 10, dur: 28, delay: -7.5, spin: 1.3, opacity: 0.36, tone: "light", path: "d" },
 ];
 
 /**
@@ -204,6 +222,99 @@ const FAR_BLOSSOMS: Blossom[] = [
   { x: 263, y: 318, size: 10, rot: 14, kind: "half" },
   { x: 436, y: 398, size: 9, rot: -28, kind: "full" },
   { x: 402, y: 470, size: 10, rot: 30, kind: "half" },
+];
+
+/**
+ * 左侧樱花枝（近景）：从画面左缘中低处横向入画，然后向右上折线攀升，
+ * 与右侧"自右上角斜插入画、一路下垂"的枝条方向相反，入画高度也低得多。
+ * 坐标用同一套 520×900 的局部 viewBox，全部是 M/L 折线 + 硬转折，粗细逐段收细。
+ */
+const LEFT_MAIN_BRANCHES: BranchSegment[] = [
+  // 主干：左缘 y≈512 进入（比右枝的 y≈28 低一大截）→ 右上攀升 → 收成末梢
+  { d: "M0 512 L58 492 L104 456", width: 12.5 },
+  { d: "M104 456 L148 432 L182 392", width: 10.5 },
+  { d: "M182 392 L208 350 L216 300", width: 8.4 },
+  { d: "M216 300 L232 258 L258 220", width: 6.2 },
+  { d: "M258 220 L282 186 L300 152", width: 4.2 },
+  { d: "M300 152 L318 126 L326 104", width: 2.4 },
+  // 下侧低横枝：贴着主干入画段向右铺，末端最低
+  { d: "M96 464 L142 486 L192 494 L240 490", width: 5.8 },
+  { d: "M240 490 L280 496 L314 508", width: 3 },
+  // 中段右横枝
+  { d: "M196 372 L246 366 L292 352 L330 344", width: 5 },
+  { d: "M330 344 L356 338", width: 2.4 },
+  // 中段上斜枝
+  { d: "M214 306 L262 292 L306 272", width: 4.4 },
+  // 上段右枝
+  { d: "M262 216 L308 204 L348 190", width: 3.6 },
+  { d: "M348 190 L374 184", width: 1.8 },
+  // 下游短梢与内侧回折枝
+  { d: "M182 392 L166 424 L164 452", width: 3.2 },
+  { d: "M232 258 L204 244 L186 222", width: 3.4 },
+  { d: "M148 432 L120 444 L100 448", width: 2.6 },
+  { d: "M58 492 L34 512 L18 534", width: 2.8 },
+  { d: "M300 152 L286 128 L282 106", width: 1.8 },
+  { d: "M282 186 L300 168", width: 1.6 },
+];
+
+/** 左侧背景枝：更细更淡、整体更靠上，垫在近景枝之后拉开纵深 */
+const LEFT_FAR_BRANCHES: BranchSegment[] = [
+  { d: "M120 246 L176 240 L226 226 L266 216", width: 2.6 },
+  { d: "M226 226 L256 200 L272 174", width: 1.8 },
+  { d: "M40 150 L100 158 L152 150 L192 136", width: 2.2 },
+  { d: "M152 150 L172 122 L178 96", width: 1.5 },
+  { d: "M266 216 L288 244 L296 272", width: 1.4 },
+  { d: "M192 136 L212 112 L220 88", width: 1.4 },
+  { d: "M300 300 L330 288 L354 270", width: 2 },
+  { d: "M354 270 L372 250", width: 1.2 },
+];
+
+/** 左枝近景花：偏小的花簇 + 大量花苞，密度明显低于右侧 */
+const LEFT_BLOSSOMS: Blossom[] = [
+  // 入画处
+  { x: 22, y: 516, size: 11, rot: 24, kind: "full" },
+  { x: 36, y: 528, size: 7, rot: -30, kind: "bud" },
+  // 下侧低横枝末端
+  { x: 318, y: 512, size: 12, rot: -12, kind: "full" },
+  { x: 330, y: 522, size: 7, rot: 34, kind: "bud" },
+  { x: 304, y: 520, size: 8, rot: 56, kind: "half" },
+  // 中段右横枝末端
+  { x: 360, y: 342, size: 13, rot: 8, kind: "full" },
+  { x: 372, y: 350, size: 8, rot: -34, kind: "bud" },
+  { x: 346, y: 350, size: 9, rot: 44, kind: "half" },
+  // 中段上斜枝末端
+  { x: 310, y: 274, size: 11, rot: -18, kind: "full" },
+  { x: 322, y: 282, size: 7, rot: 28, kind: "bud" },
+  // 上段右枝末端
+  { x: 378, y: 186, size: 12, rot: 14, kind: "full" },
+  { x: 388, y: 196, size: 7, rot: -40, kind: "bud" },
+  // 主干中段
+  { x: 208, y: 292, size: 10, rot: 30, kind: "half" },
+  { x: 222, y: 282, size: 8, rot: -22, kind: "bud" },
+  // 下游短梢
+  { x: 160, y: 456, size: 10, rot: 18, kind: "full" },
+  { x: 172, y: 464, size: 7, rot: -28, kind: "bud" },
+  // 末梢
+  { x: 326, y: 100, size: 11, rot: -8, kind: "full" },
+  { x: 338, y: 108, size: 7, rot: 36, kind: "bud" },
+  { x: 280, y: 100, size: 9, rot: 42, kind: "half" },
+  // 内侧回折枝
+  { x: 182, y: 218, size: 9, rot: -26, kind: "half" },
+  // 左下短枝
+  { x: 14, y: 538, size: 9, rot: 20, kind: "bud" },
+];
+
+/** 左侧背景花：整体更小、只保留零星几朵，压在前景枝之后 */
+const LEFT_FAR_BLOSSOMS: Blossom[] = [
+  { x: 272, y: 170, size: 9, rot: 16, kind: "full" },
+  { x: 284, y: 182, size: 6, rot: -30, kind: "bud" },
+  { x: 178, y: 92, size: 8, rot: -14, kind: "half" },
+  { x: 190, y: 102, size: 6, rot: 32, kind: "bud" },
+  { x: 220, y: 84, size: 7, rot: 40, kind: "bud" },
+  { x: 356, y: 266, size: 8, rot: 12, kind: "full" },
+  { x: 368, y: 276, size: 6, rot: -24, kind: "bud" },
+  { x: 296, y: 276, size: 7, rot: 52, kind: "half" },
+  { x: 372, y: 246, size: 7, rot: -36, kind: "bud" },
 ];
 
 /** 水线：山脚与湖面的分界，倒影以它为镜像轴 */
@@ -454,6 +565,34 @@ export function FujiScene() {
         <MountainShapes />
       </svg>
 
+      {/* 左侧樱花枝：从左缘中低处横向入画、向右上折线攀升，与右侧自右上角垂下形成落差。
+          同样先铺背景枯枝（更细更淡、更靠上），再压前景主枝与花朵（更粗更大、位置更低） */}
+      <svg className="wb-scene__branch wb-scene__branch--left" viewBox="0 0 520 900" preserveAspectRatio="xMinYMax meet" focusable="false">
+        <g className="wb-scene__branch-far" fill="none">
+          {LEFT_FAR_BRANCHES.map((segment) => (
+            <path key={segment.d} strokeWidth={segment.width} d={segment.d} />
+          ))}
+        </g>
+        <g opacity="0.62">
+          {LEFT_FAR_BLOSSOMS.map((blossom) => (
+            <BlossomMark key={`l-far-${blossom.x}-${blossom.y}-${blossom.kind}`} {...blossom} />
+          ))}
+        </g>
+        <g fill="none">
+          {LEFT_MAIN_BRANCHES.map((segment) => (
+            <path
+              key={segment.d}
+              className={segment.width >= 4 ? "wb-scene__branch-wood" : "wb-scene__branch-wood-soft"}
+              strokeWidth={segment.width}
+              d={segment.d}
+            />
+          ))}
+        </g>
+        {LEFT_BLOSSOMS.map((blossom) => (
+          <BlossomMark key={`l-${blossom.x}-${blossom.y}-${blossom.kind}`} {...blossom} />
+        ))}
+      </svg>
+
       {/* 右侧樱花枝：背景枯枝先铺一层，前景主枝与花朵压在上面。
           枝条全部由分段 stroke 拼成，宽度逐段收细，模拟主干到末梢的锥度 */}
       <svg className="wb-scene__branch" viewBox="0 0 520 900" preserveAspectRatio="xMaxYMin meet" focusable="false">
@@ -487,6 +626,21 @@ export function FujiScene() {
           <span
             className={`wb-scene__petal wb-scene__petal--${petal.path} wb-scene__petal--${petal.tone}`}
             // 花瓣是纯装饰，index 仅用于稳定 key
+            // eslint-disable-next-line react/no-array-index-key
+            key={index}
+            style={petalStyle(petal)}
+          >
+            <span className="wb-scene__petal-inner" />
+          </span>
+        ))}
+      </div>
+
+      {/* 左侧飘落花瓣：单独一组，起点、时长与延迟都与右侧错开，避免左右同拍 */}
+      <div className="wb-scene__petals wb-scene__petals--left">
+        {LEFT_PETALS.map((petal, index) => (
+          <span
+            className={`wb-scene__petal wb-scene__petal--${petal.path} wb-scene__petal--${petal.tone}`}
+            // 同上：纯装饰，index 仅用于稳定 key
             // eslint-disable-next-line react/no-array-index-key
             key={index}
             style={petalStyle(petal)}

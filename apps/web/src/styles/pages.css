@@ -222,6 +222,17 @@
   stroke-miterlimit: 10;
 }
 
+/* 左侧樱花枝：改锚在左下，从左缘中低处横向入画；宽高比右侧略小，
+   底部只抬到 84% 视口高，任何宽高比下都不越过水线（右枝仍保持原样、会自然垂到水线附近） */
+.wb-scene__branch--left {
+  left: 0;
+  right: auto;
+  top: auto;
+  bottom: 16%;
+  width: min(38%, 480px);
+  height: 78%;
+}
+
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
   stroke: var(--branch-brown-900);
@@ -307,6 +318,10 @@
 
 .wb-scene__petal--c {
   animation-name: wb-petal-path-c;
+}
+
+.wb-scene__petal--d {
+  animation-name: wb-petal-path-d;
 }
 
 .wb-scene__petal-inner {
@@ -422,6 +437,33 @@
   }
 }
 
+/* 左枝专用：先向右下摆出、再回摆一点、最后继续右下，整体比 a/b/c 更缓 */
+@keyframes wb-petal-path-d {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+    animation-timing-function: ease-in;
+  }
+  9% {
+    opacity: var(--p-opacity);
+  }
+  37% {
+    transform: translate3d(4vw, 21vh, 0) rotate(calc(85deg * var(--p-spin)));
+    animation-timing-function: ease-in-out;
+  }
+  71% {
+    transform: translate3d(1.5vw, 47vh, 0) rotate(calc(190deg * var(--p-spin)));
+    animation-timing-function: ease-in;
+  }
+  91% {
+    opacity: var(--p-opacity);
+  }
+  100% {
+    transform: translate3d(6vw, 79vh, 0) rotate(calc(300deg * var(--p-spin)));
+    opacity: 0;
+  }
+}
+
 .wb-home__foot {
   position: relative;
   z-index: 2;
@@ -449,6 +491,11 @@
 @media (max-width: 767px) {
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
   .wb-scene__petal:nth-child(n + 13) {
+    display: none;
+  }
+
+  /* 左枝那组只有 10 片，单独按同一比例收到 5 片；两组合计 12 + 5 = 17，不翻倍 */
+  .wb-scene__petals--left .wb-scene__petal:nth-child(n + 6) {
     display: none;
   }
 
