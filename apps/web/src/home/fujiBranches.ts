@@ -273,6 +273,18 @@ const RIGHT_SPEC: TreeSpec = {
     { id: "r-t8", parent: "r-b4", kind: "twig", t: 0.93, angle: -42, pieces: 1, length: 40, widths: [1.9] },
     { id: "r-t9", parent: "r-trunk-12", kind: "twig", t: 0.6, angle: -40, pieces: 1, length: 44, widths: [2.2] },
     { id: "r-t10", parent: "r-trunk-10", kind: "twig", t: 0.5, angle: 44, pieces: 1, length: 48, widths: [2.4] },
+    // 加密层：补在主干空档上的一级侧枝，位置更靠树冠中部，长度与直径都小于原有侧枝，
+    // 让新增枝叶落进中景而不是把外侧轮廓再撑大一圈
+    { id: "r-b6", parent: "r-trunk-4", kind: "branch", t: 0.55, angle: -46, pieces: 2, bend: -12, length: 96, widths: [4.4, 3.7] },
+    { id: "r-b7", parent: "r-trunk-6", kind: "branch", t: 0.5, angle: 48, pieces: 2, bend: 14, length: 84, widths: [4, 3.4] },
+    { id: "r-b8", parent: "r-trunk-8", kind: "branch", t: 0.55, angle: -44, pieces: 2, bend: -12, length: 78, widths: [3.6, 3.1] },
+    // 新增侧枝上的二级末梢，每根侧枝两折各挂一根，避免同一段上分叉过密
+    { id: "r-t11", parent: "r-b6", kind: "twig", t: 0.45, angle: -38, pieces: 1, length: 46, widths: [2.4] },
+    { id: "r-t12", parent: "r-b6-2", kind: "twig", t: 0.8, angle: 40, pieces: 1, length: 38, widths: [2.1] },
+    { id: "r-t13", parent: "r-b7", kind: "twig", t: 0.5, angle: 42, pieces: 1, length: 42, widths: [2.2] },
+    { id: "r-t14", parent: "r-b7-2", kind: "twig", t: 0.82, angle: -36, pieces: 1, length: 34, widths: [1.9] },
+    { id: "r-t15", parent: "r-b8", kind: "twig", t: 0.55, angle: -40, pieces: 1, length: 38, widths: [2] },
+    { id: "r-t16", parent: "r-b8-2", kind: "twig", t: 0.8, angle: 44, pieces: 1, length: 32, widths: [1.8] },
   ],
 };
 
@@ -317,6 +329,16 @@ const LEFT_SPEC: TreeSpec = {
     { id: "l-t8", parent: "l-b5", kind: "twig", t: 0.65, angle: -38, pieces: 1, length: 34, widths: [1.6] },
     { id: "l-t9", parent: "l-trunk-11", kind: "twig", t: 0.55, angle: -40, pieces: 1, length: 40, widths: [2.2] },
     { id: "l-t10", parent: "l-trunk-9", kind: "twig", t: 0.5, angle: 42, pieces: 1, length: 44, widths: [2.4] },
+    // 加密层：左侧同样只补主干空档，枝条比右侧更短、角度更贴近横向，保持左侧偏低疏朗的形态
+    { id: "l-b6", parent: "l-trunk-3", kind: "branch", t: 0.5, angle: 44, pieces: 2, bend: 12, length: 96, widths: [4.6, 3.9] },
+    { id: "l-b7", parent: "l-trunk-5", kind: "branch", t: 0.5, angle: -40, pieces: 2, bend: -12, length: 82, widths: [3.9, 3.3] },
+    { id: "l-b8", parent: "l-trunk-7", kind: "branch", t: 0.5, angle: 44, pieces: 2, bend: 10, length: 70, widths: [3.3, 2.8] },
+    { id: "l-t11", parent: "l-b6", kind: "twig", t: 0.5, angle: -38, pieces: 1, length: 44, widths: [2.4] },
+    { id: "l-t12", parent: "l-b6-2", kind: "twig", t: 0.8, angle: 40, pieces: 1, length: 36, widths: [2.1] },
+    { id: "l-t13", parent: "l-b7", kind: "twig", t: 0.55, angle: 44, pieces: 1, length: 38, widths: [2.1] },
+    { id: "l-t14", parent: "l-b7-2", kind: "twig", t: 0.82, angle: -36, pieces: 1, length: 32, widths: [1.9] },
+    { id: "l-t15", parent: "l-b8", kind: "twig", t: 0.55, angle: -40, pieces: 1, length: 34, widths: [1.9] },
+    { id: "l-t16", parent: "l-b8-2", kind: "twig", t: 0.8, angle: 42, pieces: 1, length: 30, widths: [1.8] },
   ],
 };
 
@@ -337,6 +359,12 @@ const RIGHT_FAR_SPEC: TreeSpec = {
     },
     { id: "rf-b1", parent: "rf-trunk-2", kind: "branch", t: 0.6, angle: 46, pieces: 1, length: 54, widths: [1.8] },
     { id: "rf-t1", parent: "rf-b1", kind: "twig", t: 0.7, angle: 40, pieces: 1, length: 32, widths: [1.2] },
+    // 背景层加密：只补最细一级，让远景更繁密但仍弱于前景
+    { id: "rf-b2", parent: "rf-trunk-1", kind: "branch", t: 0.55, angle: -42, pieces: 1, length: 42, widths: [1.6] },
+    { id: "rf-b3", parent: "rf-trunk-2", kind: "branch", t: 0.2, angle: 44, pieces: 1, length: 36, widths: [1.4] },
+    { id: "rf-t2", parent: "rf-b2", kind: "twig", t: 0.7, angle: 40, pieces: 1, length: 26, widths: [1.05] },
+    { id: "rf-t3", parent: "rf-b3", kind: "twig", t: 0.7, angle: -38, pieces: 1, length: 22, widths: [0.95] },
+    { id: "rf-t4", parent: "rf-b1", kind: "twig", t: 0.3, angle: -40, pieces: 1, length: 24, widths: [1.1] },
   ],
 };
 
@@ -356,6 +384,11 @@ const LEFT_FAR_SPEC: TreeSpec = {
     },
     { id: "lf-b1", parent: "lf-trunk-2", kind: "branch", t: 0.6, angle: -44, pieces: 1, length: 46, widths: [1.6] },
     { id: "lf-t1", parent: "lf-b1", kind: "twig", t: 0.7, angle: 44, pieces: 1, length: 28, widths: [1.1] },
+    { id: "lf-b2", parent: "lf-trunk-1", kind: "branch", t: 0.55, angle: 42, pieces: 1, length: 38, widths: [1.6] },
+    { id: "lf-b3", parent: "lf-trunk-2", kind: "branch", t: 0.2, angle: -40, pieces: 1, length: 32, widths: [1.3] },
+    { id: "lf-t2", parent: "lf-b2", kind: "twig", t: 0.7, angle: -38, pieces: 1, length: 24, widths: [1] },
+    { id: "lf-t3", parent: "lf-b3", kind: "twig", t: 0.7, angle: 40, pieces: 1, length: 20, widths: [0.9] },
+    { id: "lf-t4", parent: "lf-b1", kind: "twig", t: 0.25, angle: 40, pieces: 1, length: 22, widths: [1.1] },
   ],
 };
 
@@ -414,6 +447,17 @@ const RIGHT_BLOSSOM_SPECS: BlossomSpec[] = [
   { segmentId: "r-t9", t: 0.94, size: 12, rot: 10, kind: "full" },
   { segmentId: "r-t9", t: 0.74, size: 8, rot: -34, kind: "bud" },
   { segmentId: "r-t9", t: 0.55, size: 7, rot: 30, kind: "bud" },
+  // 新增末梢：每根 1–2 朵小花，沿枝身错开挂点，留出可见的枝段
+  { segmentId: "r-t11", t: 0.92, size: 9, rot: 16, kind: "full" },
+  { segmentId: "r-t11", t: 0.62, size: 6, rot: -30, kind: "bud" },
+  { segmentId: "r-t12", t: 0.9, size: 8, rot: 44, kind: "half" },
+  { segmentId: "r-t12", t: 0.64, size: 6, rot: -18, kind: "bud" },
+  { segmentId: "r-t13", t: 0.92, size: 9, rot: -8, kind: "full" },
+  { segmentId: "r-t13", t: 0.66, size: 7, rot: 38, kind: "half" },
+  { segmentId: "r-t14", t: 0.86, size: 6, rot: 26, kind: "bud" },
+  { segmentId: "r-t15", t: 0.9, size: 8, rot: 52, kind: "half" },
+  { segmentId: "r-t15", t: 0.62, size: 6, rot: -26, kind: "bud" },
+  { segmentId: "r-t16", t: 0.86, size: 6, rot: 34, kind: "bud" },
 ];
 
 const LEFT_BLOSSOM_SPECS: BlossomSpec[] = [
@@ -437,16 +481,31 @@ const LEFT_BLOSSOM_SPECS: BlossomSpec[] = [
   { segmentId: "l-t9", t: 0.94, size: 12, rot: 12, kind: "full" },
   { segmentId: "l-t9", t: 0.74, size: 7, rot: 36, kind: "bud" },
   { segmentId: "l-t9", t: 0.55, size: 7, rot: -26, kind: "bud" },
+  { segmentId: "l-t11", t: 0.92, size: 9, rot: 20, kind: "full" },
+  { segmentId: "l-t11", t: 0.6, size: 6, rot: -32, kind: "bud" },
+  { segmentId: "l-t12", t: 0.9, size: 7, rot: 46, kind: "half" },
+  { segmentId: "l-t12", t: 0.64, size: 6, rot: -20, kind: "bud" },
+  { segmentId: "l-t13", t: 0.92, size: 8, rot: -10, kind: "half" },
+  { segmentId: "l-t14", t: 0.86, size: 6, rot: 30, kind: "bud" },
+  { segmentId: "l-t15", t: 0.9, size: 8, rot: 12, kind: "full" },
+  { segmentId: "l-t15", t: 0.6, size: 6, rot: -34, kind: "bud" },
+  { segmentId: "l-t16", t: 0.85, size: 6, rot: 40, kind: "bud" },
 ];
 
 const RIGHT_FAR_BLOSSOM_SPECS: BlossomSpec[] = [
   { segmentId: "rf-t1", t: 0.9, size: 7, rot: 20, kind: "bud" },
   { segmentId: "rf-trunk-3", t: 0.9, size: 8, rot: -16, kind: "half" },
+  { segmentId: "rf-t2", t: 0.86, size: 6, rot: -26, kind: "bud" },
+  { segmentId: "rf-t3", t: 0.86, size: 6, rot: 32, kind: "bud" },
+  { segmentId: "rf-t4", t: 0.86, size: 7, rot: 44, kind: "half" },
 ];
 
 const LEFT_FAR_BLOSSOM_SPECS: BlossomSpec[] = [
   { segmentId: "lf-t1", t: 0.9, size: 6, rot: -22, kind: "bud" },
   { segmentId: "lf-trunk-3", t: 0.9, size: 8, rot: 18, kind: "half" },
+  { segmentId: "lf-t2", t: 0.86, size: 6, rot: 28, kind: "bud" },
+  { segmentId: "lf-t3", t: 0.86, size: 6, rot: -34, kind: "bud" },
+  { segmentId: "lf-t4", t: 0.86, size: 7, rot: -18, kind: "half" },
 ];
 
 export type Tree = { segments: BranchSegment[]; byId: Map<string, BranchSegment>; blossoms: Blossom[] };
@@ -580,6 +639,18 @@ export function validateTree(tree: Tree): Violation[] {
     if ((childCount.get(seg.id) ?? 0) > 0) out.push({ segmentId: b.segmentId, rule: "花只长在末梢", detail: "该段还有子枝" });
     const dist = distanceToPolyline(seg.points, [b.x, b.y]);
     if (dist > seg.width / 2 + 8) out.push({ segmentId: b.segmentId, rule: "花心贴枝", detail: `离枝 ${dist.toFixed(1)}` });
+  }
+
+  // 同一末梢上的花：最多 3 朵，且沿枝身留出可见间隙（弧长比例差 ≥ 0.12）
+  const perSegment = new Map<string, Blossom[]>();
+  for (const b of blossoms) perSegment.set(b.segmentId, [...(perSegment.get(b.segmentId) ?? []), b]);
+  for (const [segmentId, list] of perSegment) {
+    if (list.length > 3) out.push({ segmentId, rule: "同一末梢花不过密", detail: `${list.length} 朵` });
+    const sorted = [...list].sort((a, b) => a.t - b.t);
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i].t - sorted[i - 1].t;
+      if (gap < 0.12) out.push({ segmentId, rule: "花与花留出枝身", detail: `间距 ${gap.toFixed(2)}` });
+    }
   }
   return out;
 }
