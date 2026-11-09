@@ -1,6 +1,12 @@
 import type { CSSProperties } from "react";
 
 /**
+ * 首页右下角题词。呈现已从首页移除（节点与 `.wb-scene__caption` 样式一并删除），
+ * 文案按“能保留就保留在代码层”的要求留作常量，需要时再挂回场景。
+ */
+export const SCENE_CAPTION = "富士山下，樱花落时。";
+
+/**
  * 首页整页场景：富士山全景 + 右侧樱花枝 + 曲线飘散花瓣。
  *
  * 实现选择：花瓣用 **纯 CSS 多关键帧 transform/opacity**，不用 canvas。
@@ -481,8 +487,6 @@ export function FujiScene() {
           </span>
         ))}
       </div>
-
-      <p className="wb-scene__caption">富士山下，樱花落时。</p>
     </div>
   );
 }

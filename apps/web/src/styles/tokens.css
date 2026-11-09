@@ -129,9 +129,6 @@
   --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
   --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
 
-  /* 右下角题词压在浅色山脊/水面上，用一小块白粉底托住深色字（纯装饰文字） */
-  --day-caption-surface: color-mix(in srgb, var(--paper) 74%, transparent);
-
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
     "Source Han Sans SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;

@@ -380,22 +380,6 @@
   }
 }
 
-.wb-scene__caption {
-  position: absolute;
-  right: clamp(var(--space-6), 5vw, 72px);
-  bottom: clamp(var(--space-6), 6vh, 64px);
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-caption);
-  line-height: var(--lh-caption);
-  letter-spacing: 0.12em;
-  /* 题词压在浅色山脊/水面上，补一块白粉小底 + 深色字 */
-  padding: 4px 10px;
-  color: var(--rose-900);
-  background: var(--day-caption-surface);
-  border-radius: var(--radius-pill);
-}
-
 .wb-home__foot {
   position: relative;
   z-index: 2;
@@ -429,10 +413,6 @@
   .wb-scene__branch {
     width: 58%;
     height: 72%;
-  }
-
-  .wb-scene__caption {
-    display: none;
   }
 }
 
