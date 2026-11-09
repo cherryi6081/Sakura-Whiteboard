@@ -1,10 +1,10 @@
 import type { CSSProperties } from "react";
 
 /**
- * 首页整页场景：富士山全景 + 右侧樱花枝 + 曲线飘散花瓣 + 两只仙鹤。
+ * 首页整页场景：富士山全景 + 右侧樱花枝 + 曲线飘散花瓣。
  *
- * 实现选择：花瓣与鹤都用 **纯 CSS 多关键帧 transform/opacity**，不用 canvas。
- * 理由：元素数量有限（桌面 26 片花瓣 + 2 只鹤），CSS 动画由合成器在 GPU 上推进，
+ * 实现选择：花瓣用 **纯 CSS 多关键帧 transform/opacity**，不用 canvas。
+ * 理由：元素数量有限（桌面 26 片花瓣），CSS 动画由合成器在 GPU 上推进，
  * 不占主线程、也不需要 rAF 常驻循环；canvas 在这个量级反而要自管 DPR、清理与
  * prefers-reduced-motion，收益不大。代价是路径在 CSS 里写死，靠 `path` 变体
  * + 每个元素的时长/延迟/旋转系数制造差异，避免 26 段重复关键帧。
@@ -64,55 +64,6 @@ const PETALS: Petal[] = [
   { left: 84, top: 37, size: 13, dur: 24, delay: -5, spin: 0.9, opacity: 0.52, tone: "light", path: "a" },
   { left: 91, top: 32, size: 18, dur: 17, delay: -15, spin: 1.15, opacity: 0.72, tone: "mid", path: "a" },
   { left: 96, top: 40, size: 15, dur: 22, delay: -7, spin: 1, opacity: 0.6, tone: "deep", path: "b" },
-];
-
-type Crane = {
-  className: string;
-  /** 剪影宽度（px） */
-  size: number;
-  /** 全程飞行时长（s），刻意放慢 */
-  dur: number;
-  /** 负延迟让首屏不是两只一起从右下角起飞 */
-  delay: number;
-  opacity: number;
-  /** 路径四段的纵向位置（vh）：右下画外 → 上扬弧 → 左上画外 */
-  y0: string;
-  y1: string;
-  y2: string;
-  y3: string;
-  /** 上下起伏周期（s） */
-  bob: number;
-  /** 振翅周期（s） */
-  flap: number;
-};
-
-const CRANES: Crane[] = [
-  {
-    className: "wb-crane--one",
-    size: 138,
-    dur: 38,
-    delay: -7,
-    opacity: 0.9,
-    y0: "80vh",
-    y1: "58vh",
-    y2: "32vh",
-    y3: "6vh",
-    bob: 3.4,
-    flap: 3.2,
-  },
-  {
-    className: "wb-crane--two",
-    size: 104,
-    dur: 47,
-    delay: -28,
-    opacity: 0.78,
-    y0: "70vh",
-    y1: "46vh",
-    y2: "20vh",
-    y3: "-2vh",
-    bob: 4.2,
-    flap: 3.9,
-  },
 ];
 
 /**
@@ -421,178 +372,6 @@ function petalStyle(petal: Petal): CSSProperties {
   } as CSSProperties;
 }
 
-function craneStyle(crane: Crane): CSSProperties {
-  return {
-    "--c-size": `${crane.size}px`,
-    "--c-dur": `${crane.dur}s`,
-    "--c-delay": `${crane.delay}s`,
-    "--c-opacity": crane.opacity,
-    "--c-y0": crane.y0,
-    "--c-y1": crane.y1,
-    "--c-y2": crane.y2,
-    "--c-y3": crane.y3,
-    "--c-bob": `${crane.bob}s`,
-    "--c-flap": `${crane.flap}s`,
-  } as CSSProperties;
-}
-
-/** 一片羽毛：羽根沿翼后缘张开 width，两侧略带弧度，羽端收成一个尖点 */
-function featherPath(root: [number, number], tip: [number, number], width: number): string {
-  const [rx, ry] = root;
-  const [tx, ty] = tip;
-  const dx = tx - rx;
-  const dy = ty - ry;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = (-dy / len) * (width / 2);
-  const ny = (dx / len) * (width / 2);
-  const mx = rx + dx * 0.55;
-  const my = ry + dy * 0.55;
-  const round = (n: number) => Math.round(n * 10) / 10;
-  const p = (x: number, y: number) => `${round(x)} ${round(y)}`;
-  return (
-    `M${p(rx + nx, ry + ny)} ` +
-    `Q${p(mx + nx * 0.8, my + ny * 0.8)} ${p(tx, ty)} ` +
-    `Q${p(mx - nx * 0.8, my - ny * 0.8)} ${p(rx - nx, ry - ny)} Z`
-  );
-}
-
-type Feather = { root: [number, number]; tip: [number, number]; width: number };
-
-/** 远翼翼尖：三片分开的羽片，长度与朝向逐片错开，靠近躯干的一段被躯干遮住 */
-const FAR_TIP_FEATHERS: Feather[] = [
-  { root: [36, 2.4], tip: [25.4, 0.6], width: 4.2 },
-  { root: [33.2, 4.6], tip: [21.8, 3.6], width: 4.2 },
-  { root: [30.6, 6.8], tip: [19, 7.6], width: 4 },
-];
-
-/** 近翼初级飞羽：沿翼后缘从翼尖向体侧逐根排布，羽端尖、长度与方向略有参差 */
-const NEAR_PRIMARIES: Feather[] = [
-  { root: [40, 54.8], tip: [24.6, 57.6], width: 3 },
-  { root: [41.6, 52.8], tip: [25.8, 60.8], width: 3 },
-  { root: [43.2, 50.8], tip: [28.4, 63.2], width: 3 },
-  { root: [44.8, 48.8], tip: [32, 64.2], width: 3 },
-  { root: [46.4, 46.8], tip: [35.8, 63], width: 2.8 },
-];
-
-/** 近翼次级飞羽：靠体侧的一组更短的白羽，压在初级飞羽根部上，形成层叠 */
-const NEAR_SECONDARIES: Feather[] = [
-  { root: [48.6, 44.4], tip: [43, 49.2], width: 4 },
-  { root: [50.6, 41.8], tip: [45.4, 46.6], width: 4 },
-  { root: [52.6, 39.4], tip: [47.8, 44.4], width: 3.8 },
-];
-
-/**
- * 仙鹤剪影（细化版）：朝右绘制，由 CSS `scaleX(-1)` 镜像成向左飞。
- *
- * 绘制顺序就是前后层次（先画的在下面）：
- * 腿脚 → 远翼 → 尾羽 → 颈 → 躯干（含明暗）→ 近翼 → 头颈细节。
- * - 躯干：多点控制的自绘轮廓——胸骨龙骨是最前凸点，胸到腹收进去、腹部圆而下垂，
- *   背线自肩向后逐渐下压，尾根一点收束并与尾羽衔接；体侧另压一道极轻的羽面影做纵深。
- * - 颈：先画、颈根压进胸口，由躯干覆盖接缝，颈根粗、向前上方引出，与胸口形成颈-胸夹角。
- * - 远翼：整组画在躯干之前，只有与躯干相交的根部被遮挡，其余轮廓完整；
- *   翼面分主羽面 + 三片分开的翼尖羽 + 两道羽轴 + 一道后缘分层线。
- * - 近翼：整组画在躯干之后（最上层），翼根搭在肩与体侧上、始终不被躯干切断；
- *   翼面分覆盖羽区（白）与飞羽区（墨黑）：前缘一道连续轮廓、五根逐根分离的初级飞羽、
- *   三根更短的次级飞羽压在其根部，羽间只用同色相极细线分界，另有一道极轻的翼下羽面影。
- * - 两翼都以肩点 (67,31) 为旋转轴，旋转时翼根只在肩窝里小幅摆动，不会穿进躯干。
- * - 头颈：独立头形 + 长喙 + 眼位 + 头顶红冠，颈上有向头部收束的墨色楔形。
- * - 腿脚：髋点收在腹线内侧，大腿—胫—脚趾三段，关节处折角，脚趾分开并向后收。
- * - 配色按参考图：白羽面、冷灰羽影、墨黑飞羽与尾羽、朱红顶冠、石板灰喙、墨色腿。
- *   白羽本身在浅蓝天空上不足 3:1，由 --crane-plume-edge 羽缘描边承担可辨性。
- */
-function CraneSilhouette() {
-  return (
-    <svg className="wb-crane__svg" viewBox="0 0 120 72" focusable="false">
-      {/* 腿脚：髋点收在腹线内侧（33/35,42 一带），先画，被躯干与近翼盖住根部 */}
-      <path className="wb-crane__leg" d="M33 42 L21 47 L8 52 M8 52 L2 53.5 M8 52 L4 55" />
-      <path className="wb-crane__leg" d="M35 42.8 L23 48.5 L12 55 M12 55 L6 56.5 M12 55 L8 58" />
-
-      {/* 远翼：整体在躯干之下，只在与躯干相交处被遮挡；翼面 + 三片分开的翼尖羽 + 羽轴 */}
-      <g className="wb-crane__wing wb-crane__wing--far">
-        <path d="M67 29.6 C 61.4 22.6 54.4 15.2 47.4 9.4 C 43.2 6 39.4 3.2 36.2 1.8 L 30.4 6.8 C 33.8 9.6 37.6 13.4 42 17.6 C 47.8 23 55.6 27.8 67 31.4 Z" />
-        {FAR_TIP_FEATHERS.map((feather) => (
-          <path
-            key={`far-${feather.tip[0]}-${feather.tip[1]}`}
-            className="wb-crane__scale"
-            d={featherPath(feather.root, feather.tip, feather.width)}
-          />
-        ))}
-        <path className="wb-crane__feather" d="M60.6 26.4 C 54.6 20.8 48.2 15 41.8 9.8" />
-        <path className="wb-crane__feather" d="M57 28.6 C 51.2 23.2 45.4 17.8 39.6 12.8" />
-        <path className="wb-crane__feather" d="M43 18 C 47 21 51.8 24.2 57 26.6" />
-      </g>
-
-      {/* 尾羽：两短一长的白羽片从尾根向后收尖，羽缘带冷板岩描边；根部被躯干盖住，不断口 */}
-      <path className="wb-crane__body" d="M31 37.8 L 18 35.5 L 19 38.5 L 32 41 Z" />
-      <path className="wb-crane__body" d="M31 40.4 L 16 40.5 L 17.5 44 L 31 42.8 Z" />
-      <path className="wb-crane__body" d="M30 42.8 L 18 46.5 L 20.5 49.5 L 32 44.2 Z" />
-
-      {/* 脖子：先画，颈根（64,32.2 → 69.6,34.4）压进胸口，由躯干盖住接缝；
-          上缘自肩陡起、中段外凸，下缘向胸骨前端斜落，与胸口形成颈-胸夹角 */}
-      <path
-        className="wb-crane__body"
-        d="M64 32.2 C 65 26.2 71.5 21.2 78.5 17.8 C 83.5 15.5 88 15 91 15 L 91 19.6 C 87 20.6 83 22 79.2 24.4 C 75.2 27.4 71.6 30.6 69.6 34.4 C 69.2 35 68.9 35.2 68.8 35.2 Z"
-      />
-      {/* 颈上墨色楔形：贴着头部、只占颈前段约三分之一，向颈中收细 */}
-      <path className="wb-crane__primary" d="M92.4 15.6 L 92.6 17.9 L 85.2 20.6 L 84.6 19.1 L 91.2 16.3 Z" />
-
-      {/* 躯干：多点自绘轮廓。转折点依次为
-          尾根 (28.5,39.8) → 后腰 (33.6,42.1) → 腹底 (47,44.6) → 胸腹转折 (59,43.5)
-          → 龙骨下缘 (67.6,41.2) → 龙骨前凸 (71.3,36.4) → 胸前肩窝 (68.2,32.6)
-          → 肩背 (59,29.8) → 背线向后下压 (43,31.3) → 回到尾根 */}
-      <path
-        className="wb-crane__body"
-        d="M28.5 39.8 C 29.8 36.4 35.5 33.2 43 31.3 C 48 30 54 29.5 59 29.8 C 62.6 30.1 65.8 31.2 68.2 32.6 C 70.2 33.7 71.4 35 71.3 36.4 C 71.4 38.4 70 40.2 67.6 41.2 C 64 42.4 59 43.5 54 44 C 47 44.6 39 43.8 33.6 42.1 C 30.2 41.3 28.4 40.6 28.5 39.8 Z"
-      />
-      {/* 腹部明暗：沿胸骨下缘到腹底的窄条羽面影，交代腹线圆度 */}
-      <path className="wb-crane__shade" d="M37 43.8 C 45 44.7 53 44.7 60 43 L 59 41.4 C 53 43.2 45 43.6 37.6 43 Z" />
-      {/* 体侧收窄：肩胛到腰的一道极轻羽面影，让前后有纵深，不压成灰块 */}
-      <path
-        className="wb-crane__shade wb-crane__shade--soft"
-        d="M58 33.7 C 52 34.5 46 35.9 40 37.9 C 36.6 39.1 33.8 40.3 31.7 41.7 L 34.2 42.2 C 36.6 40.8 39.4 39.6 43 38.4 C 49 36.2 54.6 34.9 58 34.5 Z"
-      />
-      {/* 颈后转折：浅灰细线交代颈根与胸口的体块分界 */}
-      <path className="wb-crane__feather" d="M72 26 C 76.5 23 82 20.6 86.5 19.6" />
-
-      {/* 近翼：画在躯干之后，压在身上；翼根（66,31.4 → 52.6,38.6）从肩搭到体侧，
-          不会被躯干切断。翼面是翼根最宽、向翼尖收窄的楔形，后缘挂五根初级飞羽 + 三根次级飞羽 */}
-      <g className="wb-crane__wing wb-crane__wing--near">
-        <path d="M66 31.4 C 62.6 30.6 58.6 31.4 55.4 33.4 C 50.6 36.4 44.6 41.6 39.6 46.6 C 37.4 48.8 35.6 49.8 34.8 50.2 L 39.4 55.8 C 41.4 52.8 44 49.4 47 46.2 C 49.6 43.4 51.4 40.8 52.6 38.6 C 56 34.6 61 32.4 66 31.4 Z" />
-        {/* 翼下厚度：贴着后缘内侧的一道极轻羽面影，交代覆羽压在飞羽上的落差 */}
-        <path
-          className="wb-crane__shade wb-crane__shade--soft"
-          d="M40.8 54.4 C 43 51 45.8 47.6 49 44.6 C 51 42.6 52.4 40.8 53.4 39.4 L 51.8 38.6 C 50.8 40 49.4 41.6 47.6 43.4 C 44.6 46.4 42.2 49.8 40.2 53 Z"
-        />
-        {/* 覆羽分层：两道沿翼展方向的细线，交代内侧覆羽区 */}
-        <path className="wb-crane__feather" d="M58.6 33.6 C 54.6 36.2 50.6 40.4 47 44.6" />
-        <path className="wb-crane__feather" d="M56.2 32.6 C 52.4 35.4 48.4 39.6 45 43.8" />
-        {/* 初级飞羽：逐根分离，羽端尖、长度与朝向递变，是翼尖最快的识别特征 */}
-        {NEAR_PRIMARIES.map((feather) => (
-          <path
-            key={`near-primary-${feather.tip[0]}-${feather.tip[1]}`}
-            className="wb-crane__primary"
-            d={featherPath(feather.root, feather.tip, feather.width)}
-          />
-        ))}
-        {/* 次级飞羽：压住初级飞羽根部的一组短白羽，边缘用细线而不是粗描边 */}
-        {NEAR_SECONDARIES.map((feather) => (
-          <path
-            key={`near-secondary-${feather.tip[0]}-${feather.tip[1]}`}
-            className="wb-crane__scale"
-            d={featherPath(feather.root, feather.tip, feather.width)}
-          />
-        ))}
-      </g>
-
-      {/* 头颈：白羽头形 + 石板灰长喙 + 墨色眼位 + 头顶朱红冠（冠压在头顶，不留缝） */}
-      <circle className="wb-crane__body" cx="94.5" cy="17.2" r="3.2" />
-      <path className="wb-crane__beak" d="M96.9 14.8 L 116.8 12.2 L 117.2 13.4 L 97.6 18.6 Z" />
-      <ellipse className="wb-crane__crown" cx="94.2" cy="14.6" rx="2.2" ry="0.95" transform="rotate(-12 94.2 14.6)" />
-      <circle className="wb-crane__eye" cx="95.6" cy="17" r="0.8" />
-    </svg>
-  );
-}
-
 export function FujiScene() {
   return (
     <div className="wb-home__scene" aria-hidden="true">
@@ -700,16 +479,6 @@ export function FujiScene() {
           >
             <span className="wb-scene__petal-inner" />
           </span>
-        ))}
-      </div>
-
-      <div className="wb-scene__cranes">
-        {CRANES.map((crane) => (
-          <div className={`wb-crane ${crane.className}`} key={crane.className} style={craneStyle(crane)}>
-            <div className="wb-crane__bob">
-              <CraneSilhouette />
-            </div>
-          </div>
         ))}
       </div>
 

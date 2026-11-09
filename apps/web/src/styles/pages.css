@@ -212,9 +212,9 @@
   color: var(--text-secondary);
 }
 
-/* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 + 仙鹤 ---------- */
+/* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 ---------- */
 /* 铺满方式：绝对定位 + inset:0，随 .wb-home 的 100dvh 撑满整个首页视口；
-   内部 overflow: hidden 既裁掉出界的鹤与花瓣，也不影响文案层 */
+   内部 overflow: hidden 既裁掉出界的枝条与花瓣，也不影响文案层 */
 .wb-home__scene {
   position: absolute;
   inset: 0;
@@ -531,175 +531,6 @@
   }
 }
 
-/* ---------- 仙鹤：沿弧线缓慢飞离，出画后淡入重生 ---------- */
-.wb-scene__cranes {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-.wb-crane {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--c-size);
-  opacity: 0;
-  will-change: transform, opacity;
-  animation: wb-crane-path var(--c-dur) linear var(--c-delay) infinite;
-}
-
-/* 起伏与振翅叠在路径运动之上：路径负责大位移，内层只做小幅摆动 */
-.wb-crane__bob {
-  animation: wb-crane-bob var(--c-bob) ease-in-out infinite alternate;
-  will-change: transform;
-}
-
-/* 剪影原本朝右，镜像后朝左飞；镜像只翻转横向，不影响振翅轴 */
-.wb-crane__svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-  transform: scaleX(-1);
-}
-
-/* 白羽：近白羽面 + 冷板岩羽缘。羽缘是这套配色在浅蓝天上的可辨性来源（≥3:1），
-   白羽本身按图保持近白，不再压深成灰蓝鸟 */
-.wb-crane__body,
-.wb-crane__wing {
-  fill: var(--crane-plume);
-  stroke: var(--crane-plume-edge);
-  stroke-width: 0.8;
-  stroke-linejoin: round;
-}
-
-.wb-crane__wing {
-  transform-box: view-box;
-  /* 肩点：与两翼的翼根 (67,31) 对齐，振翅绕肩转动，翼根只在肩窝里小幅摆动 */
-  transform-origin: 67px 31px;
-  will-change: transform;
-}
-
-/* 远翼先画（在躯干之下），近翼最后画（在躯干之上）；运动参数沿用原相位 */
-.wb-crane__wing--far {
-  animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
-}
-
-.wb-crane__wing--near {
-  animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
-}
-
-/* 翼面羽片：白羽面 + 比本体更细的羽缘，靠细分界线而不是粗描边表达层叠 */
-.wb-crane__scale {
-  fill: var(--crane-plume);
-  stroke: var(--crane-plume-edge);
-  stroke-width: 0.5;
-  stroke-linejoin: round;
-}
-
-/* 羽面阴影：翼下与胸腹转折的冷灰，只负责体积，不参与对比度分级 */
-.wb-crane__shade {
-  fill: var(--crane-plume-shade);
-  stroke: none;
-}
-
-/* 体侧纵深用的极轻羽面影：同一色相，只压 55% 不透明度，避免变成灰块 */
-.wb-crane__shade--soft {
-  opacity: 0.55;
-}
-
-/* 墨黑飞羽 / 尾羽：对应参考图里近翼后缘的大块黑羽与翼尖分叉 */
-.wb-crane__primary {
-  fill: var(--crane-quill);
-  stroke: none;
-}
-
-/* 羽毛分层：浅一档的极细结构线，只画在羽面内部 */
-.wb-crane__feather {
-  fill: none;
-  stroke: var(--crane-plume-fold);
-  stroke-width: 0.8;
-  stroke-linecap: butt;
-  opacity: 0.9;
-}
-
-.wb-crane__beak {
-  fill: var(--crane-beak);
-}
-
-.wb-crane__crown {
-  fill: var(--crane-crown);
-}
-
-.wb-crane__eye {
-  fill: var(--crane-quill);
-}
-
-/* 细长的腿：细线 + 关节折角 + 分开的脚趾，飞行时向后收 */
-.wb-crane__leg {
-  fill: none;
-  stroke: var(--crane-leg);
-  stroke-width: 1.25;
-  stroke-linecap: round;
-  stroke-linejoin: miter;
-}
-
-/* 新路径：右下画外 → 向右上扬起 → 左上方出画。
-   横向 x 递减，纵向 y 从 80vh 抬到 6vh，形成一条上凸的慢弧；
-   rotate 始终跟随切线方向的小幅变化，配合镜像后的剪影指向左上 */
-@keyframes wb-crane-path {
-  0% {
-    transform: translate3d(114vw, var(--c-y0), 0) rotate(6deg);
-    opacity: 0;
-    animation-timing-function: ease-out;
-  }
-  7% {
-    opacity: var(--c-opacity);
-  }
-  34% {
-    transform: translate3d(74vw, var(--c-y1), 0) rotate(-2deg);
-    animation-timing-function: ease-in-out;
-  }
-  68% {
-    transform: translate3d(30vw, var(--c-y2), 0) rotate(3deg);
-    animation-timing-function: ease-in;
-  }
-  94% {
-    opacity: var(--c-opacity);
-  }
-  100% {
-    transform: translate3d(-24vw, var(--c-y3), 0) rotate(0deg);
-    opacity: 0;
-  }
-}
-
-@keyframes wb-crane-bob {
-  0% {
-    transform: translate3d(0, -4px, 0);
-  }
-  100% {
-    transform: translate3d(0, 4px, 0);
-  }
-}
-
-@keyframes wb-crane-flap-near {
-  0% {
-    transform: rotate(-14deg);
-  }
-  100% {
-    transform: rotate(12deg);
-  }
-}
-
-@keyframes wb-crane-flap-far {
-  0% {
-    transform: rotate(8deg);
-  }
-  100% {
-    transform: rotate(-10deg);
-  }
-}
-
 .wb-scene__caption {
   position: absolute;
   right: clamp(var(--space-6), 5vw, 72px);
@@ -764,7 +595,7 @@
   }
 }
 
-/* 移动端：文案落到下半屏，配自下而上的提亮层；花瓣减半、鹤放慢缩小 */
+/* 移动端：文案落到下半屏，配自下而上的提亮层；花瓣减半 */
 @media (max-width: 767px) {
   .wb-home__top {
     padding: var(--space-3) var(--space-4);
@@ -808,12 +639,6 @@
     display: none;
   }
 
-  /* 鹤保留两只，但缩小并放慢，避免小屏上过快划过 */
-  .wb-crane {
-    scale: 0.78;
-    animation-duration: 56s;
-  }
-
   .wb-scene__branch {
     width: 58%;
     height: 72%;
@@ -824,10 +649,9 @@
   }
 }
 
-/* 减少动效：花瓣与鹤全部停掉，只保留静态山景、樱花枝与提亮层 */
+/* 减少动效：花瓣全部停掉，只保留静态山景、樱花枝与提亮层 */
 @media (prefers-reduced-motion: reduce) {
-  .wb-scene__petal,
-  .wb-crane {
+  .wb-scene__petal {
     display: none;
   }
 }
