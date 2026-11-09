@@ -54,10 +54,11 @@ services:
     build:
       context: ..
       dockerfile: apps/server/Dockerfile
-    # 不写 container_name：允许 `up -d --scale api=2`
-    # host 端口用区间，否则第二个实例会 Port is already allocated
+    # 不写 container_name：允许 `up -d --scale api=2`（需叠加 scale override）
+    # 默认只绑 8080，重建后入口永远是 8080:8080；
+    # 双实例验证用 deploy/docker-compose.scale.yml 把端口换成区间
     ports:
-      - "8080-8081:8080"
+      - "8080:8080"
     environment:
       <<: *api-env
       PORT: "8080"

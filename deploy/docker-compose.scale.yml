@@ -1,0 +1,16 @@
+# 双实例覆盖文件（仅用于验证 `--scale api=2` 与 Redis Adapter 扇出）
+#
+# 用法（必须叠加在默认文件之后）：
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.scale.yml up -d --scale api=2
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.scale.yml ps
+#
+# 验证完回到单实例（同一个叠加命令，api 缩回 1 个）：
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.scale.yml up -d --scale api=1
+# 再拆掉覆盖文件留下的端口区间，用默认文件重建：
+#   docker compose -f deploy/docker-compose.yml up -d --force-recreate api
+#
+# `!override` 会整体替换默认文件里的 `ports`，而不是追加（否则 8080 会冲突）。
+services:
+  api:
+    ports: !override
+      - "8080-8081:8080"
