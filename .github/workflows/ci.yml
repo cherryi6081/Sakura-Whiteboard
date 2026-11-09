@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # 单测不连接 PG/Redis，这里只满足 config 的必填校验
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/whiteboard
+      REDIS_URL: redis://127.0.0.1:6379
+      SESSION_SECRET: ci-session-secret-0123456789
+      GUEST_COOKIE_SECRET: ci-guest-cookie-secret-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Windows / Node 22 上用默认线程池会栈溢出；固定 forks + 单 fork（Linux 上同样适用，保证两端口径一致）
+      - run: npm run test -w @whiteboard/server
+      - run: npm run test -w @whiteboard/web
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
