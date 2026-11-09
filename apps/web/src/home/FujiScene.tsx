@@ -20,6 +20,7 @@ import {
   type Blossom,
   type BranchSegment,
 } from "./fujiBranches";
+import { FLOATING_PETALS, floatingFootprint, type FloatingPetal } from "./floatingPetals";
 import {
   FLASH_PEAK_OPACITY,
   FLASH_SPLASH_SECONDS,
@@ -400,6 +401,25 @@ function petalStyle(petal: Petal): CSSProperties {
   } as CSSProperties;
 }
 
+/** 湖面漂浮花瓣的样式变量：位置 / 深浅 / 尺寸 / 倾角 / 漂移幅度 / 周期，全部交给 CSS */
+function floatStyle(petal: FloatingPetal): CSSProperties {
+  const { width, height } = floatingFootprint(petal);
+  return {
+    "--f-x": petal.x,
+    "--f-depth": petal.depth,
+    "--f-w": `${width}px`,
+    "--f-h": `${height}px`,
+    "--f-rot": `${petal.rot}deg`,
+    "--f-tilt": `${petal.tilt}deg`,
+    "--f-dx": `${petal.dx}px`,
+    "--f-dy": `${petal.dy}px`,
+    "--f-dur": `${petal.dur}s`,
+    "--f-delay": `${petal.delay}s`,
+    "--f-pulse": `${petal.pulse}s`,
+    "--f-pulse-delay": `${petal.pulseDelay}s`,
+  } as CSSProperties;
+}
+
 /** 桌面端全量花瓣：右侧 26 片在前、左侧 10 片在后，下标就是涟漪占位元素的顺序 */
 const ALL_PETALS: ReadonlyArray<Petal> = [...PETALS, ...LEFT_PETALS];
 
@@ -696,6 +716,28 @@ export function FujiScene() {
             <i className="wb-scene__ripple-ring" />
             <i className="wb-scene__ripple-ring" />
             <i className="wb-scene__ripple-ring wb-scene__ripple-flash" />
+          </span>
+        ))}
+      </div>
+
+      {/* 湖面漂浮花瓣：常驻在水上的花瓣本体 + 每片自带的静态椭圆水纹 + 每隔一段时间
+          原地轻轻荡开的一圈。与上面的落瓣涟漪互不取代：那一层是入水那一下，这一层是
+          一直漂着的花瓣；DOM 在涟漪之后，同层时压在涟漪之上。移动端只留 10 片（类名 --sm） */}
+      <div className="wb-scene__floaters">
+        {FLOATING_PETALS.map((petal) => (
+          <span
+            className={`wb-scene__float${petal.mobile ? " wb-scene__float--sm" : ""}`}
+            // 纯装饰，key 取自排布表的 stable 下标
+            key={petal.key}
+            style={floatStyle(petal)}
+          >
+            <i className="wb-scene__float-pulse" />
+            <span className="wb-scene__float-drift">
+              <i className="wb-scene__float-ring" />
+              <span className="wb-scene__float-body">
+                <span className="wb-scene__float-shape" />
+              </span>
+            </span>
           </span>
         ))}
       </div>

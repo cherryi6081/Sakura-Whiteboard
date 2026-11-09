@@ -339,6 +339,147 @@
   );
 }
 
+/* ---------- 湖面漂浮花瓣层 ---------- */
+/* 与入水涟漪是两层东西：涟漪是花瓣落水那一下的一次性扩散，这层是常驻在水上的花瓣本身。
+   几何与 .wb-scene__water / .wb-scene__ripples 完全一致（高度、底边、裁切），
+   所以只在水的范围内出现；层级 2 与涟漪同层，DOM 在其之后，压在倒影与涟漪之上、
+   飘落花瓣（3）之下。全部是纯 CSS 动画，不参与脚本排布，也不占并发额度 */
+.wb-scene__floaters {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: calc(0.371111 * min(56.25vw, 100dvh));
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 单片锚点：left 是视口宽度百分比，depth 0 = 水线、1 = 湖底。
+   上下各留 14px 安全边距，远处（小）与近处（大）的花瓣连同自带水纹都不会压到水线或贴底被裁 */
+.wb-scene__float {
+  --f-scale: 1;
+  position: absolute;
+  left: calc(var(--f-x) * 1%);
+  top: calc(14px + (100% - 28px) * var(--f-depth));
+  width: 0;
+  height: 0;
+}
+
+/* 漂移 + 缓慢自转：周期 24–38s，位移只有 4–7px / 2–4px，读起来是水在动而不是风在吹 */
+.wb-scene__float-drift {
+  position: absolute;
+  left: 0;
+  top: 0;
+  animation: wb-float-drift var(--f-dur) ease-in-out infinite;
+  animation-delay: var(--f-delay);
+  will-change: transform;
+}
+
+/* 花瓣本体：宽度按透视档位写死，高度由脚本按 depth 压缩（越靠水线越扁）。
+   静态倾角 rot + tilt 让每片朝向错开，不会像一排整齐的贴纸 */
+.wb-scene__float-body {
+  position: absolute;
+  left: calc(var(--f-w) * var(--f-scale) / -2);
+  top: calc(var(--f-h) * var(--f-scale) / -2);
+  width: calc(var(--f-w) * var(--f-scale));
+  height: calc(var(--f-h) * var(--f-scale));
+  border-radius: 50%;
+  /* 与飘落花瓣同一档光晕，静态、不参与动画 */
+  box-shadow: 0 0 4px 0 var(--sakura-glow);
+  transform: rotate(calc(var(--f-rot) + var(--f-tilt)));
+}
+
+/* 与飘落花瓣同一条轮廓，直接用樱花的浅中两档，压在水上比空中略淡 */
+.wb-scene__float-shape {
+  display: block;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(
+    50% 0%,
+    84% 13%,
+    100% 40%,
+    91% 74%,
+    70% 100%,
+    50% 84%,
+    30% 100%,
+    9% 74%,
+    0% 40%,
+    16% 13%
+  );
+  background: linear-gradient(150deg, var(--sakura-200), var(--sakura-300));
+  opacity: 0.92;
+}
+
+/* 静态水纹：表示花瓣压在水面上。1px 描边 + 0.16 透明度，
+   只有入水涟漪（2px / 峰值 0.50）的三分之一左右强度，几乎不扰动水面 */
+.wb-scene__float-ring {
+  position: absolute;
+  left: calc(var(--f-w) * var(--f-scale) * -1.1);
+  top: calc(var(--f-h) * var(--f-scale) * -0.85 - 1.5px);
+  width: calc(var(--f-w) * var(--f-scale) * 2.2);
+  height: calc(var(--f-h) * var(--f-scale) * 1.7 + 3px);
+  border: 1px solid var(--lake-ripple-hi);
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    transparent 66%,
+    color-mix(in srgb, var(--lake-ripple-hi) 12%, transparent) 100%
+  );
+  opacity: 0.16;
+}
+
+/* 每隔 8.5–14s 原地轻轻荡开一次；峰值 0.16、只张到 1.3 倍，
+   远弱于落瓣那一下的外圈（峰值 0.50、1.7s 张到 44px） */
+.wb-scene__float-pulse {
+  position: absolute;
+  left: calc(var(--f-w) * var(--f-scale) * -0.9);
+  top: calc(var(--f-h) * var(--f-scale) * -0.62 - 1px);
+  width: calc(var(--f-w) * var(--f-scale) * 1.8);
+  height: calc(var(--f-h) * var(--f-scale) * 1.24 + 2px);
+  border: 1px solid var(--lake-ripple-hi);
+  border-radius: 50%;
+  opacity: 0;
+  animation: wb-float-pulse var(--f-pulse) ease-out infinite;
+  animation-delay: var(--f-pulse-delay);
+  will-change: transform, opacity;
+}
+
+/* 只动 transform / opacity；首尾同相位，循环处不跳 */
+@keyframes wb-float-drift {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate3d(var(--f-dx), calc(var(--f-dy) * -1), 0) rotate(4deg);
+  }
+  50% {
+    transform: translate3d(calc(var(--f-dx) * 0.55), var(--f-dy), 0) rotate(-3deg);
+  }
+  75% {
+    transform: translate3d(calc(var(--f-dx) * -0.65), calc(var(--f-dy) * 0.5), 0) rotate(2deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+@keyframes wb-float-pulse {
+  0%,
+  64% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  72% {
+    opacity: 0.16;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
   stroke: var(--branch-brown-900);
@@ -610,6 +751,16 @@
     display: none;
   }
 
+  /* 漂浮花瓣 18 → 10 片（近 5 / 中 3 / 远 2），尺寸统一缩到 72%：
+     湖带在手机上只有约 81px 高，原尺寸会显得比水面还大 */
+  .wb-scene__float {
+    --f-scale: 0.72;
+  }
+
+  .wb-scene__float:not(.wb-scene__float--sm) {
+    display: none;
+  }
+
   .wb-scene__branch {
     width: 58%;
     height: 72%;
@@ -649,6 +800,16 @@
 
   /* 花瓣不飘了，涟漪也跟着一起隐藏（脚本同时不会创建涟漪动画） */
   .wb-scene__ripples {
+    display: none;
+  }
+
+  /* 漂浮花瓣是静态装饰，不能跟着落瓣一起消失：只停漂移动画，花瓣与静态水纹仍然可见 */
+  .wb-scene__float-drift {
+    animation: none;
+  }
+
+  /* 自带的一圈扩散是动画，reduce 下停掉（静态水纹 .wb-scene__float-ring 保留） */
+  .wb-scene__float-pulse {
     display: none;
   }
 }
