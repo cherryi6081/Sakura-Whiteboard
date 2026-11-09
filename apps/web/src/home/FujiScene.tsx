@@ -273,6 +273,69 @@ const FAR_BLOSSOMS: Blossom[] = [
   { x: 402, y: 470, size: 10, rot: 30, kind: "half" },
 ];
 
+/** 水线：山脚与湖面的分界，倒影以它为镜像轴 */
+const WATERLINE = 566;
+
+/**
+ * 山体形状（按参考图重画）：左右坡接近直线、山体宽扁、峰顶小圆角，
+ * 雪顶覆盖到山体上部约三分之一，雪线下沿是一排尖角状的融雪边。
+ * 倒影直接复用这一组路径做垂直镜像，所以倒影轮廓与山体、雪顶严格对应。
+ */
+const MOUNTAIN_PATHS = {
+  // 峰顶不是尖点：从左坡 (744,244) 收到 (792,208)，向右平出到 (816,212) 再下坡，
+  // 形成参考图里那种极短的山顶平台；左右坡各留一个换坡度的转折（520/646 与 1010）
+  body: "M170 566 L356 468 L520 380 L646 308 L744 244 L792 208 L816 212 L872 252 L1010 338 L1238 468 L1400 566 Z",
+  // 山脊线：峰顶沿 (990,566) 方向下垂，右侧整面压一层阴影
+  shadow: "M792 208 L816 212 L872 252 L1010 338 L1238 468 L1400 566 L990 566 Z",
+  band: "M170 566 L300 534 L520 506 L760 496 L1040 500 L1250 516 L1400 566 Z",
+  // 雪顶：雪线两端落在山体轮廓上（左 676,288 / 右 902,271），
+  // 下沿是一排向下的尖角融雪齿，深齿落在山脊附近
+  snow:
+    "M676 288 L704 262 L734 240 L764 220 L792 208 L816 212 L844 234 L872 258 L902 271 " +
+    "L886 300 L870 278 L852 344 L836 286 L816 352 L798 292 L780 344 L764 294 L746 326 L726 292 L706 312 Z",
+  // 雪顶右受光背面的暗面：从峰顶顺右侧雪面收成一条楔形，下沿跟着融雪齿起伏
+  snowShadow: "M792 208 L816 212 L844 234 L872 258 L902 271 L886 300 L870 278 L852 344 L828 300 L810 244 Z",
+};
+
+function MountainShapes() {
+  return (
+    <g>
+      <path className="wb-scene__fuji" d={MOUNTAIN_PATHS.body} />
+      <path className="wb-scene__fuji-shadow" d={MOUNTAIN_PATHS.shadow} />
+      <path className="wb-scene__foothill" d={MOUNTAIN_PATHS.band} />
+      <path className="wb-scene__snow" d={MOUNTAIN_PATHS.snow} />
+      <path className="wb-scene__snow-shadow" d={MOUNTAIN_PATHS.snowShadow} />
+    </g>
+  );
+}
+
+/**
+ * 倒影分段：[水线以下的 y 起点, 高度, 横向错位, 纵向压缩比, 明度]。
+ * 每段都镜像整座山，再裁到自己那一条横带 —— 相邻段横向错开，
+ * 交界处就出现水面常见的错位台阶；越往下压缩比越小、越淡。
+ */
+const REFLECTION_BANDS = [
+  { id: "wb-ref-0", y: 566, height: 100, dx: 0, scale: 0.72, opacity: 0.62 },
+  { id: "wb-ref-1", y: 666, height: 84, dx: 10, scale: 0.66, opacity: 0.46 },
+  { id: "wb-ref-2", y: 750, height: 96, dx: -14, scale: 0.58, opacity: 0.34 },
+];
+
+/** 静态水面波纹：[x, y, 宽度, 不透明度]，只有形状没有动画；靠近水线的更亮更长，往下逐渐变细变淡 */
+const RIPPLES: Array<[number, number, number, number]> = [
+  [120, 596, 148, 0.62],
+  [430, 612, 112, 0.44],
+  [760, 600, 168, 0.55],
+  [1080, 618, 132, 0.4],
+  [1330, 606, 118, 0.48],
+  [236, 690, 132, 0.38],
+  [620, 706, 158, 0.34],
+  [1010, 684, 120, 0.3],
+  [1288, 700, 138, 0.32],
+  [150, 792, 108, 0.26],
+  [540, 806, 150, 0.24],
+  [980, 788, 128, 0.22],
+];
+
 /** 单瓣：单位长度 1，上端收圆、中间带樱花特有的小缺口，下端收到花心 */
 const PETAL_PATH =
   "M0 0 C -0.32 -0.18 -0.56 -0.44 -0.5 -0.74 C -0.46 -0.93 -0.3 -1 -0.17 -0.95 L 0 -0.8 L 0.17 -0.95 C 0.3 -1 0.46 -0.93 0.5 -0.74 C 0.56 -0.44 0.32 -0.18 0 0 Z";
@@ -386,57 +449,66 @@ export function FujiScene() {
           <circle className="wb-scene__star" key={index} cx={cx} cy={cy} r={r} opacity={opacity} />
         ))}
       </svg>
-      {/* 山体：meet 保证整个轮廓完整可见（山峰、左右山脚、山脚到底部），
-          多余天空由底层 CSS 渐变铺满，不出现留白 */}
+      {/* 山 + 湖面倒映：viewBox 里同时排进山峰、两侧山脚、水线与湖底，
+          meet 保证整组完整可见；天空由底层 CSS 渐变铺满，不留白边 */}
       <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" focusable="false">
-        {/* 远山：最淡的一层，压在所有山体之后 */}
-        <path
-          className="wb-scene__range-far"
-          d="M0 618 L110 540 L210 586 L330 496 L460 580 L600 512 L720 592 L820 546 L940 610 L1060 540 L1190 598 L1300 552 L1420 606 L1600 566 L1600 900 L0 900 Z"
-        />
-        {/* 中层山脊：右侧略高，托住主峰右坡 */}
-        <path
-          className="wb-scene__range-mid"
-          d="M0 702 L150 620 L280 672 L420 596 L560 668 L700 606 L840 664 L980 600 L1120 668 L1260 612 L1400 676 L1600 620 L1600 900 L0 900 Z"
-        />
-        {/* 左侧伴峰：低矮一座，制造前后层次 */}
-        <path
-          className="wb-scene__peak-left"
-          d="M180 900 C 240 760 292 660 330 520 C 350 470 360 440 376 410 C 398 470 412 540 440 640 C 480 760 520 840 560 900 Z"
-        />
-        {/* 山脚雾带：把主峰底座与远山衔接，不整页模糊 */}
-        <ellipse className="wb-scene__haze" cx="700" cy="642" rx="470" ry="40" />
-        <ellipse className="wb-scene__haze" cx="1240" cy="668" rx="320" ry="34" />
-        {/* 主峰：左右内凹的火山轮廓，峰顶略偏右避开左侧文案 */}
-        <path
-          className="wb-scene__fuji"
-          d="M470 900 C 560 780 700 640 820 360 C 848 300 862 250 880 196 C 898 250 912 300 940 360 C 1060 640 1200 780 1290 900 Z"
-        />
-        {/* 右侧阴影面：增加体积感 */}
-        <path
-          className="wb-scene__fuji-shadow"
-          d="M880 196 C 898 250 912 300 940 360 C 1060 640 1200 780 1290 900 L 1000 900 C 1010 700 950 480 880 196 Z"
-        />
-        {/* 雪顶：底边铺到山体左右坡，用两段柔和下坠收边，避免锯齿太密像一排尖刺 */}
-        <path
-          className="wb-scene__snow"
-          d="M880 196 C 898 250 912 300 940 360 C 926 374 908 386 892 380 C 878 375 862 392 846 384 C 836 379 828 366 822 352 C 836 300 856 240 880 196 Z"
-        />
-        {/* 雪顶右侧的冷影，避免雪面变成一块死白 */}
-        <path className="wb-scene__snow-shadow" d="M880 196 C 898 250 912 300 940 360 C 928 372 914 384 902 382 C 896 320 888 254 880 196 Z" />
-        {/* 前景山脚：压暗底部，与页面底色衔接 */}
-        <path
-          className="wb-scene__foothill"
-          d="M0 900 C 220 810 420 858 640 826 C 860 794 1080 856 1300 818 C 1420 800 1520 822 1600 804 L 1600 900 Z"
-        />
+        <defs>
+          <linearGradient id="wb-lake-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" className="wb-scene__lake-stop-0" />
+            <stop offset="28%" className="wb-scene__lake-stop-1" />
+            <stop offset="66%" className="wb-scene__lake-stop-2" />
+            <stop offset="100%" className="wb-scene__lake-stop-3" />
+          </linearGradient>
+          <linearGradient id="wb-ref-fade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" className="wb-scene__ref-stop-0" />
+            <stop offset="50%" className="wb-scene__ref-stop-1" />
+            <stop offset="100%" className="wb-scene__ref-stop-2" />
+          </linearGradient>
+          {REFLECTION_BANDS.map((band) => (
+            <clipPath id={band.id} key={band.id}>
+              <rect x="-140" y={band.y} width="1880" height={band.height} />
+            </clipPath>
+          ))}
+        </defs>
+
+        {/* 湖面：从水线一直铺到画面底边 */}
+        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-lake-grad)" />
+
+        {/* 倒影：整座山连同雪顶垂直镜像，分三段各自横向错位 + 纵向压缩 + 降低明度，
+            段与段之间自然形成水面错位；越往下压缩越狠、越淡 */}
+        {REFLECTION_BANDS.map((band) => (
+          <g clipPath={`url(#${band.id})`} key={band.id}>
+            <g
+              className="wb-scene__reflection"
+              opacity={band.opacity}
+              transform={`translate(${band.dx} 0) matrix(1 0 0 ${-band.scale} 0 ${WATERLINE * (1 + band.scale)})`}
+            >
+              <MountainShapes />
+            </g>
+          </g>
+        ))}
+
+        {/* 水面加深层：倒影越往下越淡，最终融进湖色 */}
+        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-ref-fade)" />
+
+        {/* 静态横向波纹与反光，不做动画、不引滤镜 */}
+        {RIPPLES.map(([x, y, width, opacity]) => (
+          <rect
+            className="wb-scene__lake-line"
+            key={`${x}-${y}`}
+            x={x}
+            y={y}
+            width={width}
+            height="2.4"
+            rx="1.2"
+            opacity={opacity}
+          />
+        ))}
+        <rect className="wb-scene__lake-horizon" x="0" y={WATERLINE - 1} width="1600" height="2.4" />
+
+        {/* 山体本体：压在水线之上 */}
+        <MountainShapes />
       </svg>
-
-      {/* 文案侧提亮层：左侧柔和过渡，右半段完全透明，山体与花瓣不受影响 */}
-      <div className="wb-scene__veil" />
-
-      {/* 地平线以下的夜雾：山脚完整保留轮廓，只把最底部渐隐到夜空色，
-          页脚文字始终落在深底上 */}
-      <div className="wb-scene__ground" />
 
       {/* 右侧樱花枝：背景枯枝先铺一层，前景主枝与花朵压在上面。
           枝条全部由分段 stroke 拼成，宽度逐段收细，模拟主干到末梢的锥度 */}

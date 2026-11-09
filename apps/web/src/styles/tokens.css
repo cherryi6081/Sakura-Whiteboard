@@ -68,12 +68,9 @@
   --fuji-400: #9db8d0;
   --fuji-500: #84a1bd;
   --fuji-600: #6b87a4;
-  --fuji-ridge-far: #d5e4f0;
-  --fuji-ridge-mid: #c4d8e8;
   /* 雪顶接近白，只压一层极浅冷影 */
   --fuji-snow: #f7fbfe;
   --fuji-snow-shade: #e8f2fa;
-  --fuji-mist: #ffffff;
   /* 樱花：花簇与枝条原色 + 花瓣三层色阶 */
   --sakura-100: #fbe6ee;
   --sakura-200: #f5cad8;
@@ -107,37 +104,15 @@
     var(--sky-night-horizon) 100%
   );
 
-  /* 文案侧压暗层：左侧深色近乎不透，向右散开；遮罩色取自天空 token，
-     这样压到浅色山体上仍是深底，文字对比度不依赖山体明度 */
-  --home-night-veil: linear-gradient(
-    96deg,
-    color-mix(in srgb, var(--sky-night-900) 95%, transparent) 0%,
-    color-mix(in srgb, var(--sky-night-900) 90%, transparent) 22%,
-    color-mix(in srgb, var(--sky-night-800) 58%, transparent) 42%,
-    color-mix(in srgb, var(--sky-night-800) 24%, transparent) 58%,
-    transparent 74%
-  );
-  /* 移动端文案居中、山体完整压在底部：遮罩只在文字带轻压一层，
-     下落到山体带时回落到几乎透明，保证山体完整可见 */
-  --home-night-veil-mobile: linear-gradient(
-    180deg,
-    transparent 0%,
-    color-mix(in srgb, var(--sky-night-900) 40%, transparent) 18%,
-    color-mix(in srgb, var(--sky-night-900) 72%, transparent) 36%,
-    color-mix(in srgb, var(--sky-night-900) 74%, transparent) 64%,
-    color-mix(in srgb, var(--sky-night-900) 38%, transparent) 74%,
-    color-mix(in srgb, var(--sky-night-900) 8%, transparent) 84%,
-    transparent 100%
-  );
-
-  /* 地平线夜雾：从透明渐隐到夜空色，只服务底部页脚的深底 */
-  --home-ground-fade: linear-gradient(
-    180deg,
-    transparent 0%,
-    color-mix(in srgb, var(--sky-night-800) 34%, transparent) 34%,
-    color-mix(in srgb, var(--sky-night-900) 84%, transparent) 72%,
-    var(--sky-night-900) 100%
-  );
+  /* ---------- 湖面 / 倒影（由山体与天空 token 派生，不写死色值） ---------- */
+  /* 近岸偏亮、远处偏深；倒影整体比山体低一档明度，
+     靠 token 混色 + 分段透明度实现，不用滤镜 */
+  --lake-100: color-mix(in srgb, var(--fuji-300) 36%, var(--sky-night-800));
+  --lake-300: color-mix(in srgb, var(--fuji-500) 26%, var(--sky-night-700));
+  --lake-500: color-mix(in srgb, var(--fuji-600) 20%, var(--sky-night-800));
+  --lake-700: color-mix(in srgb, var(--fuji-600) 30%, var(--sky-night-900));
+  --lake-horizon: color-mix(in srgb, var(--fuji-100) 46%, transparent);
+  --lake-ripple: color-mix(in srgb, var(--fuji-100) 56%, transparent);
 
   /* 夜间文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
   --night-text-primary: #f5f2f7;

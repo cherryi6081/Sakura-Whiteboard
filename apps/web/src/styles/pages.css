@@ -226,7 +226,7 @@
   background: var(--home-scene-sky);
 }
 
-/* 山体：meet 完整呈现（山峰、左右山脚、山脚贴底），天空由 CSS 渐变补满 */
+/* 山 + 湖面 / 倒影：meet 完整呈现（峰顶、两侧山脚、水线与湖底都在画面内） */
 .wb-scene__mountains {
   position: absolute;
   inset: 0;
@@ -247,33 +247,13 @@
 }
 
 /* 山体恢复改版前浅蓝一套：背景再怎么变，山体与雪顶都用 --fuji-* 原色 */
-.wb-scene__range-far {
-  fill: var(--fuji-ridge-far);
-  opacity: 0.92;
-}
-
-.wb-scene__range-mid {
-  fill: var(--fuji-ridge-mid);
-  opacity: 0.86;
-}
-
-.wb-scene__peak-left {
-  fill: var(--fuji-400);
-  opacity: 0.42;
-}
-
-.wb-scene__haze {
-  fill: var(--fuji-mist);
-  opacity: 0.16;
-}
-
 .wb-scene__fuji {
   fill: var(--fuji-300);
 }
 
 .wb-scene__fuji-shadow {
   fill: var(--fuji-400);
-  opacity: 0.55;
+  opacity: 0.38;
 }
 
 .wb-scene__snow {
@@ -282,30 +262,54 @@
 
 .wb-scene__snow-shadow {
   fill: var(--fuji-snow-shade);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
+/* 山脚水线附近的暗带，让山体与湖面有明确分界 */
 .wb-scene__foothill {
   fill: var(--fuji-600);
-  opacity: 0.3;
+  opacity: 0.26;
 }
 
-/* 文案侧压暗：左侧近乎不透明，向右散开，山体右半段不受影响 */
-.wb-scene__veil {
-  position: absolute;
-  inset: 0;
-  background: var(--home-night-veil);
+/* 湖面渐变：色标全部由 --fuji-* 与 --sky-night-* 派生，不写死色值 */
+.wb-scene__lake-stop-0 {
+  stop-color: var(--lake-100);
 }
 
-/* 地平线夜雾：只压最底部一条，渐变本身走天空 token，
-   山脚轮廓在地平线以上仍然完整可见，页脚落在深底上 */
-.wb-scene__ground {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: clamp(96px, 16vh, 168px);
-  background: var(--home-ground-fade);
+.wb-scene__lake-stop-1 {
+  stop-color: var(--lake-300);
+}
+
+.wb-scene__lake-stop-2 {
+  stop-color: var(--lake-500);
+}
+
+.wb-scene__lake-stop-3 {
+  stop-color: var(--lake-700);
+}
+
+/* 倒影往下渐隐：用湖面色压一层，越往下越淡 */
+.wb-scene__ref-stop-0 {
+  stop-color: var(--sky-night-800);
+  stop-opacity: 0;
+}
+
+.wb-scene__ref-stop-1 {
+  stop-color: var(--sky-night-800);
+  stop-opacity: 0.34;
+}
+
+.wb-scene__ref-stop-2 {
+  stop-color: var(--sky-night-900);
+  stop-opacity: 0.66;
+}
+
+.wb-scene__lake-line {
+  fill: var(--lake-ripple);
+}
+
+.wb-scene__lake-horizon {
+  fill: var(--lake-horizon);
 }
 
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
@@ -785,11 +789,6 @@
 
   .wb-home__points-line {
     display: block;
-  }
-
-  /* 移动端文案在下半屏，改为纵向压暗，山体上半部分保持干净 */
-  .wb-scene__veil {
-    background: var(--home-night-veil-mobile);
   }
 
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
