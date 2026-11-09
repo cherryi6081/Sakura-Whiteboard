@@ -56,7 +56,12 @@
   flex-direction: column;
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
-  background: var(--bg);
+  background: var(--night-sky-900);
+  /* 首页作用域内把全局文字 token 切成夜色版，子元素（含状态条）自动跟随 */
+  --text-primary: var(--night-text-primary);
+  --text-secondary: var(--night-text-secondary);
+  --text-weak-readable: var(--night-text-weak);
+  --text-disabled: var(--night-text-disabled);
 }
 
 /* 顶栏与页脚压在场景之上，导航与版权始终可点 */
@@ -125,8 +130,8 @@
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   letter-spacing: 0.08em;
-  color: var(--rose-700);
-  background: var(--rose-100);
+  color: var(--night-eyebrow-ink);
+  background: var(--night-eyebrow-bg);
   border-radius: var(--radius-pill);
 }
 
@@ -134,7 +139,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--rose-600);
+  background: var(--sakura-night-300);
 }
 
 .wb-home__headline {
@@ -181,9 +186,9 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   color: var(--text-secondary);
-  /* 半透明底板，避免白卡在整页场景上显得生硬 */
-  background: var(--home-card-surface);
-  border: 1px solid var(--rose-100);
+  /* 半透明深色底板：实际叠色对比度见交付表格 */
+  background: var(--night-card-surface);
+  border: 1px solid var(--night-line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
 }
@@ -194,7 +199,7 @@
   height: 4px;
   margin-top: 8px;
   border-radius: 50%;
-  background: var(--rose-500);
+  background: var(--sakura-night-300);
   flex: none;
 }
 
@@ -218,7 +223,7 @@
   pointer-events: none;
   user-select: none;
   isolation: isolate;
-  background: var(--home-scene-sky);
+  background: var(--night-scene-sky);
 }
 
 /* 山体：slice 铺满视口，多余部分左右裁切，不会出现上/下留边 */
@@ -229,54 +234,59 @@
   height: 100%;
 }
 
+.wb-scene__star {
+  fill: var(--night-star);
+}
+
 .wb-scene__range-far {
-  fill: var(--fuji-ridge-far);
+  fill: var(--night-ridge-far);
   opacity: 0.92;
 }
 
 .wb-scene__range-mid {
-  fill: var(--fuji-ridge-mid);
-  opacity: 0.86;
+  fill: var(--night-ridge-mid);
+  opacity: 0.88;
 }
 
 .wb-scene__peak-left {
-  fill: var(--fuji-400);
-  opacity: 0.42;
+  fill: var(--night-peak-left);
+  opacity: 0.9;
 }
 
 .wb-scene__haze {
-  fill: var(--fuji-mist);
-  opacity: 0.16;
+  fill: var(--night-haze);
+  opacity: 0.14;
 }
 
 .wb-scene__fuji {
-  fill: var(--fuji-300);
+  fill: var(--night-peak);
 }
 
 .wb-scene__fuji-shadow {
-  fill: var(--fuji-400);
-  opacity: 0.55;
+  fill: var(--night-peak-shadow);
+  opacity: 0.85;
 }
 
 .wb-scene__snow {
-  fill: var(--fuji-snow);
+  fill: var(--night-snow);
+  opacity: 0.94;
 }
 
 .wb-scene__snow-shadow {
-  fill: var(--fuji-snow-shade);
-  opacity: 0.7;
+  fill: var(--night-snow-shade);
+  opacity: 0.45;
 }
 
 .wb-scene__foothill {
-  fill: var(--fuji-600);
-  opacity: 0.3;
+  fill: var(--night-foothill);
+  opacity: 0.55;
 }
 
-/* 文案侧提亮：横向渐变，左侧几乎不透、右侧完全透明，不糊山体 */
+/* 文案侧压暗：左侧近乎不透明，向右散开，山体右半段不受影响 */
 .wb-scene__veil {
   position: absolute;
   inset: 0;
-  background: var(--home-hero-veil);
+  background: var(--home-night-veil);
 }
 
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
@@ -290,20 +300,21 @@
   overflow: visible;
 }
 
+/* 深底上枝条改为浅梅灰，保留木质轮廓 */
 .wb-scene__branch-wood {
-  stroke: var(--sakura-wood);
+  stroke: var(--sakura-wood-night);
 }
 
 .wb-scene__branch-wood-soft {
-  stroke: var(--sakura-wood-soft);
+  stroke: var(--sakura-wood-night-soft);
 }
 
 .wb-scene__bloom {
-  fill: var(--sakura-bloom);
+  fill: var(--sakura-bloom-night);
 }
 
 .wb-scene__bloom-core {
-  fill: var(--sakura-bloom-core);
+  fill: var(--sakura-bloom-core-night);
 }
 
 /* ---------- 花瓣：三条曲线路径，逐片不同时长与旋转系数 ---------- */
@@ -320,6 +331,9 @@
   width: var(--p-size);
   height: calc(var(--p-size) * 0.94);
   margin-left: calc(var(--p-size) / -2);
+  /* 静态极轻光晕，让亮粉在深底上更跳；不是 filter blur，也不参与动画 */
+  border-radius: 50%;
+  box-shadow: 0 0 5px 0 var(--sakura-glow);
   opacity: 0;
   will-change: transform, opacity;
   animation-duration: var(--p-dur);
@@ -360,15 +374,15 @@
 }
 
 .wb-scene__petal--light .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-100), var(--sakura-200));
+  background: linear-gradient(150deg, var(--sakura-night-100), var(--sakura-night-200));
 }
 
 .wb-scene__petal--mid .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-200), var(--sakura-300));
+  background: linear-gradient(150deg, var(--sakura-night-200), var(--sakura-night-300));
 }
 
 .wb-scene__petal--deep .wb-scene__petal-inner {
-  background: linear-gradient(150deg, var(--sakura-300), var(--rose-400));
+  background: linear-gradient(150deg, var(--sakura-night-300), var(--rose-300));
 }
 
 /* 只动 transform / opacity：合成器线程处理，不触发布局与重绘。
@@ -461,7 +475,7 @@
 
 .wb-crane {
   position: absolute;
-  top: var(--c-top);
+  top: 0;
   left: 0;
   width: var(--c-size);
   opacity: 0;
@@ -475,15 +489,17 @@
   will-change: transform;
 }
 
+/* 剪影原本朝右，镜像后朝左飞；镜像只翻转横向，不影响振翅轴 */
 .wb-crane__svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
+  transform: scaleX(-1);
 }
 
 .wb-crane__body {
-  fill: var(--crane-ink);
+  fill: var(--crane-ink-night);
 }
 
 .wb-crane__wing {
@@ -493,33 +509,36 @@
 }
 
 .wb-crane__wing--far {
-  fill: var(--crane-ink-soft);
+  fill: var(--crane-ink-night-soft);
   animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
 }
 
 .wb-crane__wing--near {
-  fill: var(--crane-ink);
+  fill: var(--crane-ink-night);
   animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
 }
 
 .wb-crane__beak {
-  fill: var(--crane-ink);
+  fill: var(--crane-ink-night);
 }
 
 .wb-crane__crown {
-  fill: var(--crane-crown);
+  fill: var(--crane-crown-night);
 }
 
 .wb-crane__leg {
   fill: none;
-  stroke: var(--crane-ink);
+  stroke: var(--crane-ink-night);
   stroke-width: 2.4;
   stroke-linecap: round;
 }
 
+/* 新路径：右下画外 → 向右上扬起 → 左上方出画。
+   横向 x 递减，纵向 y 从 80vh 抬到 6vh，形成一条上凸的慢弧；
+   rotate 始终跟随切线方向的小幅变化，配合镜像后的剪影指向左上 */
 @keyframes wb-crane-path {
   0% {
-    transform: translate3d(-26vw, 7vh, 0) rotate(-2deg);
+    transform: translate3d(114vw, var(--c-y0), 0) rotate(6deg);
     opacity: 0;
     animation-timing-function: ease-out;
   }
@@ -527,18 +546,18 @@
     opacity: var(--c-opacity);
   }
   34% {
-    transform: translate3d(24vw, var(--c-lift1), 0) rotate(3deg);
+    transform: translate3d(74vw, var(--c-y1), 0) rotate(-2deg);
     animation-timing-function: ease-in-out;
   }
   68% {
-    transform: translate3d(66vw, var(--c-lift2), 0) rotate(-3deg);
+    transform: translate3d(30vw, var(--c-y2), 0) rotate(3deg);
     animation-timing-function: ease-in;
   }
   94% {
     opacity: var(--c-opacity);
   }
   100% {
-    transform: translate3d(118vw, calc(var(--c-lift2) - 8vh), 0) rotate(3deg);
+    transform: translate3d(-24vw, var(--c-y3), 0) rotate(0deg);
     opacity: 0;
   }
 }
@@ -579,8 +598,8 @@
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   letter-spacing: 0.12em;
-  color: var(--fuji-500);
-  opacity: 0.82;
+  color: var(--night-text-weak);
+  opacity: 0.85;
 }
 
 .wb-home__foot {
@@ -600,6 +619,61 @@
 
 .wb-home__note {
   margin-top: var(--space-3);
+}
+
+/* ---------- 夜间首页：品牌、导航、状态条与按钮的深底适配 ---------- */
+.wb-home .wb-brand {
+  color: var(--night-text-primary);
+}
+
+.wb-home__nav-link:hover {
+  color: var(--night-eyebrow-ink);
+  border-bottom-color: var(--sakura-night-300);
+}
+
+.wb-home__nav-link--strong {
+  color: var(--night-eyebrow-ink);
+}
+
+.wb-home .wb-banner--warning {
+  color: var(--night-warning-text);
+  background: var(--night-warning-bg);
+  border-color: var(--night-warning-border);
+}
+
+.wb-home .wb-inline-note--warning {
+  color: var(--night-warning-text);
+  background: var(--night-warning-bg);
+  border-color: var(--night-warning-border);
+}
+
+.wb-home .wb-inline-note--danger {
+  color: var(--night-danger-text);
+  background: var(--night-danger-bg);
+  border-color: var(--night-danger-border);
+}
+
+.wb-home .wb-btn--ghost {
+  color: var(--night-text-secondary);
+}
+
+.wb-home .wb-btn--ghost:hover:not(:disabled) {
+  color: var(--night-text-primary);
+  background: var(--night-hover-surface);
+}
+
+.wb-home .wb-btn--danger-text {
+  color: var(--night-danger-text);
+}
+
+.wb-home .wb-btn--danger-text:hover:not(:disabled) {
+  background: var(--night-danger-bg);
+}
+
+.wb-home .wb-btn--primary:disabled {
+  color: var(--night-text-disabled);
+  background: var(--night-disabled-bg);
+  border-color: transparent;
 }
 
 /* 平板：场景仍是整页背景，只收紧文案区留白，避免文案贴边 */
@@ -651,9 +725,9 @@
     display: block;
   }
 
-  /* 移动端文案在下半屏，改为纵向提亮，山体上半部分保持干净 */
+  /* 移动端文案在下半屏，改为纵向压暗，山体上半部分保持干净 */
   .wb-scene__veil {
-    background: var(--home-hero-veil-mobile);
+    background: var(--home-night-veil-mobile);
   }
 
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
