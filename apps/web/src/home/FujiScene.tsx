@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import brandMark from "../assets/brand/sakura-board-mark.png";
 
 /**
  * 首页整页场景：富士山全景 + 右侧樱花枝 + 曲线飘散花瓣。
@@ -440,10 +439,6 @@ export function FujiScene() {
         {/* 山体本体：压在水线之上 */}
         <MountainShapes />
       </svg>
-
-      {/* 品牌图标：纯装饰，悬在峰顶上方（定位见 .wb-scene__mark）。
-          不给链接、hover 与焦点，alt 留空并随父层 aria-hidden 一起退出无障碍树 */}
-      <img className="wb-scene__mark" src={brandMark} alt="" aria-hidden />
 
       {/* 右侧樱花枝：背景枯枝先铺一层，前景主枝与花朵压在上面。
           枝条全部由分段 stroke 拼成，宽度逐段收细，模拟主干到末梢的锥度 */}
