@@ -75,6 +75,48 @@
   background: var(--home-scene-sky);
 }
 
+/* ---------- 水天延展层：只在超宽视口的两翼可见 ---------- */
+/* 内容层按 meet 缩放，高度 H = min(56.25vw, 100dvh)，宽度恒为 16:9 的 H × 16/9。
+   视口比 16:9 更宽时内容宽度小于视口宽度，左右各露出一条 (100vw − H × 16/9) / 2 的边。
+   天空渐变已经在 .wb-home__scene 上铺满视口，缺的只是水线以下那段湖色，所以这里补一条
+   与视口同宽、底边贴底的湖带：
+   - 高度 = (900 − 566) / 900 = 0.371111 × H，与 SVG 中湖面 rect 的 334/900 一致；
+   - 两层渐变复刻 SVG 的 #wb-lake-grad（0/28/66/100%）与 #wb-ref-fade（0/50/100%）；
+   - ::before 复刻 SVG 里 2.4/900 高的水线亮线（从水线上方 1 单位到下方 1.4 单位）。
+   中间 16:9 区域会被 SVG 自己的湖面不透明渐变整块盖住，所以这层不影响已有的正常视口 */
+.wb-scene__water {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(0.371111 * min(56.25vw, 100dvh));
+  background-image:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--sky-blue-horizon) 0%, transparent) 0%,
+      color-mix(in srgb, var(--sky-blue-horizon) 36%, transparent) 50%,
+      color-mix(in srgb, var(--sky-blue-horizon) 58%, transparent) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      var(--lake-100) 0%,
+      var(--lake-300) 28%,
+      var(--lake-500) 66%,
+      var(--lake-700) 100%
+    );
+}
+
+/* 水线亮线：与 SVG 的 .wb-scene__lake-horizon 同色同高，左右接得上、不出现断头 */
+.wb-scene__water::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-0.001111 * min(56.25vw, 100dvh));
+  height: calc(0.002667 * min(56.25vw, 100dvh));
+  background: var(--lake-horizon);
+}
+
 /* 山 + 湖面 / 倒影：meet 完整呈现（峰顶、两侧山脚、水线与湖底都在画面内） */
 .wb-scene__mountains {
   position: absolute;

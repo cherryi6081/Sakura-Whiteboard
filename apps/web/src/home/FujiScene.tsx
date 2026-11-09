@@ -381,6 +381,14 @@ function petalStyle(petal: Petal): CSSProperties {
 export function FujiScene() {
   return (
     <div className="wb-home__scene" aria-hidden="true">
+      {/* 水天延展层：天空渐变已由 .wb-home__scene 的 CSS 背景铺满整个视口，
+          但湖面渐变画在下面的 SVG 里，只能覆盖 16:9 内容宽。视口比 16:9 更宽时
+          （21:9、带鱼屏）内容两侧会露出"天空一直延伸到画面底部"的色带。
+          这里用一层与视口同宽、底边贴底的 CSS 湖带补上水线以下的部分：
+          高度、四档湖色与倒影淡出严格控制成与 SVG 内一致，中间区域被 SVG 湖面完全盖住，
+          只有超宽屏的左右两翼能看到它，于是两翼是延展的水天而不是空白 */}
+      <div className="wb-scene__water" />
+
       {/* 山 + 湖面倒映：viewBox 里同时排进山峰、两侧山脚、水线与湖底，
           meet 保证整组完整可见；天空由底层 CSS 渐变铺满，不留白边 */}
       <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" focusable="false">
