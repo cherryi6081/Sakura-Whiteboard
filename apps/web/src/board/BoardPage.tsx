@@ -4,6 +4,9 @@ import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
+import { recordRecentBoard, titleOf } from "../boards/recentBoards";
+import { IconAlert, IconBack, IconCopy, IconLock, IconShare } from "../ui/icons";
+import { ShareDrawer } from "./ShareDrawer";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 
@@ -81,6 +84,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed());
+  const [shareOpen, setShareOpen] = useState(false);
+  const [title] = useState(() => titleOf(boardId) ?? "未命名白板");
   const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
@@ -123,6 +128,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
       alive = false;
     };
   }, [boardId]);
+
+  useEffect(() => {
+    recordRecentBoard({ id: boardId, title });
+  }, [boardId, title]);
 
   // 先让缓存/快照内容渲染出来，再创建 per-tab/per-board store（内部先做 tabId 握手，再连 Socket）
   useEffect(() => {
@@ -201,8 +210,22 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   if (!scene) {
     return (
-      <div style={{ display: "grid", placeItems: "center", height: "100vh", fontFamily: "system-ui, sans-serif", color: "#6B5A60" }}>
-        正在加载白板 {boardId}…
+      <div className="wb-board">
+        <div className="wb-board__topbar">
+          <a className="wb-board__back" href="/boards" aria-label="返回我的白板">
+            <IconBack />
+          </a>
+          <span className="wb-board__name">正在加载白板…</span>
+        </div>
+        <div className="wb-board__canvas" style={{ display: "grid", placeItems: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-3)" }}>
+            <span className="wb-spinner wb-spinner--dark" aria-hidden />
+            <span className="wb-caption">正在加载白板</span>
+            <code className="wb-mono" data-testid="board-id" style={{ color: "var(--text-secondary)" }}>
+              {boardId}
+            </code>
+          </div>
+        </div>
       </div>
     );
   }
@@ -215,117 +238,121 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const writer = storeState?.writer;
   const tab = storeState;
 
+  const statusText = status === "connected" ? "已连接" : status === "connecting" ? "连接中" : "离线";
+  const statusTone = status === "connected" ? "ok" : status === "connecting" ? "busy" : "bad";
+  const users = presence?.users ?? [];
+  const shownUsers = users.slice(0, 4);
+  const extraUsers = users.length - shownUsers.length;
+  const pageHref = window.location.pathname + window.location.search;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div className="wb-board">
+      <header className="wb-board__topbar">
+        <a className="wb-board__back" href="/boards" aria-label="返回我的白板" data-testid="board-back">
+          <IconBack />
+        </a>
+
+        <div style={{ minWidth: 0 }}>
+          <div className="wb-board__name" title={title}>
+            {title}
+          </div>
+          <div className="wb-board__name-sub wb-mono" data-testid="board-id">
+            {boardId}
+          </div>
+        </div>
+
+        {isGuest ? <GuestBadge /> : null}
+        {readonly ? (
+          <span className="wb-badge wb-badge--readonly" data-testid="readonly-badge">
+            <IconLock />
+            只读
+          </span>
+        ) : null}
+        {!isGuest && user ? (
+          <span className="wb-badge wb-badge--neutral" data-testid="auth-user">
+            {user.displayName}
+          </span>
+        ) : null}
+
+        <div className="wb-board__spacer" />
+
+        {/* presence：一个用户一个头像，多标签用 ×N 标注 */}
+        {users.length > 0 ? (
+          <div className="wb-avatar-stack" data-testid="presence" aria-label="在线协作者">
+            {shownUsers.map((member) => (
+              <span
+                key={member.identity}
+                className="wb-avatar"
+                data-testid="presence-user"
+                data-identity={member.identity}
+                data-connections={member.connectionCount}
+                title={`${member.identity} · ${member.role} · ${member.connectionCount} 个标签页`}
+                style={{ background: member.color }}
+              >
+                {member.identity === collabState?.identity ? "我" : shortId(member.identity).slice(-2)}
+                {member.connectionCount > 1 ? (
+                  <b data-testid="presence-tab-count" style={{ fontSize: 9, marginLeft: 1 }}>
+                    ×{member.connectionCount}
+                  </b>
+                ) : null}
+              </span>
+            ))}
+            {extraUsers > 0 ? <span className="wb-avatar wb-avatar--more">+{extraUsers}</span> : null}
+          </div>
+        ) : null}
+
+        <span className="wb-board__status" data-testid="collab-status" data-status={status}>
+          <span className={`wb-board__dot wb-board__dot--${statusTone}`} aria-hidden />
+          <span className="wb-board__status-text">
+            {statusText} · {role}
+          </span>
+        </span>
+
+        {isGuest ? (
+          <a className="wb-link" data-testid="header-login" href={`/login?next=${encodeURIComponent(pageHref)}`}>
+            登录
+          </a>
+        ) : null}
+
+        <button
+          className="wb-btn wb-btn--primary wb-btn--sm"
+          type="button"
+          data-testid="share-open"
+          onClick={() => {
+            if (readonly) {
+              void navigator.clipboard.writeText(window.location.href).catch(() => {});
+              return;
+            }
+            setShareOpen(true);
+          }}
+        >
+          {readonly ? <IconCopy /> : <IconShare />}
+          {readonly ? "复制链接" : "分享"}
+        </button>
+      </header>
+
+      {status === "disconnected" ? (
+        <div className="wb-banner wb-banner--warning" role="status" data-testid="offline-banner">
+          <IconAlert />
+          <span>连接中断，改动会在恢复后同步。</span>
+          <span className="wb-banner__spacer" />
+          <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={() => storeRef.current?.debugConnect()}>
+            重试
+          </button>
+        </div>
+      ) : null}
+
       {isGuest && !bannerDismissed ? (
         <SaveToAccountBanner
           onLogin={() => {
-            window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+            window.location.href = `/login?next=${encodeURIComponent(pageHref)}`;
           }}
           onDismiss={dismissBanner}
         />
       ) : null}
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "8px 16px",
-          borderBottom: "1px solid #EADDE2",
-          background: "#FFF9FB",
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 13,
-          color: "#6B5A60",
-          flexWrap: "wrap",
-        }}
-      >
-        <strong style={{ color: "#A85C7C" }}>白板</strong>
-        <code data-testid="board-id" style={{ color: "#8E4568" }}>{boardId}</code>
-        {isGuest ? <GuestBadge /> : null}
-        {!isGuest && user ? (
-          <span data-testid="auth-user" style={{ fontSize: 12, color: "#4E8A68" }}>
-            {user.displayName}
-          </span>
-        ) : null}
-        {isGuest ? (
-          <a
-            data-testid="header-login"
-            href={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
-            style={{ fontSize: 12, color: "#8E4568" }}
-          >
-            登录 / 注册
-          </a>
-        ) : null}
-        {readonly ? (
-          <span data-testid="readonly-badge" style={{ color: "#8E4568", border: "1px solid #E7BFCE", borderRadius: 999, padding: "1px 8px", fontSize: 11 }}>
-            只读
-          </span>
-        ) : null}
-        <span data-testid="collab-status" style={{ fontSize: 12, color: status === "connected" ? "#4E8A68" : "#A86A4E" }}>
-          {status} · {role}
-        </span>
-        {collabState && collabState.queuedOps > 0 ? (
-          <span data-testid="queued-ops" style={{ fontSize: 12, color: "#A86A4E" }}>
-            待补发 {collabState.queuedOps} op
-          </span>
-        ) : null}
-        {collabState && collabState.synced ? (
-          <span data-testid="sync-state" style={{ fontSize: 12, color: "#4E8A68" }}>
-            已对齐 seq={collabState.cacheSeq ?? 0}
-          </span>
-        ) : null}
-        {tab ? (
-          <span data-testid="tab-id" title={`guestId=${tab.guestId}`} style={{ fontSize: 11, color: "#8E4568", border: "1px dashed #E7BFCE", borderRadius: 6, padding: "1px 6px" }}>
-            tab {shortId(tab.tabId)}{tab.tabRegenerated ? " · 已重生成" : ""}
-          </span>
-        ) : null}
-        {writer ? (
-          <span
-            data-testid="cache-writer"
-            data-is-writer={writer.isWriter ? "1" : "0"}
-            style={{ fontSize: 11, color: writer.isWriter ? "#4E8A68" : "#A86A4E" }}
-          >
-            {writer.mode === "web-locks" ? "Web Locks" : writer.mode === "broadcast-fallback" ? "降级选举" : "单写者"}
-            ：{writer.isWriter ? "缓存写者" : "只读缓存"}
-          </span>
-        ) : null}
-        {/* presence：按用户聚合，一个用户一个头像 + ×N 标签页 */}
-        {presence?.users.map((user) => (
-          <span
-            key={user.identity}
-            data-testid="presence-user"
-            data-identity={user.identity}
-            data-connections={user.connectionCount}
-            title={`${user.identity} · ${user.role}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              border: "1px solid #EADDE2",
-              borderRadius: 999,
-              padding: "1px 8px 1px 4px",
-              background: "#fff",
-            }}
-          >
-            <i style={{ width: 14, height: 14, borderRadius: "50%", background: user.color, display: "inline-block" }} />
-            <span style={{ fontSize: 11 }}>{user.identity === collabState?.identity ? "我" : shortId(user.identity)}</span>
-            {user.connectionCount > 1 ? (
-              <b data-testid="presence-tab-count" style={{ fontSize: 11, color: "#8E4568" }}>
-                ×{user.connectionCount} 标签页
-              </b>
-            ) : null}
-          </span>
-        ))}
-        <span style={{ marginLeft: "auto", fontSize: 12 }}>
-          {scene.source === "cache"
-            ? `本地缓存 ${Math.round(scene.loadMs)}ms · seq=${scene.seq}`
-            : scene.source === "snapshot"
-              ? `服务端快照 · seq=${scene.seq}`
-              : "空场景"}
-        </span>
-      </header>
+
       <div
-        style={{ position: "relative", flex: 1 }}
+        className="wb-board__canvas"
         onPointerMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           if (rect.width === 0 || rect.height === 0) return;
@@ -335,21 +362,24 @@ export function BoardPage({ boardId }: { boardId: string }) {
           );
         }}
       >
-        <BoardCanvas
-          initialElements={scene.elements}
-          viewModeEnabled={readonly}
-          onApiReady={(api, handle) => {
-            apiRef.current = api;
-            bridgeRef.current = handle;
-            timingRef.current.canvasReadyAt = performance.now();
-            storeRef.current?.notifyCanvasReady();
-            if (window.__board) window.__board.ready = true;
-          }}
-          onOps={(ops) => {
-            window.__board?.opBatches.push(ops);
-            storeRef.current?.submit(ops);
-          }}
-        />
+        <div className="wb-canvas" style={{ height: "100%" }}>
+          <BoardCanvas
+            initialElements={scene.elements}
+            viewModeEnabled={readonly}
+            onApiReady={(api, handle) => {
+              apiRef.current = api;
+              bridgeRef.current = handle;
+              timingRef.current.canvasReadyAt = performance.now();
+              storeRef.current?.notifyCanvasReady();
+              if (window.__board) window.__board.ready = true;
+            }}
+            onOps={(ops) => {
+              window.__board?.opBatches.push(ops);
+              storeRef.current?.submit(ops);
+            }}
+          />
+        </div>
+
         {/* 远端光标按连接渲染（同一用户的多标签各有一个，位置不合并） */}
         {cursors.map((cursor) => (
           <div
@@ -395,6 +425,44 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </div>
         ))}
       </div>
+
+      {/* 状态条：桌面可见，移动端隐藏；同时承载验收用的调试读数 */}
+      <footer className="wb-board__statusbar">
+        <span className="wb-board__debug">
+          {collabState && collabState.queuedOps > 0 ? (
+            <span className="wb-board__debug-item" data-testid="queued-ops">
+              待补发 {collabState.queuedOps} op
+            </span>
+          ) : null}
+          {collabState && collabState.synced ? (
+            <span className="wb-board__debug-item" data-testid="sync-state">
+              已对齐 seq={collabState.cacheSeq ?? 0}
+            </span>
+          ) : null}
+          {tab ? (
+            <span className="wb-board__debug-item" data-testid="tab-id" title={`guestId=${tab.guestId}`}>
+              tab {shortId(tab.tabId)}
+              {tab.tabRegenerated ? " · 已重生成" : ""}
+            </span>
+          ) : null}
+          {writer ? (
+            <span
+              className="wb-board__debug-item"
+              data-testid="cache-writer"
+              data-is-writer={writer.isWriter ? "1" : "0"}
+            >
+              {writer.mode === "web-locks" ? "Web Locks" : writer.mode === "broadcast-fallback" ? "降级选举" : "单写者"}：
+              {writer.isWriter ? "缓存写者" : "只读缓存"}
+            </span>
+          ) : null}
+        </span>
+        <span className="wb-board__statusbar-right">
+          <span className="wb-nums">{scene.source === "cache" ? `本地缓存 ${Math.round(scene.loadMs)}ms` : scene.source === "snapshot" ? "服务端快照" : "空场景"}</span>
+          <span className="wb-nums">seq {scene.seq}</span>
+        </span>
+      </footer>
+
+      {shareOpen ? <ShareDrawer boardId={boardId} readonly={readonly} onClose={() => setShareOpen(false)} /> : null}
     </div>
   );
 }
