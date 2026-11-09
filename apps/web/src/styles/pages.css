@@ -48,7 +48,8 @@
 }
 
 /* ============ 首页 / 展示页 ============ */
-/* 首页只保留整页场景与页脚：顶栏、品牌、导航与文案区块都已移除，页内没有可聚焦元素 */
+/* 骨架参考 Excalidraw：整页富士山场景之上依次叠加顶栏、中央文案与主行动、
+   左下工具岛、右下状态条；只有主按钮与登录/注册可交互 */
 .wb-home {
   position: relative;
   min-height: 100%;
@@ -58,6 +59,180 @@
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
   background: var(--sky-blue-top);
+}
+
+/* ---------- 顶栏：品牌在左、账户入口在右，同一水平线 ---------- */
+.wb-home__top {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-8) 0;
+}
+
+/* 顶栏落在顶部深蓝段：品牌与入口各用一枚浅色胶囊托底，深色文字始终合在浅底上 */
+.wb-home__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 16px 6px 6px;
+  font-size: var(--text-subtitle);
+  line-height: var(--lh-subtitle);
+  font-weight: 600;
+  color: var(--rose-900);
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 6px 16px;
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__nav-link {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--neutral-800);
+  text-decoration: none;
+  transition: color var(--dur-base) var(--ease-standard);
+}
+
+.wb-home__nav-link:hover {
+  color: var(--rose-700);
+}
+
+.wb-home__nav-link--strong {
+  font-weight: 600;
+  color: var(--rose-800);
+}
+
+/* ---------- 中央：标题 + 副文 + 主行动，整体落在峰顶与雪顶之上的天空带 ---------- */
+.wb-home__stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  /* 上留白按视高收敛，保证文案块底部始终在峰顶之上 */
+  padding: clamp(var(--space-3), 2.6vh, var(--space-6)) var(--space-6) 0;
+  min-height: 0;
+}
+
+.wb-home__main {
+  width: min(100%, 560px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(var(--space-4), 2.2vh, 20px) clamp(var(--space-6), 3vw, var(--space-8));
+  text-align: center;
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__headline {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 2.6vw, 36px);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--rose-900);
+}
+
+.wb-home__lead {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-subtitle);
+  line-height: var(--lh-subtitle);
+  color: var(--neutral-800);
+}
+
+.wb-home__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: clamp(var(--space-4), 2.2vh, 20px);
+}
+
+/* ---------- 左下装饰：Excalidraw 风格工具岛 ---------- */
+.wb-home__dock {
+  position: absolute;
+  left: clamp(var(--space-4), 2.4vw, var(--space-8));
+  /* 让开页脚那一行，避免与版本文案叠在一起 */
+  bottom: calc(var(--space-8) + var(--space-12));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  color: var(--neutral-700);
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* 分组之间用一条细分割线断开，模拟工具栏的分组关系 */
+.wb-home__tool-group + .wb-home__tool-group {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--day-card-line);
+}
+
+.wb-home__tool {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.wb-home__tool-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- 右下装饰：缩放 / 画布尺寸状态条 ---------- */
+.wb-home__status {
+  position: absolute;
+  right: clamp(var(--space-4), 2.4vw, var(--space-8));
+  bottom: var(--space-6);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 14px;
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--neutral-800);
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__status-sep {
+  color: var(--neutral-500);
 }
 
 /* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 ---------- */
@@ -396,14 +571,18 @@
   color: var(--rose-900);
 }
 
-/* 平板：场景仍是整页背景，页脚留白与移动端一致收紧 */
+/* 平板：场景仍是整页背景，顶栏与页脚留白收紧 */
 @media (max-width: 900px) {
+  .wb-home__top {
+    padding: var(--space-4) var(--space-6) 0;
+  }
+
   .wb-home__foot {
     padding: var(--space-4) var(--space-6) var(--space-8);
   }
 }
 
-/* 移动端：场景保持整页背景，花瓣减半 */
+/* 移动端：场景保持整页背景，花瓣减半；装饰件（工具岛 / 状态条）隐藏 */
 @media (max-width: 767px) {
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
   .wb-scene__petal:nth-child(n + 13) {
@@ -413,6 +592,76 @@
   .wb-scene__branch {
     width: 58%;
     height: 72%;
+  }
+
+  .wb-home__top {
+    padding: var(--space-4) var(--space-4) 0;
+  }
+
+  /* 窄屏只保留品牌、入口、标题与主按钮 */
+  .wb-home__dock,
+  .wb-home__status {
+    display: none;
+  }
+
+  .wb-home__stage {
+    padding: var(--space-4) var(--space-4) 0;
+  }
+
+  .wb-home__main {
+    padding: var(--space-4) var(--space-6);
+  }
+
+  .wb-home__headline {
+    font-size: 28px;
+  }
+}
+
+/* 矮视口（如 1024×600）：收掉副文案，保证标题与主按钮整体仍在峰顶之上 */
+@media (max-height: 720px) {
+  .wb-home__top {
+    padding: var(--space-3) var(--space-6) 0;
+  }
+
+  .wb-home__brand {
+    padding: 3px 12px 3px 3px;
+    font-size: var(--text-body);
+    line-height: var(--lh-body);
+  }
+
+  .wb-home__brand .wb-brand__mark {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+
+  .wb-home__nav {
+    padding: 3px 12px;
+  }
+
+  .wb-home__stage {
+    padding-top: var(--space-1);
+  }
+
+  .wb-home__main {
+    padding: var(--space-2) var(--space-6);
+  }
+
+  .wb-home__headline {
+    font-size: 24px;
+  }
+
+  .wb-home__lead {
+    display: none;
+  }
+
+  .wb-home__action {
+    margin-top: var(--space-2);
+  }
+
+  .wb-home__cta {
+    height: var(--control-h);
+    font-size: var(--text-body);
   }
 }
 
