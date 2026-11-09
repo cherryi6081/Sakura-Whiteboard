@@ -565,10 +565,12 @@
 
 .wb-crane__wing {
   transform-box: view-box;
-  transform-origin: 52px 32px;
+  /* 肩点：与两翼路径的肩端 (68,31) 对齐，振翅绕肩转动 */
+  transform-origin: 68px 31px;
   will-change: transform;
 }
 
+/* 远翼先画、压淡一档；近翼最前、用原色 */
 .wb-crane__wing--far {
   fill: var(--crane-ink-soft);
   animation: wb-crane-flap-far var(--c-flap) ease-in-out calc(var(--c-flap) * -0.5) infinite alternate;
@@ -579,6 +581,21 @@
   animation: wb-crane-flap-near var(--c-flap) ease-in-out infinite alternate;
 }
 
+/* 羽毛分层：浅一档的极细结构线；画在浅色远翼上时换回深档才可见 */
+.wb-crane__feather {
+  fill: none;
+  stroke: var(--crane-ink-soft);
+  stroke-width: 0.8;
+  stroke-linecap: butt;
+  opacity: 0.6;
+}
+
+.wb-crane__feather--deep {
+  stroke: var(--crane-ink);
+  stroke-width: 0.9;
+  opacity: 0.6;
+}
+
 .wb-crane__beak {
   fill: var(--crane-ink);
 }
@@ -587,11 +604,17 @@
   fill: var(--crane-crown);
 }
 
+.wb-crane__eye {
+  fill: var(--crane-ink-soft);
+}
+
+/* 细长的腿：细线 + 关节折角 + 分开的脚趾，飞行时向后收 */
 .wb-crane__leg {
   fill: none;
   stroke: var(--crane-ink);
-  stroke-width: 2.4;
+  stroke-width: 1.7;
   stroke-linecap: round;
+  stroke-linejoin: miter;
 }
 
 /* 新路径：右下画外 → 向右上扬起 → 左上方出画。

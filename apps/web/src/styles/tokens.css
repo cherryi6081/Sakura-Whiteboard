@@ -87,20 +87,19 @@
   --crane-crown: #b4544b;
 
   /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
-  /* 参考图取色 https://img95.699pic.com/photo/50041/1295.jpg_wh300.jpg：
-     天空主色 #9CCAFC（H≈211°、S≈64%、L≈80%），中段 #A0CDFC，地平线 #A7CEF9，
-     深蓝湖山带 #3D73B9（H≈214°）。背景保留“夜空底色”，因此只把同一蓝色相
-     压到 L≈13%–30% 做明度映射，不改色相，避免回到旧版靛紫调 */
-  --sky-night-900: #101c33;
-  --sky-night-800: #16253f;
-  --sky-night-700: #1d3050;
-  --sky-night-horizon: #2c456e;
+  /* 单一蓝色相（H≈217°±1），只用明度做天顶→地平线过渡：
+     天顶 #081427(L≈9%) → #0d1c34(L≈13%) → #122343(L≈17%) → 地平线 #1a3055(L≈22%)，
+     全部比山体（--fuji-300 L≈75%）暗得多，形成“亮山压深天”，不再混入紫调 */
+  --sky-night-900: #081427;
+  --sky-night-800: #0d1c34;
+  --sky-night-700: #122343;
+  --sky-night-horizon: #1a3055;
   --night-star: #d6dcf0;
   --home-scene-sky: linear-gradient(
     180deg,
     var(--sky-night-900) 0%,
-    var(--sky-night-800) 44%,
-    var(--sky-night-700) 72%,
+    var(--sky-night-800) 46%,
+    var(--sky-night-700) 74%,
     var(--sky-night-horizon) 100%
   );
 
@@ -110,7 +109,7 @@
   --lake-100: color-mix(in srgb, var(--fuji-300) 36%, var(--sky-night-800));
   --lake-300: color-mix(in srgb, var(--fuji-500) 26%, var(--sky-night-700));
   --lake-500: color-mix(in srgb, var(--fuji-600) 20%, var(--sky-night-800));
-  --lake-700: color-mix(in srgb, var(--fuji-600) 30%, var(--sky-night-900));
+  --lake-700: color-mix(in srgb, var(--fuji-600) 18%, var(--sky-night-900));
   --lake-horizon: color-mix(in srgb, var(--fuji-100) 46%, transparent);
   --lake-ripple: color-mix(in srgb, var(--fuji-100) 56%, transparent);
 
