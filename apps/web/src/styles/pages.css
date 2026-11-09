@@ -80,6 +80,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  /* 顶栏落在顶部深蓝里：导航自成一枚浅色胶囊，深色链接始终合在浅底上 */
+  padding: 6px 14px;
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--day-card-shadow);
 }
 
 .wb-home__nav-link {
@@ -131,7 +137,9 @@
   line-height: var(--lh-micro);
   letter-spacing: 0.08em;
   color: var(--day-eyebrow-ink);
-  background: var(--day-eyebrow-bg);
+  /* 矮视口时正文整体上移，眉标会落到顶部深蓝段：改成不透明的浅粉底，
+     深蓝段与浅蓝段上是同一个合成色，12px 文字也稳定在 5:1 以上 */
+  background: color-mix(in srgb, var(--paper) 74%, var(--rose-600));
   border-radius: var(--radius-pill);
 }
 
@@ -223,7 +231,19 @@
   pointer-events: none;
   user-select: none;
   isolation: isolate;
+  /* 顶部深蓝占据上 1/4，品牌与导航正落在这一带：给这两处各垫一层与能力卡同源的
+     半透明浅色衬底（--day-card-surface），深色文字因此始终合在浅底上；
+     文字只保留全站唯一那套深色 token，不出现上下两套字色 */
   background: var(--home-scene-sky);
+}
+
+/* 顶栏落在深蓝上时，品牌也包成一枚浅色胶囊，与导航同一套表面 */
+.wb-home__top .wb-brand {
+  padding: 4px 12px 4px 6px;
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--day-card-shadow);
 }
 
 /* 山 + 湖面 / 倒影：meet 完整呈现（峰顶、两侧山脚、水线与湖底都在画面内） */
