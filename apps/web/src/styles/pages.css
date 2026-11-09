@@ -237,6 +237,46 @@
   height: 78%;
 }
 
+/* 新增的独立枝干丛：每组自带主干与分叉，不挂在现有两棵主树上。
+   高位组（远景档）从左上 / 右上伸入，盒子更小、枝条更细更淡；
+   低位组（中景档）从左右缘中低处伸入，盒子略大、枝更粗。
+   左右高度与角度刻意错开：左侧整体更低，右侧整体更高。 */
+.wb-scene__branch--left-high {
+  left: 0;
+  right: auto;
+  top: 3%;
+  bottom: auto;
+  width: min(26%, 300px);
+  height: 26%;
+}
+
+.wb-scene__branch--left-low {
+  left: 0;
+  right: auto;
+  top: auto;
+  bottom: 33%;
+  width: min(30%, 360px);
+  height: 34%;
+}
+
+.wb-scene__branch--right-high {
+  right: 0;
+  left: auto;
+  top: 2%;
+  bottom: auto;
+  width: min(24%, 280px);
+  height: 30%;
+}
+
+.wb-scene__branch--right-low {
+  right: 0;
+  left: auto;
+  top: auto;
+  bottom: 38%;
+  width: min(28%, 340px);
+  height: 30%;
+}
+
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
   stroke: var(--branch-brown-900);
@@ -510,6 +550,31 @@
   .wb-scene__branch {
     width: 58%;
     height: 72%;
+  }
+
+  /* 新增四组在窄屏按同一比例收口，保持贴边与高低错落，不撑满画面 */
+  .wb-scene__branch--left-high {
+    width: 44%;
+    height: 22%;
+    top: 2%;
+  }
+
+  .wb-scene__branch--left-low {
+    width: 48%;
+    height: 28%;
+    bottom: 36%;
+  }
+
+  .wb-scene__branch--right-high {
+    width: 42%;
+    height: 24%;
+    top: 2%;
+  }
+
+  .wb-scene__branch--right-low {
+    width: 46%;
+    height: 26%;
+    bottom: 40%;
   }
 }
 

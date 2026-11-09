@@ -2,10 +2,18 @@ import type { CSSProperties } from "react";
 import {
   LEFT_FAR_PAINT,
   LEFT_FAR_TREE,
+  LEFT_HIGH_PAINT,
+  LEFT_HIGH_TREE,
+  LEFT_LOW_PAINT,
+  LEFT_LOW_TREE,
   LEFT_PAINT,
   LEFT_TREE,
   RIGHT_FAR_PAINT,
   RIGHT_FAR_TREE,
+  RIGHT_HIGH_PAINT,
+  RIGHT_HIGH_TREE,
+  RIGHT_LOW_PAINT,
+  RIGHT_LOW_TREE,
   RIGHT_PAINT,
   RIGHT_TREE,
   toPathData,
@@ -281,6 +289,55 @@ function BranchPaths({ segments }: { segments: ReadonlyArray<BranchSegment> }) {
 }
 
 /**
+ * 一组独立的枝干丛：枝段 + 花，整体用两个透明度分档。
+ * 高位远景组复用 `.wb-scene__branch-far` 的浅木色与 0.48 透明度；
+ * 低位中景组沿用前景木色，整组压到 0.88，花略亮于枝。
+ */
+function BranchCluster({
+  paint,
+  blossoms,
+  prefix,
+  far = false,
+  branchOpacity = 1,
+  blossomOpacity = 1,
+}: {
+  paint: ReadonlyArray<BranchSegment>;
+  blossoms: ReadonlyArray<Blossom>;
+  prefix: string;
+  far?: boolean;
+  branchOpacity?: number;
+  blossomOpacity?: number;
+}) {
+  return (
+    <>
+      {far ? (
+        <g className="wb-scene__branch-far" fill="none">
+          {paint.map((segment) => (
+            <path key={segment.id} strokeWidth={segment.width} d={toPathData(segment.points)} />
+          ))}
+        </g>
+      ) : (
+        <g fill="none" opacity={branchOpacity}>
+          {paint.map((segment) => (
+            <path
+              key={segment.id}
+              className={segment.width >= 4 ? "wb-scene__branch-wood" : "wb-scene__branch-wood-soft"}
+              strokeWidth={segment.width}
+              d={toPathData(segment.points)}
+            />
+          ))}
+        </g>
+      )}
+      <g opacity={blossomOpacity}>
+        {blossoms.map((blossom, index) => (
+          <BlossomMark key={`${prefix}-${blossom.segmentId}-${blossom.t}-${index}`} {...blossom} />
+        ))}
+      </g>
+    </>
+  );
+}
+
+/**
  * 每条轨迹的横向摆幅：`--p-sway` 表示整段轨迹里**最大横向位移**（带方向的正负长度），
  * 关键帧里各时刻的位移都是它的固定比例。left/right 是该轨迹用到的最大向左/向右比例，
  * 用来按每片花瓣到画面左右边缘的余量反算 sway，保证整段轨迹都在 3%–97% 之间。
@@ -389,6 +446,24 @@ export function FujiScene() {
 
         {/* 山体本体：压在水线之上 */}
         <MountainShapes />
+      </svg>
+
+      {/* 独立枝干丛（高处远景档）：左右各一丛，从画面上缘/外侧以更细更淡的枝条伸入，
+          与现有两棵主树不属于同一主干，渲染在现有枝条之前，形成更远的一层 */}
+      <svg className="wb-scene__branch wb-scene__branch--left-high" viewBox="0 0 360 560" preserveAspectRatio="xMinYMin meet" focusable="false">
+        <BranchCluster paint={LEFT_HIGH_PAINT} blossoms={LEFT_HIGH_TREE.blossoms} prefix="l-high" far blossomOpacity={0.62} />
+      </svg>
+      <svg className="wb-scene__branch wb-scene__branch--right-high" viewBox="0 0 360 560" preserveAspectRatio="xMaxYMin meet" focusable="false">
+        <BranchCluster paint={RIGHT_HIGH_PAINT} blossoms={RIGHT_HIGH_TREE.blossoms} prefix="r-high" far blossomOpacity={0.62} />
+      </svg>
+
+      {/* 独立枝干丛（中低处中景档）：左右各一丛，枝条更粗、花朵更大一点，
+          整组透明度 0.88 / 0.92，位置比高位组低、比现有前景树远 */}
+      <svg className="wb-scene__branch wb-scene__branch--left-low" viewBox="0 0 360 560" preserveAspectRatio="xMinYMax meet" focusable="false">
+        <BranchCluster paint={LEFT_LOW_PAINT} blossoms={LEFT_LOW_TREE.blossoms} prefix="l-low" branchOpacity={0.88} blossomOpacity={0.92} />
+      </svg>
+      <svg className="wb-scene__branch wb-scene__branch--right-low" viewBox="0 0 360 560" preserveAspectRatio="xMaxYMax meet" focusable="false">
+        <BranchCluster paint={RIGHT_LOW_PAINT} blossoms={RIGHT_LOW_TREE.blossoms} prefix="r-low" branchOpacity={0.88} blossomOpacity={0.92} />
       </svg>
 
       {/* 左侧樱花枝：从左缘中低处横向入画、向右上折线攀升，与右侧自右上角垂下形成落差。

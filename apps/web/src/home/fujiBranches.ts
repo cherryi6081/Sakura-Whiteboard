@@ -392,10 +392,137 @@ const LEFT_FAR_SPEC: TreeSpec = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// 独立枝干丛：每侧再各加两组，各自有主干、侧枝与末梢，不挂在现有主树上。
+// 两组使用紧凑的 360 × 560 局部坐标，由各自的 SVG 盒子定位置与缩放：
+// - 高位组：从画面顶部 / 上缘伸入，更细、更淡，属远景档；
+// - 低位组：从画面左右缘中低处伸入，更粗、更近，属中景档。
+// 左右进深与高度刻意错开：左侧整体更低，右侧整体更高，不做镜像。
+// ---------------------------------------------------------------------------
+
+const LEFT_HIGH_SPEC: TreeSpec = {
+  limbs: [
+    {
+      id: "lh-trunk",
+      parent: null,
+      kind: "trunk",
+      widths: [4.6, 4.1, 3.6, 3.2, 2.8, 2.5],
+      points: [
+        [-24, 300],
+        [36, 278],
+        [92, 250],
+        [140, 216],
+        [180, 176],
+        [212, 132],
+        [238, 88],
+      ],
+    },
+    { id: "lh-b1", parent: "lh-trunk-2", kind: "branch", t: 0.55, angle: 44, pieces: 2, bend: 10, length: 56, widths: [2.5, 2.1] },
+    { id: "lh-b2", parent: "lh-trunk-4", kind: "branch", t: 0.5, angle: -40, pieces: 2, bend: -10, length: 46, widths: [2, 1.7] },
+    { id: "lh-b3", parent: "lh-trunk-6", kind: "branch", t: 0.5, angle: 42, pieces: 1, length: 36, widths: [1.7] },
+    { id: "lh-t1", parent: "lh-b1", kind: "twig", t: 0.5, angle: -38, pieces: 1, length: 26, widths: [1.5] },
+    { id: "lh-t2", parent: "lh-b1-2", kind: "twig", t: 0.8, angle: 38, pieces: 1, length: 22, widths: [1.3] },
+    { id: "lh-t3", parent: "lh-b2", kind: "twig", t: 0.55, angle: 40, pieces: 1, length: 24, widths: [1.4] },
+    { id: "lh-t4", parent: "lh-b2-2", kind: "twig", t: 0.82, angle: -36, pieces: 1, length: 20, widths: [1.15] },
+    { id: "lh-t5", parent: "lh-b3", kind: "twig", t: 0.6, angle: -38, pieces: 1, length: 22, widths: [1.15] },
+  ],
+};
+
+const LEFT_LOW_SPEC: TreeSpec = {
+  limbs: [
+    {
+      id: "ll-trunk",
+      parent: null,
+      kind: "trunk",
+      widths: [9.6, 8.4, 7.4, 6.5, 5.7, 5, 4.4],
+      points: [
+        [-24, 470],
+        [40, 448],
+        [100, 418],
+        [152, 380],
+        [196, 336],
+        [232, 288],
+        [262, 240],
+        [284, 192],
+      ],
+    },
+    { id: "ll-b1", parent: "ll-trunk-2", kind: "branch", t: 0.55, angle: 46, pieces: 2, bend: 12, length: 78, widths: [4.6, 3.9] },
+    { id: "ll-b2", parent: "ll-trunk-4", kind: "branch", t: 0.55, angle: -42, pieces: 2, bend: -12, length: 66, widths: [3.8, 3.2] },
+    { id: "ll-b3", parent: "ll-trunk-6", kind: "branch", t: 0.5, angle: 44, pieces: 1, length: 48, widths: [3.2] },
+    { id: "ll-t1", parent: "ll-b1", kind: "twig", t: 0.5, angle: -38, pieces: 1, length: 36, widths: [2.4] },
+    { id: "ll-t2", parent: "ll-b1-2", kind: "twig", t: 0.8, angle: 40, pieces: 1, length: 30, widths: [2.1] },
+    { id: "ll-t3", parent: "ll-b2", kind: "twig", t: 0.55, angle: 42, pieces: 1, length: 32, widths: [2.2] },
+    { id: "ll-t4", parent: "ll-b2-2", kind: "twig", t: 0.82, angle: -36, pieces: 1, length: 26, widths: [2] },
+    { id: "ll-t5", parent: "ll-b3", kind: "twig", t: 0.6, angle: -40, pieces: 1, length: 28, widths: [2.1] },
+    { id: "ll-t6", parent: "ll-trunk-7", kind: "twig", t: 0.5, angle: 42, pieces: 1, length: 32, widths: [2.2] },
+  ],
+};
+
+const RIGHT_HIGH_SPEC: TreeSpec = {
+  limbs: [
+    {
+      id: "rh-trunk",
+      parent: null,
+      kind: "trunk",
+      widths: [4.6, 4, 3.5, 3.1, 2.7, 2.4],
+      points: [
+        [318, -30],
+        [314, 20],
+        [306, 76],
+        [292, 132],
+        [274, 186],
+        [252, 238],
+        [228, 288],
+      ],
+    },
+    { id: "rh-b1", parent: "rh-trunk-2", kind: "branch", t: 0.55, angle: -46, pieces: 2, bend: -10, length: 52, widths: [2.4, 2] },
+    { id: "rh-b2", parent: "rh-trunk-4", kind: "branch", t: 0.55, angle: 44, pieces: 2, bend: 12, length: 44, widths: [1.9, 1.6] },
+    { id: "rh-b3", parent: "rh-trunk-6", kind: "branch", t: 0.5, angle: -40, pieces: 1, length: 34, widths: [1.6] },
+    { id: "rh-t1", parent: "rh-b1", kind: "twig", t: 0.5, angle: 40, pieces: 1, length: 24, widths: [1.4] },
+    { id: "rh-t2", parent: "rh-b1-2", kind: "twig", t: 0.8, angle: -36, pieces: 1, length: 20, widths: [1.2] },
+    { id: "rh-t3", parent: "rh-b2", kind: "twig", t: 0.55, angle: -38, pieces: 1, length: 22, widths: [1.3] },
+    { id: "rh-t4", parent: "rh-b2-2", kind: "twig", t: 0.82, angle: 40, pieces: 1, length: 18, widths: [1.1] },
+    { id: "rh-t5", parent: "rh-b3", kind: "twig", t: 0.6, angle: 42, pieces: 1, length: 20, widths: [1.1] },
+  ],
+};
+
+const RIGHT_LOW_SPEC: TreeSpec = {
+  limbs: [
+    {
+      id: "rl-trunk",
+      parent: null,
+      kind: "trunk",
+      widths: [9.4, 8.2, 7.2, 6.3, 5.5, 4.8],
+      points: [
+        [382, 470],
+        [318, 448],
+        [256, 418],
+        [202, 380],
+        [156, 336],
+        [118, 288],
+        [88, 240],
+      ],
+    },
+    { id: "rl-b1", parent: "rl-trunk-2", kind: "branch", t: 0.55, angle: 46, pieces: 2, bend: 12, length: 74, widths: [4.5, 3.8] },
+    { id: "rl-b2", parent: "rl-trunk-4", kind: "branch", t: 0.55, angle: -44, pieces: 2, bend: -12, length: 62, widths: [3.7, 3.1] },
+    { id: "rl-b3", parent: "rl-trunk-6", kind: "branch", t: 0.5, angle: 42, pieces: 1, length: 46, widths: [3.1] },
+    { id: "rl-t1", parent: "rl-b1", kind: "twig", t: 0.5, angle: -38, pieces: 1, length: 34, widths: [2.3] },
+    { id: "rl-t2", parent: "rl-b1-2", kind: "twig", t: 0.8, angle: 40, pieces: 1, length: 28, widths: [2] },
+    { id: "rl-t3", parent: "rl-b2", kind: "twig", t: 0.55, angle: 42, pieces: 1, length: 30, widths: [2.1] },
+    { id: "rl-t4", parent: "rl-b2-2", kind: "twig", t: 0.82, angle: -36, pieces: 1, length: 24, widths: [1.9] },
+    { id: "rl-t5", parent: "rl-b3", kind: "twig", t: 0.6, angle: -40, pieces: 1, length: 26, widths: [2] },
+    { id: "rl-t6", parent: "rl-trunk-5", kind: "twig", t: 0.5, angle: 40, pieces: 1, length: 30, widths: [2.4] },
+  ],
+};
+
 const rightBuilt = buildTree(RIGHT_SPEC);
 const leftBuilt = buildTree(LEFT_SPEC);
 const rightFarBuilt = buildTree(RIGHT_FAR_SPEC);
 const leftFarBuilt = buildTree(LEFT_FAR_SPEC);
+const leftHighBuilt = buildTree(LEFT_HIGH_SPEC);
+const leftLowBuilt = buildTree(LEFT_LOW_SPEC);
+const rightHighBuilt = buildTree(RIGHT_HIGH_SPEC);
+const rightLowBuilt = buildTree(RIGHT_LOW_SPEC);
 
 /** 花苞/花朵的挂点：只允许挂在末梢枝上（子枝数为 0 的枝） */
 type BlossomSpec = { segmentId: string; t: number; size: number; rot: number; kind: BlossomKind };
@@ -508,6 +635,53 @@ const LEFT_FAR_BLOSSOM_SPECS: BlossomSpec[] = [
   { segmentId: "lf-t4", t: 0.86, size: 7, rot: -18, kind: "half" },
 ];
 
+// 新增四组的分层花量：高位组更小更疏，低位组稍密，但单朵尺寸仍小于前景主树
+const LEFT_HIGH_BLOSSOM_SPECS: BlossomSpec[] = [
+  { segmentId: "lh-t1", t: 0.9, size: 10, rot: 24, kind: "half" },
+  { segmentId: "lh-t1", t: 0.6, size: 8, rot: -30, kind: "bud" },
+  { segmentId: "lh-t2", t: 0.86, size: 8, rot: 42, kind: "bud" },
+  { segmentId: "lh-t3", t: 0.9, size: 9, rot: -14, kind: "half" },
+  { segmentId: "lh-t4", t: 0.86, size: 8, rot: 36, kind: "bud" },
+  { segmentId: "lh-t5", t: 0.9, size: 10, rot: 8, kind: "full" },
+  { segmentId: "lh-t5", t: 0.6, size: 8, rot: -38, kind: "bud" },
+];
+
+const LEFT_LOW_BLOSSOM_SPECS: BlossomSpec[] = [
+  { segmentId: "ll-t1", t: 0.92, size: 12, rot: 18, kind: "full" },
+  { segmentId: "ll-t1", t: 0.62, size: 9, rot: -32, kind: "bud" },
+  { segmentId: "ll-t2", t: 0.9, size: 10, rot: 48, kind: "half" },
+  { segmentId: "ll-t2", t: 0.65, size: 8, rot: -20, kind: "bud" },
+  { segmentId: "ll-t3", t: 0.92, size: 10, rot: -8, kind: "half" },
+  { segmentId: "ll-t4", t: 0.86, size: 8, rot: 34, kind: "bud" },
+  { segmentId: "ll-t5", t: 0.9, size: 11, rot: 12, kind: "full" },
+  { segmentId: "ll-t5", t: 0.6, size: 8, rot: -36, kind: "bud" },
+  { segmentId: "ll-t6", t: 0.9, size: 10, rot: 40, kind: "half" },
+  { segmentId: "ll-t6", t: 0.62, size: 8, rot: -22, kind: "bud" },
+];
+
+const RIGHT_HIGH_BLOSSOM_SPECS: BlossomSpec[] = [
+  { segmentId: "rh-t1", t: 0.9, size: 10, rot: -20, kind: "half" },
+  { segmentId: "rh-t1", t: 0.6, size: 8, rot: 32, kind: "bud" },
+  { segmentId: "rh-t2", t: 0.86, size: 8, rot: 44, kind: "bud" },
+  { segmentId: "rh-t3", t: 0.9, size: 9, rot: 16, kind: "half" },
+  { segmentId: "rh-t4", t: 0.86, size: 8, rot: -34, kind: "bud" },
+  { segmentId: "rh-t5", t: 0.9, size: 10, rot: -12, kind: "full" },
+  { segmentId: "rh-t5", t: 0.6, size: 8, rot: 36, kind: "bud" },
+];
+
+const RIGHT_LOW_BLOSSOM_SPECS: BlossomSpec[] = [
+  { segmentId: "rl-t1", t: 0.92, size: 12, rot: -16, kind: "full" },
+  { segmentId: "rl-t1", t: 0.62, size: 9, rot: 30, kind: "bud" },
+  { segmentId: "rl-t2", t: 0.9, size: 10, rot: -46, kind: "half" },
+  { segmentId: "rl-t2", t: 0.65, size: 8, rot: 22, kind: "bud" },
+  { segmentId: "rl-t3", t: 0.92, size: 10, rot: 10, kind: "half" },
+  { segmentId: "rl-t4", t: 0.86, size: 8, rot: -32, kind: "bud" },
+  { segmentId: "rl-t5", t: 0.9, size: 11, rot: -10, kind: "full" },
+  { segmentId: "rl-t5", t: 0.6, size: 8, rot: 38, kind: "bud" },
+  { segmentId: "rl-t6", t: 0.9, size: 10, rot: -38, kind: "half" },
+  { segmentId: "rl-t6", t: 0.62, size: 8, rot: 24, kind: "bud" },
+];
+
 export type Tree = { segments: BranchSegment[]; byId: Map<string, BranchSegment>; blossoms: Blossom[] };
 
 export const RIGHT_TREE: Tree = {
@@ -529,6 +703,26 @@ export const LEFT_FAR_TREE: Tree = {
   segments: leftFarBuilt.segments,
   byId: leftFarBuilt.byId,
   blossoms: placeBlossoms(leftFarBuilt.byId, LEFT_FAR_BLOSSOM_SPECS),
+};
+export const LEFT_HIGH_TREE: Tree = {
+  segments: leftHighBuilt.segments,
+  byId: leftHighBuilt.byId,
+  blossoms: placeBlossoms(leftHighBuilt.byId, LEFT_HIGH_BLOSSOM_SPECS),
+};
+export const LEFT_LOW_TREE: Tree = {
+  segments: leftLowBuilt.segments,
+  byId: leftLowBuilt.byId,
+  blossoms: placeBlossoms(leftLowBuilt.byId, LEFT_LOW_BLOSSOM_SPECS),
+};
+export const RIGHT_HIGH_TREE: Tree = {
+  segments: rightHighBuilt.segments,
+  byId: rightHighBuilt.byId,
+  blossoms: placeBlossoms(rightHighBuilt.byId, RIGHT_HIGH_BLOSSOM_SPECS),
+};
+export const RIGHT_LOW_TREE: Tree = {
+  segments: rightLowBuilt.segments,
+  byId: rightLowBuilt.byId,
+  blossoms: placeBlossoms(rightLowBuilt.byId, RIGHT_LOW_BLOSSOM_SPECS),
 };
 
 /**
@@ -563,6 +757,10 @@ export const RIGHT_PAINT = paintOrder(RIGHT_TREE.segments);
 export const LEFT_PAINT = paintOrder(LEFT_TREE.segments);
 export const RIGHT_FAR_PAINT = paintOrder(RIGHT_FAR_TREE.segments);
 export const LEFT_FAR_PAINT = paintOrder(LEFT_FAR_TREE.segments);
+export const LEFT_HIGH_PAINT = paintOrder(LEFT_HIGH_TREE.segments);
+export const LEFT_LOW_PAINT = paintOrder(LEFT_LOW_TREE.segments);
+export const RIGHT_HIGH_PAINT = paintOrder(RIGHT_HIGH_TREE.segments);
+export const RIGHT_LOW_PAINT = paintOrder(RIGHT_LOW_TREE.segments);
 
 export type Violation = { segmentId: string; rule: string; detail: string };
 

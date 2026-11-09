@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   LEFT_FAR_TREE,
+  LEFT_HIGH_TREE,
+  LEFT_LOW_TREE,
   LEFT_TREE,
   RIGHT_FAR_TREE,
+  RIGHT_HIGH_TREE,
+  RIGHT_LOW_TREE,
   RIGHT_TREE,
   paintOrder,
   polylineLength,
@@ -15,6 +19,10 @@ const TREES: Array<[string, Tree]> = [
   ["左侧前景", LEFT_TREE],
   ["右侧背景", RIGHT_FAR_TREE],
   ["左侧背景", LEFT_FAR_TREE],
+  ["右侧高位丛", RIGHT_HIGH_TREE],
+  ["右侧低位丛", RIGHT_LOW_TREE],
+  ["左侧高位丛", LEFT_HIGH_TREE],
+  ["左侧低位丛", LEFT_LOW_TREE],
 ];
 
 describe("樱花枝拓扑", () => {
@@ -57,13 +65,21 @@ describe("樱花枝拓扑", () => {
     }
   });
 
-  it("增枝增花后的总量符合预期", () => {
+  it("增枝增花后的总量符合预期（四棵主树 + 四组独立丛）", () => {
     expect(TREES.map(([name, tree]) => [name, tree.segments.length, tree.blossoms.length])).toEqual([
       ["右侧前景", 46, 38],
       ["左侧前景", 44, 27],
       ["右侧背景", 10, 5],
       ["左侧背景", 10, 5],
+      ["右侧高位丛", 16, 7],
+      ["右侧低位丛", 17, 10],
+      ["左侧高位丛", 16, 7],
+      ["左侧低位丛", 18, 10],
     ]);
+  });
+
+  it.each(TREES)("%s：只有一根主干起段（独立成丛）", (_name, tree) => {
+    expect(tree.segments.filter((seg) => seg.parent === null)).toHaveLength(1);
   });
 
   it("末梢花朵 1–3 朵；前景树三种花型齐全且偏花苞", () => {
@@ -105,6 +121,6 @@ describe("樱花枝拓扑", () => {
       // eslint-disable-next-line no-console
       console.table(rows);
     }
-    expect(TREES.length).toBe(4);
+    expect(TREES.length).toBe(8);
   });
 });
