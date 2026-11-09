@@ -340,6 +340,105 @@
   background: var(--canvas-bg);
 }
 
+/* ---------- 图片上传（v1.1）：占位托盘、拖入提示与失败重试 ---------- */
+.wb-board__image {
+  flex: none;
+}
+
+/* 游客/只读越权尝试上传时的可见提示（自动消失） */
+.wb-board__notice {
+  position: fixed;
+  top: calc(var(--topbar-h) + var(--space-3));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-pill);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-board__dropzone {
+  position: absolute;
+  inset: var(--space-3);
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--rose-400);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--rose-50) 84%, transparent);
+  pointer-events: none;
+}
+
+.wb-board__dropzone-text {
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-weight: 500;
+  color: var(--rose-700);
+}
+
+/* 上传中只放占位条目，成功后才把元素落到画布 */
+.wb-upload-tray {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(520px, calc(100% - var(--space-8)));
+}
+
+.wb-upload-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--paper);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-upload-item[data-state="error"] {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.wb-upload-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-upload-item__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  color: var(--text-primary);
+}
+
+.wb-upload-item__meta {
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  color: var(--text-secondary);
+}
+
+.wb-upload-item[data-state="error"] .wb-upload-item__name,
+.wb-upload-item[data-state="error"] .wb-upload-item__meta {
+  color: inherit;
+}
+
 .wb-board__statusbar {
   display: flex;
   align-items: center;
@@ -655,6 +754,16 @@
 }
 
 @media (max-width: 720px) {
+  /* 窄屏只留图标，避免顶栏换行 */
+  .wb-board__image .wb-board__share-text {
+    display: none;
+  }
+
+  .wb-upload-tray {
+    width: calc(100% - var(--space-4));
+    bottom: var(--space-2);
+  }
+
   .wb-topbar {
     height: 56px;
     padding: 0 var(--space-4);
