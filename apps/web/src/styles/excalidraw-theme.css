@@ -1,0 +1,47 @@
+/*
+ * Excalidraw 主题覆写：**只声明变量**，不改库的 DOM 结构与工具条布局。
+ * 变量名取自 @excalidraw/excalidraw@0.18.1 随包 dist/prod/index.css（见 docs/视觉方案.md §5.1）。
+ * 画布内部保持中性：底色纯白、其余沿用库默认的灰阶层级，仅把品牌相关变量指向干玫瑰。
+ */
+
+.wb-canvas .excalidraw {
+  --color-primary: var(--rose-600);
+  --color-primary-darker: var(--rose-700);
+  --color-primary-darkest: var(--rose-800);
+  --color-primary-light: var(--rose-100);
+  --color-primary-light-darker: var(--rose-200);
+  --color-primary-hover: var(--rose-700);
+  --color-brand-hover: var(--rose-700);
+  --color-brand-active: var(--rose-800);
+  --color-on-primary-container: #ffffff;
+  --color-surface-primary-container: var(--rose-100);
+
+  --color-surface-lowest: var(--paper);
+  --color-surface-low: var(--bg);
+  --color-surface-mid: var(--neutral-100);
+  --color-surface-high: var(--rose-100);
+  --color-on-surface: var(--text-primary);
+  --color-muted: var(--text-secondary);
+  --color-muted-darker: var(--neutral-800);
+  --color-muted-darkest: var(--text-primary);
+  --color-disabled: var(--text-disabled);
+
+  --color-border-outline: var(--control-border);
+  --color-border-outline-variant: var(--neutral-200);
+  --default-border-color: var(--neutral-200);
+  --dialog-border-color: var(--neutral-200);
+  --sidebar-border-color: var(--neutral-200);
+
+  --color-danger-text: var(--danger-text);
+  --color-danger-background: var(--danger-bg);
+  --color-warning-text: var(--warning-text);
+  --color-warning-background: var(--warning-bg);
+  --color-success-text: var(--success-text);
+
+  --color-selection: var(--rose-600);
+  --select-highlight-color: var(--rose-200);
+
+  --shadow-island: var(--shadow-2);
+  --border-radius-md: var(--radius-md);
+  --border-radius-lg: var(--radius-lg);
+}

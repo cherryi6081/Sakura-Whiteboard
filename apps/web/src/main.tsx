@@ -1,8 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "@excalidraw/excalidraw/index.css";
+import "./styles/tokens.css";
+import "./styles/ui.css";
+import "./styles/pages.css";
+import "./styles/excalidraw-theme.css";
 import { AuthFlow } from "./auth/AuthFlow";
 import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
+import { BoardsPage } from "./boards/BoardsPage";
+import { HomePage } from "./home/HomePage";
 import { SpikeApp } from "./spike/SpikeApp";
 import { purgeExpiredCache } from "./store/cacheDb";
 
@@ -12,31 +19,18 @@ void purgeExpiredCache().catch((err) => console.warn("[cache] 过期清理失败
 // M3：白板身份**只从地址栏**取；这里不读 localStorage/"上次白板"，避免多标签互相抢板。
 const route = parseBoardRoute(window.location.pathname, window.location.search);
 
-function IndexPage() {
-  return (
-    <div style={{ maxWidth: 560, margin: "80px auto", fontFamily: "system-ui, sans-serif", color: "#6B5A60", lineHeight: 1.7 }}>
-      <h1 style={{ fontSize: 22, color: "#A85C7C" }}>实时协作白板</h1>
-      <p>当前进度：M5 账号、权限与分享。选择一块白板进入（boardId 为 12 位字符）：</p>
-      <ul>
-        <li><a href="/board/demo_board01">/board/demo_board01</a></li>
-        <li><a href="/board/demo_board02">/board/demo_board02</a></li>
-        <li><a href="/login">/login（登录）</a> · <a href="/register">/register（注册）</a></li>
-        <li><a href="/spike">/spike（M2 前置验证页，保留）</a></li>
-      </ul>
-    </div>
-  );
-}
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {route.kind === "board" ? (
       <BoardPage boardId={route.boardId} />
     ) : route.kind === "auth" ? (
       <AuthFlow mode={route.mode} next={route.next} />
+    ) : route.kind === "boards" ? (
+      <BoardsPage />
     ) : route.kind === "spike" ? (
       <SpikeApp />
     ) : (
-      <IndexPage />
+      <HomePage />
     )}
   </StrictMode>,
 );

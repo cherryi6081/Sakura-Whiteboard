@@ -19,7 +19,7 @@ export type ClaimResult = { transferred: number; boards: { id: string; title: st
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string };
 
-async function request<T>(url: string, init: RequestInit = {}): Promise<ApiResult<T>> {
+export async function request<T>(url: string, init: RequestInit = {}): Promise<ApiResult<T>> {
   try {
     const res = await fetch(url, {
       credentials: 'same-origin',

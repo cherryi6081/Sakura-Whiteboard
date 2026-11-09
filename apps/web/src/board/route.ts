@@ -8,6 +8,7 @@ export type BoardRoute =
   | { kind: "board"; boardId: string }
   | { kind: "spike" }
   | { kind: "auth"; mode: "login" | "register"; next: string | null }
+  | { kind: "boards" }
   | { kind: "index" };
 
 /** 与 `LIMITS.boardIdPattern` 保持一致：12 位 `[A-Za-z0-9_-]`。 */
@@ -23,6 +24,8 @@ export function parseBoardRoute(pathname: string, search = ""): BoardRoute {
     const next = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
     return { kind: "auth", mode: authMatch[1] === "register" ? "register" : "login", next };
   }
+  // 我的白板列表（登录用户走服务端列表，游客走本机最近打开）
+  if (/^\/boards\/?$/.test(pathname)) return { kind: "boards" };
   // `/spike` 与历史入口 `/?board=xxx` 都进 M2 前置验证页（boardId 同样来自地址栏）
   if (/^\/spike\/?$/.test(pathname) || new URLSearchParams(search).has("board")) {
     return { kind: "spike" };

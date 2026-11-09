@@ -1,0 +1,127 @@
+/*
+ * 视觉 token（唯一颜色/字号/圆角/阴影/间距/动效来源）
+ * 对应 docs/视觉方案.md §1–§3。组件里禁止再写 hex。
+ */
+
+:root {
+  /* ---------- 主色：干玫瑰 ---------- */
+  --rose-50: #fcf6f9;
+  --rose-100: #f4e3e9;
+  --rose-200: #edd2de;
+  --rose-300: #dfb0c4;
+  --rose-400: #cc8aa5;
+  --rose-500: #c07e97;
+  --rose-600: #a85c7c;
+  --rose-700: #8e4568;
+  --rose-800: #743551;
+  --rose-900: #5a2a3f;
+
+  /* ---------- 中性灰（暖梅灰） ---------- */
+  --neutral-100: #f4eef1;
+  --neutral-200: #efe4e8;
+  --neutral-300: #e2d6db;
+  --neutral-400: #c9bcc2;
+  --neutral-500: #9a8a90;
+  --neutral-600: #7e6c73;
+  --neutral-700: #6b5a61;
+  --neutral-800: #4a3b41;
+  --neutral-900: #3a2e33;
+  --neutral-950: #241c20;
+  --control-border: #a08d95; /* 3.12:1，控件边界 */
+
+  --bg: #fbf7f9;
+  --paper: #ffffff;
+  --canvas-bg: #ffffff;
+  --canvas-grid: #ede4e8;
+
+  /* ---------- 文字 ---------- */
+  --text-primary: var(--neutral-900);
+  --text-secondary: var(--neutral-700);
+  --text-weak-readable: var(--neutral-600);
+  --text-disabled: var(--neutral-500);
+  --text-on-primary: #ffffff;
+  --text-link: var(--rose-700);
+
+  /* ---------- 语义 ---------- */
+  --success-bg: #eaf3ef;
+  --success-border: #cfe3da;
+  --success-text: #2f6b57;
+  --success-fill: #8fb8a8;
+  --warning-bg: #fbf1e4;
+  --warning-border: #ebd8be;
+  --warning-text: #8a5e22;
+  --warning-fill: #c69257;
+  --danger-bg: #fbeaea;
+  --danger-border: #efd2d2;
+  --danger-text: #9e4a4a;
+  --danger-fill: #b96b6b;
+  --info-bg: #edf1f7;
+  --info-border: #d6dfec;
+  --info-text: #3f5b7a;
+  --info-fill: #8fa3bf;
+
+  /* ---------- 字体 ---------- */
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Fraunces", "Source Han Serif SC", "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+  --font-mono: "Cascadia Mono", "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---------- 字号 / 行高 ---------- */
+  --text-micro: 12px;
+  --lh-micro: 18px;
+  --text-caption: 13px;
+  --lh-caption: 20px;
+  --text-body: 14px;
+  --lh-body: 22px;
+  --text-subtitle: 16px;
+  --lh-subtitle: 24px;
+  --text-title: 20px;
+  --lh-title: 30px;
+  --text-display: 28px;
+  --lh-display: 40px;
+
+  /* ---------- 圆角 ---------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* ---------- 阴影 ---------- */
+  --shadow-0: none;
+  --shadow-1: 0 1px 2px rgba(58, 46, 51, 0.06);
+  --shadow-2: 0 6px 18px rgba(58, 46, 51, 0.08);
+  --shadow-3: 0 16px 40px rgba(58, 46, 51, 0.12);
+  --shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px var(--rose-600);
+  --overlay: rgba(58, 46, 51, 0.36);
+
+  /* ---------- 间距（4px 基准） ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---------- 动效 ---------- */
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---------- 控件尺寸 ---------- */
+  --control-h: 40px;
+  --control-h-lg: 44px;
+  --topbar-h: 56px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}

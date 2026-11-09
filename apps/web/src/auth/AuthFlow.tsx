@@ -40,7 +40,7 @@ export function AuthFlow({ mode, next }: { mode: "login" | "register"; next: str
 
   return (
     <>
-      <AuthPage mode={currentMode} onDone={() => void afterAuth()} onModeChange={setCurrentMode} />
+      <AuthPage mode={currentMode} next={next} onDone={() => void afterAuth()} onModeChange={setCurrentMode} />
       {preview ? (
         <ClaimDialog
           preview={preview}

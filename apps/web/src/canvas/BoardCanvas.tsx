@@ -1,9 +1,16 @@
 import { useEffect, useRef } from "react";
 import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import "@excalidraw/excalidraw/index.css";
 import type { ElementOp } from "@whiteboard/shared";
 import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
+
+/** 画布内的中性配置：白底、新建元素默认描边为品牌色（视觉方案 §5.2）。网格默认关闭，不设 gridSize。 */
+const CANVAS_INITIAL_DATA = {
+  appState: {
+    viewBackgroundColor: "#ffffff",
+    currentItemStrokeColor: "#a85c7c",
+  },
+};
 
 export type BoardCanvasHandle = {
   getElements: () => readonly any[];
@@ -98,7 +105,7 @@ export function BoardCanvas({ initialElements, viewModeEnabled, onApiReady, onOp
           onApiReady?.(api, handle);
         }, 0);
       }}
-      initialData={{}}
+      initialData={CANVAS_INITIAL_DATA}
       viewModeEnabled={viewModeEnabled ?? false}
       onChange={(elements) => {
         if (suppressDeriveRef.current > 0) {
