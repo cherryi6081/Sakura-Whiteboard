@@ -60,68 +60,81 @@
   --info-text: #3f5b7a;
   --info-fill: #8fa3bf;
 
-  /* ---------- 首页富士山 / 樱花（低饱和蓝灰，与干玫瑰主色共存） ---------- */
-  /* 天空由近白过渡到浅蓝灰，承担场景底色 */
-  --fuji-sky-50: #fdfcfd;
-  --fuji-sky-100: #f3f8fc;
-  --fuji-sky-200: #e6f0f8;
-  /* 远山 → 主峰 → 阴影，明度递减用于拉开景深 */
-  --fuji-100: #dfeaf4;
-  --fuji-200: #cddeec;
-  --fuji-300: #b7cde0;
-  --fuji-400: #9db8d0;
-  --fuji-500: #84a1bd;
-  /* 山顶积雪与雾光 */
-  --fuji-snow: #f7fbfe;
-  --fuji-mist: #ffffff;
-  /* 花瓣三层：浅 / 中 / 深，均从玫瑰色系偏移，避免抢主色 */
-  --sakura-100: #fbe6ee;
-  --sakura-200: #f5cad8;
-  --sakura-300: #eeacc4;
-  /* 整页场景（v0.4）：远处天光、山体三层与山脚更深的蓝，拉开景深 */
-  --fuji-sky-300: #d8e9f5;
-  --fuji-ridge-far: #d5e4f0;
-  --fuji-ridge-mid: #c4d8e8;
-  --fuji-600: #6b87a4;
-  --fuji-snow-shade: #e8f2fa;
-  --home-scene-sky: linear-gradient(
+  /* ---------- 首页夜间场景（深靛蓝 / 午夜蓝，与干玫瑰主色相称） ---------- */
+  /* 天空自上而下变亮一点点，地平线带一丝暖灰紫，避免整块死板 */
+  --night-sky-900: #10142a;
+  --night-sky-800: #161b33;
+  --night-sky-700: #1e2440;
+  --night-horizon: #3b3450;
+  /* 远山 → 伴峰 → 主峰 → 阴影，明度分层保留山体体积 */
+  --night-ridge-far: #2e3758;
+  --night-ridge-mid: #28314f;
+  --night-peak: #333e60;
+  --night-peak-shadow: #252c47;
+  --night-peak-left: #242b46;
+  --night-foothill: #0d1226;
+  /* 月光冷白的雪顶与冷影 */
+  --night-snow: #dfe9f7;
+  --night-snow-shade: #b9c9de;
+  --night-haze: #8f93b3;
+  --night-star: #d6dcf0;
+  --night-scene-sky: linear-gradient(
     180deg,
-    var(--fuji-sky-50) 0%,
-    var(--fuji-sky-100) 42%,
-    var(--fuji-sky-200) 74%,
-    var(--fuji-sky-300) 100%
+    var(--night-sky-900) 0%,
+    var(--night-sky-800) 44%,
+    var(--night-sky-700) 72%,
+    var(--night-horizon) 100%
   );
-  /* 文案侧柔和提亮层：左侧几乎不透，向右自然散开，保证标题对比度又不糊住山体 */
-  --home-hero-veil: linear-gradient(
+
+  /* 文案侧压暗层：左侧深色近乎不透，向右自然散开；不再用浅色提亮 */
+  --home-night-veil: linear-gradient(
     96deg,
-    rgba(253, 252, 253, 0.95) 0%,
-    rgba(253, 252, 253, 0.87) 22%,
-    rgba(253, 252, 253, 0.52) 40%,
-    rgba(253, 252, 253, 0) 60%
+    rgba(13, 16, 32, 0.95) 0%,
+    rgba(13, 16, 32, 0.9) 22%,
+    rgba(15, 19, 36, 0.55) 40%,
+    rgba(15, 19, 36, 0) 62%
   );
-  /* 移动端文案在下方，改为自下而上的提亮，避免遮住山体上半部分 */
-  --home-hero-veil-mobile: linear-gradient(
+  /* 移动端文案在下半屏，改为自下而上的压暗 */
+  --home-night-veil-mobile: linear-gradient(
     180deg,
-    rgba(253, 252, 253, 0) 16%,
-    rgba(253, 252, 253, 0.5) 42%,
-    rgba(253, 252, 253, 0.9) 66%,
-    rgba(253, 252, 253, 0.96) 100%
+    rgba(11, 14, 28, 0) 12%,
+    rgba(11, 14, 28, 0.5) 40%,
+    rgba(11, 14, 28, 0.92) 66%,
+    rgba(11, 14, 28, 0.97) 100%
   );
 
-  /* 前景樱花枝与飘散花瓣 */
-  --sakura-wood: #8b6a77;
-  --sakura-wood-soft: #ab8b97;
-  --sakura-bloom: #f9d7e3;
-  --sakura-bloom-core: #f2b8ce;
-  --petal-shadow: 0 1px 2px rgba(150, 90, 110, 0.18);
+  /* 夜间文字 / 表面 / 状态色（只在首页作用域内覆盖全局 token） */
+  --night-text-primary: #f5f2f7;
+  --night-text-secondary: #ded7e6;
+  --night-text-weak: #c4bccd;
+  --night-text-disabled: #9c95a8;
+  --night-card-surface: rgba(23, 29, 50, 0.82);
+  --night-line: rgba(224, 199, 214, 0.18);
+  --night-hover-surface: rgba(255, 255, 255, 0.07);
+  --night-eyebrow-bg: rgba(232, 168, 194, 0.14);
+  --night-eyebrow-ink: #f3bcd2;
+  --night-warning-bg: rgba(197, 138, 64, 0.16);
+  --night-warning-border: rgba(223, 174, 110, 0.42);
+  --night-warning-text: #f6d3a2;
+  --night-danger-bg: rgba(198, 84, 84, 0.16);
+  --night-danger-border: rgba(226, 128, 128, 0.42);
+  --night-danger-text: #ffc6c6;
+  --night-disabled-bg: rgba(255, 255, 255, 0.12);
 
-  /* 仙鹤（丹顶鹤）剪影：深蓝灰压在浅蓝山体上，尾巴与翅尖略浅 */
-  --crane-ink: #45607a;
-  --crane-ink-soft: #74909f;
-  --crane-crown: #b4544b;
+  /* 夜色里的樱花：花瓣提亮，并给一层静态极轻光晕（不是 blur） */
+  --sakura-night-100: #ffe2ee;
+  --sakura-night-200: #fac9dd;
+  --sakura-night-300: #f0a8c6;
+  --sakura-glow: rgba(250, 200, 222, 0.3);
+  --sakura-wood-night: #d3bccb;
+  --sakura-wood-night-soft: #b79daa;
+  --sakura-bloom-night: #f9d3e2;
+  --sakura-bloom-core-night: #f0aecd;
 
-  /* 场景上的浮动元素表面 */
-  --home-card-surface: rgba(255, 255, 255, 0.82);
+  /* 仙鹤：月光冷白剪影，压在深靛蓝天空上 */
+  --crane-ink-night: #dbe5f3;
+  --crane-ink-night-soft: #a8bbd4;
+  --crane-crown-night: #e4776c;
 
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",

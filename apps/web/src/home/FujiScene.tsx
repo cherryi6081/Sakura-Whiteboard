@@ -68,18 +68,18 @@ const PETALS: Petal[] = [
 
 type Crane = {
   className: string;
-  /** 纵向起点（相对视口高度） */
-  top: string;
   /** 剪影宽度（px） */
   size: number;
   /** 全程飞行时长（s），刻意放慢 */
   dur: number;
-  /** 负延迟让首屏不是两只一起从左边起飞 */
+  /** 负延迟让首屏不是两只一起从右下角起飞 */
   delay: number;
   opacity: number;
-  /** 弧顶抬升量，两段不同弧度 */
-  lift1: string;
-  lift2: string;
+  /** 路径四段的纵向位置（vh）：右下画外 → 上扬弧 → 左上画外 */
+  y0: string;
+  y1: string;
+  y2: string;
+  y3: string;
   /** 上下起伏周期（s） */
   bob: number;
   /** 振翅周期（s） */
@@ -89,28 +89,54 @@ type Crane = {
 const CRANES: Crane[] = [
   {
     className: "wb-crane--one",
-    top: "18%",
     size: 138,
     dur: 38,
     delay: -7,
-    opacity: 0.84,
-    lift1: "-4vh",
-    lift2: "-11vh",
+    opacity: 0.9,
+    y0: "80vh",
+    y1: "58vh",
+    y2: "32vh",
+    y3: "6vh",
     bob: 3.4,
     flap: 3.2,
   },
   {
     className: "wb-crane--two",
-    top: "36%",
     size: 104,
     dur: 47,
     delay: -28,
-    opacity: 0.62,
-    lift1: "-7vh",
-    lift2: "-16vh",
+    opacity: 0.78,
+    y0: "70vh",
+    y1: "46vh",
+    y2: "20vh",
+    y3: "-2vh",
     bob: 4.2,
     flap: 3.9,
   },
+];
+
+/** 夜空星点：[x, y, r, opacity]，静态，不做闪烁动画 */
+const STARS: Array<[number, number, number, number]> = [
+  [90, 60, 1.6, 0.7],
+  [240, 140, 2, 0.55],
+  [368, 84, 1.2, 0.4],
+  [520, 44, 1.4, 0.65],
+  [612, 176, 1.8, 0.5],
+  [728, 96, 1.1, 0.35],
+  [846, 48, 1.5, 0.6],
+  [998, 128, 2.2, 0.5],
+  [1104, 62, 1.3, 0.4],
+  [1230, 158, 1.9, 0.55],
+  [1352, 88, 1.2, 0.38],
+  [1478, 46, 1.7, 0.62],
+  [1560, 132, 1.4, 0.45],
+  [164, 236, 1.2, 0.3],
+  [644, 262, 1.5, 0.34],
+  [1150, 246, 1.3, 0.3],
+  [1410, 220, 1.8, 0.36],
+  [300, 318, 1.1, 0.26],
+  [762, 330, 1.3, 0.24],
+  [1320, 312, 1.5, 0.28],
 ];
 
 /** 前景樱花枝上的花簇：[x, y, r] */
@@ -155,13 +181,14 @@ function petalStyle(petal: Petal): CSSProperties {
 
 function craneStyle(crane: Crane): CSSProperties {
   return {
-    "--c-top": crane.top,
     "--c-size": `${crane.size}px`,
     "--c-dur": `${crane.dur}s`,
     "--c-delay": `${crane.delay}s`,
     "--c-opacity": crane.opacity,
-    "--c-lift1": crane.lift1,
-    "--c-lift2": crane.lift2,
+    "--c-y0": crane.y0,
+    "--c-y1": crane.y1,
+    "--c-y2": crane.y2,
+    "--c-y3": crane.y3,
     "--c-bob": `${crane.bob}s`,
     "--c-flap": `${crane.flap}s`,
   } as CSSProperties;
@@ -198,6 +225,12 @@ export function FujiScene() {
   return (
     <div className="wb-home__scene" aria-hidden="true">
       <svg className="wb-scene__mountains" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+        {/* 星点：静态小圆，只提气氛，不抢山体 */}
+        {STARS.map(([cx, cy, r, opacity], index) => (
+          // 星点仅用于装饰，index 作为稳定 key
+          // eslint-disable-next-line react/no-array-index-key
+          <circle className="wb-scene__star" key={index} cx={cx} cy={cy} r={r} opacity={opacity} />
+        ))}
         {/* 远山：最淡的一层，压在所有山体之后 */}
         <path
           className="wb-scene__range-far"
