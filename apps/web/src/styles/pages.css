@@ -48,94 +48,178 @@
 }
 
 /* ============ 首页 / 展示页 ============ */
-/* 骨架参考 Excalidraw：整页富士山场景之上依次叠加顶栏、中央文案与主行动、
-   左下工具岛、右下状态条；只有主按钮与登录/注册可交互 */
+/* 几何来源：Excalidraw 截图 2550×1267，按 1440/2550（≈0.5647）换算后的落点：
+   左上菜单 10,10 / 28×28；顶部工具条 519.5,9.6 403×37.3（水平居中、圆角 10）；
+   右上 103.3 + 6.2 + 33.9 + 9.0 + 28.2，右边距 7.4、高 27.1；
+   左下 −/100%/+ 9.6,底 10、96×26.5，撤销重做 112.4 宽 53.7；
+   右下 盾牌 1380.9 与帮助 1406.1 宽 26.5，底 10。
+   全部浮层压在整页富士山场景之上，只有主按钮与登录/注册可交互 */
 .wb-home {
   position: relative;
   min-height: 100%;
   min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
+  overflow: hidden;
   background: var(--sky-blue-top);
 }
 
-/* ---------- 顶栏：品牌在左、账户入口在右，同一水平线 ---------- */
-.wb-home__top {
-  position: relative;
-  z-index: 3;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-6) var(--space-8) 0;
+/* ---------- 浮层公共皮肤：白/浅色浮层 + 干玫瑰描边 + 轻投影 ---------- */
+.wb-home__icon-btn,
+.wb-home__login,
+.wb-home__zoombar,
+.wb-home__history,
+.wb-home__shield {
+  background: var(--day-card-surface);
+  border: 1px solid var(--day-card-line);
+  box-shadow: var(--day-card-shadow);
 }
 
-/* 顶栏落在顶部深蓝段：品牌与入口各用一枚浅色胶囊托底，深色文字始终合在浅底上 */
-.wb-home__brand {
+.wb-home__icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---------- 左上：菜单按钮（截图中只有它，文字品牌在中央块顶部） ---------- */
+.wb-home__menu {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 3;
+}
+
+.wb-home__icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--neutral-800);
+  border-radius: 8px;
+}
+
+/* ---------- 顶部居中：工具条 403×38，12 工具 + 分割线 + 更多 ---------- */
+.wb-home__toolbar {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 1.5px;
+  height: 38px;
+  padding: 0 3px;
+  color: var(--neutral-700);
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  border: 1px solid var(--day-card-line);
+  border-radius: 10px;
+  box-shadow: var(--day-card-shadow);
+}
+
+.wb-home__tool {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+/* 截图里锁定与抓手之间比其余图标多 6px */
+.wb-home__tool--gap {
+  margin-left: 6px;
+}
+
+.wb-home__tool--active {
+  color: var(--rose-800);
+  background: var(--rose-100);
+}
+
+.wb-home__tool-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.wb-home__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--day-card-line);
+}
+
+/* ---------- 右上：登录 / 注册（真入口）+ 方块图标（装饰） ---------- */
+.wb-home__account {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-home__login {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 6px 16px 6px 6px;
-  font-size: var(--text-subtitle);
-  line-height: var(--lh-subtitle);
-  font-weight: 600;
-  color: var(--rose-900);
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--day-card-shadow);
-}
-
-.wb-home__nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: 6px 16px;
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--day-card-shadow);
-}
-
-.wb-home__nav-link {
-  font-size: var(--text-caption);
-  line-height: var(--lh-caption);
+  justify-content: center;
+  gap: 6px;
+  width: 103px;
+  height: 28px;
+  font-size: var(--text-micro);
+  line-height: 1;
   color: var(--neutral-800);
   text-decoration: none;
+  border-radius: 8px;
   transition: color var(--dur-base) var(--ease-standard);
 }
 
-.wb-home__nav-link:hover {
+.wb-home__login:hover {
   color: var(--rose-700);
 }
 
-.wb-home__nav-link--strong {
-  font-weight: 600;
-  color: var(--rose-800);
-}
-
-/* ---------- 中央：标题 + 副文 + 主行动，整体落在峰顶与雪顶之上的天空带 ---------- */
-.wb-home__stage {
-  position: relative;
-  z-index: 2;
-  flex: 1;
-  display: flex;
+.wb-home__register {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-start;
-  /* 上留白按视高收敛，保证文案块底部始终在峰顶之上 */
-  padding: clamp(var(--space-3), 2.6vh, var(--space-6)) var(--space-6) 0;
-  min-height: 0;
+  width: 34px;
+  height: 28px;
+  font-size: var(--text-micro);
+  line-height: 1;
+  font-weight: 600;
+  color: var(--text-on-primary);
+  text-decoration: none;
+  background: var(--rose-600);
+  border: 1px solid var(--rose-600);
+  border-radius: 8px;
+  box-shadow: var(--day-card-shadow);
+  transition:
+    background-color var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard);
 }
 
+.wb-home__register:hover {
+  background: var(--rose-700);
+  border-color: var(--rose-700);
+}
+
+/* 截图中右侧方块与前一枚按钮的间距是 9px */
+.wb-home__icon-btn--square {
+  margin-left: 3px;
+}
+
+/* ---------- 中央：品牌 + 标题 + 副文 + 主行动 ---------- */
+/* 底部锚在峰顶（100dvh − 0.769 × 场景高）上方 12px：视口怎么变都不压雪顶；
+   水平中轴与 Excalidraw 中央块一致（页宽 50%），宽度收在 320 以内 */
 .wb-home__main {
-  width: min(100%, 560px);
+  position: absolute;
+  left: 50%;
+  bottom: calc(0.769 * min(56.25vw, 100dvh) + 12px);
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(calc(100% - 32px), 320px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(var(--space-4), 2.2vh, 20px) clamp(var(--space-6), 3vw, var(--space-8));
+  padding: 18px 24px;
   text-align: center;
   background: var(--day-card-surface);
   border: 1px solid var(--day-card-line);
@@ -143,20 +227,32 @@
   box-shadow: var(--day-card-shadow);
 }
 
-.wb-home__headline {
-  margin: 0;
+/* Excalidraw 把品牌 logo 放在中央块顶部，这里同样处理 */
+.wb-home__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-display);
-  font-size: clamp(28px, 2.6vw, 36px);
-  line-height: 1.2;
+  font-size: var(--text-subtitle);
+  line-height: var(--lh-subtitle);
+  font-weight: 600;
+  color: var(--rose-900);
+}
+
+.wb-home__headline {
+  margin: 10px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 2.2vw, 30px);
+  line-height: 1.15;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--rose-900);
 }
 
 .wb-home__lead {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-subtitle);
-  line-height: var(--lh-subtitle);
+  margin: 6px 0 0;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
   color: var(--neutral-800);
 }
 
@@ -164,75 +260,89 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: clamp(var(--space-4), 2.2vh, 20px);
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: 12px;
 }
 
-/* ---------- 左下装饰：Excalidraw 风格工具岛 ---------- */
-.wb-home__dock {
+/* ---------- 左下：缩放条 − / 100% / + 与撤销重做 ---------- */
+.wb-home__zoombar {
   position: absolute;
-  left: clamp(var(--space-4), 2.4vw, var(--space-8));
-  /* 让开页脚那一行，避免与版本文案叠在一起 */
-  bottom: calc(var(--space-8) + var(--space-12));
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2);
-  color: var(--neutral-700);
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--day-card-shadow);
-}
-
-.wb-home__tool-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-/* 分组之间用一条细分割线断开，模拟工具栏的分组关系 */
-.wb-home__tool-group + .wb-home__tool-group {
-  margin-top: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--day-card-line);
-}
-
-.wb-home__tool {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-}
-
-.wb-home__tool-icon {
-  width: 18px;
-  height: 18px;
-}
-
-/* ---------- 右下装饰：缩放 / 画布尺寸状态条 ---------- */
-.wb-home__status {
-  position: absolute;
-  right: clamp(var(--space-4), 2.4vw, var(--space-8));
-  bottom: var(--space-6);
+  left: 10px;
+  bottom: 10px;
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 6px 14px;
+  justify-content: space-between;
+  width: 96px;
+  height: 27px;
+  padding: 0 8px;
   font-size: var(--text-micro);
-  line-height: var(--lh-micro);
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--neutral-800);
-  background: var(--day-card-surface);
-  border: 1px solid var(--day-card-line);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--day-card-shadow);
+  border-radius: 8px;
 }
 
-.wb-home__status-sep {
-  color: var(--neutral-500);
+.wb-home__zoom-btn {
+  font-size: 14px;
+}
+
+.wb-home__zoom-value {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.wb-home__history {
+  position: absolute;
+  left: 113px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  width: 54px;
+  height: 27px;
+  border-radius: 8px;
+}
+
+.wb-home__history-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 25px;
+  color: var(--neutral-700);
+}
+
+/* ---------- 右下：存储盾牌（装饰）+ 帮助「?」（装饰） ---------- */
+.wb-home__corner {
+  position: absolute;
+  right: 8px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-home__shield {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--rose-800);
+  border-radius: 6px;
+}
+
+.wb-home__shield .wb-home__icon {
+  width: 13px;
+  height: 13px;
+}
+
+.wb-home__help {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--rose-900);
 }
 
 /* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 ---------- */
@@ -555,34 +665,15 @@
   }
 }
 
-.wb-home__foot {
-  position: relative;
-  z-index: 2;
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: auto;
-  padding: var(--space-4) var(--space-8) var(--space-6);
-  font-size: var(--text-footer);
-  line-height: var(--lh-footer);
-  letter-spacing: 0.02em;
-  /* 页脚落在湖底最深的一档浅蓝上，用主色深档保住 4.5 */
-  color: var(--rose-900);
-}
-
-/* 平板：场景仍是整页背景，顶栏与页脚留白收紧 */
+/* 平板：工具条收掉后 4 个工具（画笔 / 文字 / 图片 / 橡皮），保留分割线与更多，位置不动 */
 @media (max-width: 900px) {
-  .wb-home__top {
-    padding: var(--space-4) var(--space-6) 0;
-  }
-
-  .wb-home__foot {
-    padding: var(--space-4) var(--space-6) var(--space-8);
+  .wb-home__toolbar .wb-home__tool:nth-child(n + 9):nth-child(-n + 12) {
+    display: none;
   }
 }
 
-/* 移动端：场景保持整页背景，花瓣减半；装饰件（工具岛 / 状态条）隐藏 */
+/* 移动端：工具条按 Excalidraw 窄屏行为移到底部居中（缩放条上方），
+   右上收起装饰方块，花瓣减半 */
 @media (max-width: 767px) {
   /* 花瓣 26 → 12，曲线路径比直线更贵，小屏减半 */
   .wb-scene__petal:nth-child(n + 13) {
@@ -594,73 +685,79 @@
     height: 72%;
   }
 
-  .wb-home__top {
-    padding: var(--space-4) var(--space-4) 0;
+  .wb-home__toolbar {
+    top: auto;
+    bottom: 54px;
   }
 
-  /* 窄屏只保留品牌、入口、标题与主按钮 */
-  .wb-home__dock,
-  .wb-home__status {
+  .wb-home__icon-btn--square {
     display: none;
   }
 
-  .wb-home__stage {
-    padding: var(--space-4) var(--space-4) 0;
+  .wb-home__login {
+    width: auto;
+    padding: 0 12px;
   }
 
   .wb-home__main {
-    padding: var(--space-4) var(--space-6);
-  }
-
-  .wb-home__headline {
-    font-size: 28px;
-  }
-}
-
-/* 矮视口（如 1024×600）：收掉副文案，保证标题与主按钮整体仍在峰顶之上 */
-@media (max-height: 720px) {
-  .wb-home__top {
-    padding: var(--space-3) var(--space-6) 0;
-  }
-
-  .wb-home__brand {
-    padding: 3px 12px 3px 3px;
-    font-size: var(--text-body);
-    line-height: var(--lh-body);
-  }
-
-  .wb-home__brand .wb-brand__mark {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
-  }
-
-  .wb-home__nav {
-    padding: 3px 12px;
-  }
-
-  .wb-home__stage {
-    padding-top: var(--space-1);
-  }
-
-  .wb-home__main {
-    padding: var(--space-2) var(--space-6);
+    padding: 14px 18px;
   }
 
   .wb-home__headline {
     font-size: 24px;
   }
+}
 
+/* 矮桌面视口（1440×800 / 768）：收掉品牌行与副文案，
+   让标题 + 主按钮整体仍落在峰顶之上 */
+@media (min-width: 1100px) and (max-height: 878px) {
+  .wb-home__main {
+    padding: 12px 22px;
+  }
+
+  .wb-home__logo,
   .wb-home__lead {
     display: none;
   }
 
+  .wb-home__headline {
+    margin-top: 0;
+    font-size: 26px;
+  }
+
   .wb-home__action {
-    margin-top: var(--space-2);
+    margin-top: 10px;
   }
 
   .wb-home__cta {
     height: var(--control-h);
+    font-size: var(--text-body);
+  }
+}
+
+/* 更矮（1440×715 / 1024×600）：再收一档，与顶部工具条至少留 16px */
+@media (max-height: 760px) {
+  .wb-home__main {
+    padding: 6px 16px;
+  }
+
+  .wb-home__logo,
+  .wb-home__lead {
+    display: none;
+  }
+
+  .wb-home__headline {
+    margin-top: 0;
+    font-size: 22px;
+  }
+
+  .wb-home__action {
+    margin-top: 6px;
+  }
+
+  .wb-home__cta {
+    height: 34px;
+    padding: 0 var(--space-4);
     font-size: var(--text-body);
   }
 }
@@ -1316,10 +1413,6 @@
   .wb-display {
     font-size: var(--text-title);
     line-height: var(--lh-title);
-  }
-
-  .wb-home__foot {
-    padding: var(--space-4);
   }
 
   /* 移动端提示条：文字独占一行，操作按钮落到第二行右侧，避免 3 行窄柱 */
