@@ -239,18 +239,34 @@
   fill: var(--fuji-300);
 }
 
+/* 山体背光面：由 --fuji-rock-shade 从山脊压到右坡，比山体暗一档但同色相 */
 .wb-scene__fuji-shadow {
-  fill: var(--fuji-400);
-  opacity: 0.38;
+  fill: var(--fuji-rock-shade);
+  opacity: 0.62;
 }
 
+/* 雪：白面 + 雪影灰（受光/背光分坡）+ 雪檐阴影（檐下与雪岩接触处） */
 .wb-scene__snow {
   fill: var(--fuji-snow);
 }
 
 .wb-scene__snow-shadow {
   fill: var(--fuji-snow-shade);
-  opacity: 0.75;
+}
+
+.wb-scene__snow-fold {
+  fill: var(--fuji-snow-shade);
+  opacity: 0.62;
+}
+
+.wb-scene__snow-crest {
+  fill: var(--fuji-snow-cornice);
+  opacity: 0.55;
+}
+
+.wb-scene__snow-contact {
+  fill: var(--fuji-snow-cornice);
+  opacity: 0.7;
 }
 
 /* 山脚水线附近的暗带，让山体与湖面有明确分界 */

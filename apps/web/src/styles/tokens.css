@@ -68,9 +68,12 @@
   --fuji-400: #9db8d0;
   --fuji-500: #84a1bd;
   --fuji-600: #6b87a4;
-  /* 雪顶接近白，只压一层极浅冷影 */
+  /* 雪：白面 / 雪影灰 / 雪檐阴影三档，色相都落在冷蓝灰（H≈206°–210°），不发黄不发脏 */
   --fuji-snow: #f7fbfe;
-  --fuji-snow-shade: #e8f2fa;
+  --fuji-snow-shade: #dce9f6;
+  --fuji-snow-cornice: #93b0cb;
+  /* 山体背光面：由 --fuji-500 与 --fuji-300 混出，比山体暗一档、仍属同一蓝色相 */
+  --fuji-rock-shade: color-mix(in srgb, var(--fuji-500) 55%, var(--fuji-300));
   /* 樱花：花簇与花瓣三层色阶（枝条改用下方独立棕色系，不再跟着花走） */
   --sakura-100: #fbe6ee;
   --sakura-200: #f5cad8;
