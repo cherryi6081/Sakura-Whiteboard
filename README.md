@@ -90,6 +90,14 @@ docker compose -f deploy/docker-compose.yml up -d
 - **手动迁移（能力保留）**：`docker compose -f deploy/docker-compose.yml --profile init run --rm migrate`。
 - **双实例**：`docker compose -f deploy/docker-compose.yml up -d --scale api=2`，宿主端口 8080/8081，健康检查各自返回不同 `instance`。
 
+**已验证（2026-11-09，Windows + Docker Desktop 4.98 / Engine 29.9.2）**：
+
+- `docker compose -f deploy/docker-compose.yml up -d --build` 退出码 0；`docker compose ps` 中 `deploy-api-1` healthy、`wb-postgres` / `wb-redis` healthy、`deploy-migrate-auto-1` 为 `Exited (0)`。
+- `GET /api/health` → `200`，返回 `{"ok":true,...,"dependencies":{"db":{"ok":true},"redis":{"ok":true}}}`。
+- `GET /` → `200 text/html`（前端由 API 同源托管）。
+- `GET /api/nope` → `404 {"error":{"code":"NOT_FOUND"...}}`，说明 SPA fallback 没有吞掉 `/api` 路由。
+- 无头 Chrome 打开 `http://127.0.0.1:8080/` 首页正常渲染（标题、按钮与入口链接齐全），控制台无报错。
+
 ## 环境变量
 
 完整清单见 [.env.example](.env.example)。常用项：
