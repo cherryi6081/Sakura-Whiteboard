@@ -19,7 +19,7 @@ export type FloatingPetal = {
   x: number;
   /** 湖带内的深浅：0 = 水线，1 = 画面底 */
   depth: number;
-  /** 基准主轴宽度（px，渲染时统一乘 PETAL_SCALE，0.85） */
+  /** 基准宽度（px）：同时决定透视档位与档内大小，实际像素由鹤高比例推出 */
   size: number;
   /** 整体倾角（与水线不平行，读起来才像漂着） */
   rot: number;
@@ -70,19 +70,63 @@ export const FLOATING_PETALS: readonly FloatingPetal[] = [
 ];
 
 /**
- * 全站花瓣的整体缩放：飘落与漂浮共用同一系数，0.85 = 线性缩 15%（面积约 72%）。
+ * 花瓣尺寸不再用统一系数，而是按「花瓣长边 / 鹤的视觉高度」的档位比来定。
  *
- * 数据里的 `size` 仍保留缩小前的基准值，渲染尺寸、漂浮投影与涟漪落水时刻
- * 都乘这一个系数，所以透视分档（越远越小越扁）与落瓣/涟漪的同相关系只是等比缩，
- * 不会被拉平或错档。系数取 0.85 而不是更小：桌面最小档 11px→9.4px，
- * 移动端漂浮最小档（再叠 CSS 的 0.72）9→5.5px，都还在清晰下限之上。
+ * 鹤在画面里的视觉高度 = CSS `--crane-h` × 1.3898（13° 倾角下的包围盒：
+ * cos13° + 1.8462·sin13°）。这里把这套换算抽出来，CSS 用 `calc(var(--crane-h) * 比例 × 1.3898)`
+ * 渲染，涟漪用同一函数算像素，两边永远同源。
  */
-export const PETAL_SCALE = 0.85;
+export const CRANE_VISUAL_TO_STAGE = 1.3898;
+
+/** 与 pages.css 的 `--crane-h` 同源（移动端断点 767，与 nth-child 收口一致） */
+export function craneStageHeight(width: number, height: number): number {
+  return width <= 767
+    ? Math.min(84, Math.max(58, 0.08 * height))
+    : Math.min(132, Math.max(76, 0.092 * height));
+}
+
+/** 鹤的屏幕视觉高度（含倾角包围盒），作为花瓣比例的基准 */
+export function craneVisualHeight(width: number, height: number): number {
+  return craneStageHeight(width, height) * CRANE_VISUAL_TO_STAGE;
+}
+
+/** 单朵长边下限：桌面 4px、移动端 3px */
+export function petalFloor(width: number): number {
+  return width <= 767 ? 3 : 4;
+}
+
+/** 长边 = 档位比例 × 鹤视觉高度；低于下限就按下限截断 */
+export function petalEdgePx(ratio: number, width: number, height: number): number {
+  const raw = ratio * craneVisualHeight(width, height);
+  return +Math.max(petalFloor(width), raw).toFixed(2);
+}
+
+function lerp(from: number, to: number, t: number) {
+  return from + (to - from) * Math.min(1, Math.max(0, t));
+}
+
+/**
+ * 飘落花瓣的长边比（相对鹤的视觉高度），按基准 size 在档内线性展开：
+ * 近档（17–24）8–10%，中档（13–16）5–6%，远档（10–12）3–4%。
+ * 档内保留差异，否则同档花瓣会变成一排一模一样的小圆片。
+ */
+export function fallingRatioBySize(size: number): number {
+  if (size >= 17) return lerp(0.08, 0.1, (size - 17) / 7);
+  if (size >= 13) return lerp(0.05, 0.06, (size - 13) / 3);
+  return lerp(0.03, 0.04, (size - 10) / 2);
+}
+
+/** 漂浮花瓣比：近（19–26）5–6%，中（13–16）4–5%，远（9–10）3–3.5% */
+export function floatingRatioBySize(size: number): number {
+  if (size >= 19) return lerp(0.05, 0.06, (size - 19) / 7);
+  if (size >= 13) return lerp(0.04, 0.05, (size - 13) / 3);
+  return lerp(0.03, 0.035, (size - 9) / 1);
+}
 
 /** 纵轴压缩：越靠水线越扁（远处近似被压成一条横线），越靠底越接近正面视角 */
-export function floatingFootprint(petal: FloatingPetal) {
+export function floatingFootprint(petal: FloatingPetal, width: number, height: number) {
   const aspect = 0.34 + 0.5 * petal.depth;
-  const size = +(petal.size * PETAL_SCALE).toFixed(2);
+  const size = petalEdgePx(floatingRatioBySize(petal.size), width, height);
   return { width: size, height: +(size * aspect).toFixed(1), aspect: +aspect.toFixed(2) };
 }
 

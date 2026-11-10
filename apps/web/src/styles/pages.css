@@ -73,6 +73,10 @@
   isolation: isolate;
   /* 天空仍是"顶部深蓝 + 向下过渡回四档浅蓝"的多 stop 渐变 */
   background: var(--home-scene-sky);
+  /* 花瓣尺寸的唯一基准：与 .wb-scene__crane 的 --crane-h 同值（含下面的移动端断点），
+     花瓣长边 = 档位比 × 鹤的视觉高度，不再用统一系数；--petal-floor 是单朵下限 */
+  --crane-h: clamp(76px, 9.2vh, 132px);
+  --petal-floor: 4px;
 }
 
 /* ---------- 水天延展层：只在超宽视口的两翼可见 ---------- */
@@ -1011,6 +1015,12 @@
 
 /* 移动端：场景保持整页背景，花瓣减少（但仍要保证湖面每 4s 至少有一圈涟漪） */
 @media (max-width: 767px) {
+  /* 花瓣比例的基准跟着鹤一起收口，下限从 4px 降到 3px */
+  .wb-home__scene {
+    --crane-h: clamp(58px, 8vh, 84px);
+    --petal-floor: 3px;
+  }
+
   /* 花瓣 26 → 16：小屏少画一些，同时给涟漪留足落点 */
   .wb-scene__petal:nth-child(n + 17) {
     display: none;
@@ -1022,12 +1032,8 @@
     display: none;
   }
 
-  /* 漂浮花瓣 18 → 10 片（近 5 / 中 3 / 远 2），尺寸统一缩到 72%：
-     湖带在手机上只有约 81px 高，原尺寸会显得比水面还大 */
-  .wb-scene__float {
-    --f-scale: 0.72;
-  }
-
+  /* 漂浮花瓣 18 → 10 片（近 5 / 中 3 / 远 2）。
+     尺寸不再额外乘 0.72：比例本身是相对鹤高的，已经跟着窄屏一起收过 */
   .wb-scene__float:not(.wb-scene__float--sm) {
     display: none;
   }

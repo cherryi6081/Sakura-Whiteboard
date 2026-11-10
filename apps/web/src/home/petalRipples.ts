@@ -148,8 +148,13 @@ export const MAX_CONCURRENT_MOBILE = 6;
  * 尾巴已经淡到看不见，不该占额度。并发上限按这个窗口统计。
  */
 export const CONCURRENCY_WINDOW = 1.2;
-/** 相邻落点的最小横向间距（px，换算成 vw 后传给 planRipples）：避免同一时刻两圈叠在一起 */
-export const MIN_RIPPLE_X_GAP_PX = 12;
+/**
+ * 相邻落点的最小横向间距（px，换算成 vw 后传给 planRipples）：避免同一时刻两圈叠在一起。
+ * 12px 是按旧花瓣（最大 20.4px）定的；花瓣缩到鹤高比例的 3–10% 后（桌面最大 11.5px），
+ * 12px 在 1440 下多挡掉 8 个落点，保留的 28 片在长期相位拍频上留出 4.12s 空档。
+ * 收到 10px 后保留 30 片、空档 2.92s，圆心间距仍有 44px 水纹宽度的四分之一，肉眼看不出差别。
+ */
+export const MIN_RIPPLE_X_GAP_PX = 10;
 /** 移动端屏幕窄，落到同一横坐标的花瓣本来就多，间距收得更小才能保证任意 4s 内都有涟漪 */
 export const MIN_RIPPLE_X_GAP_PX_MOBILE = 4;
 /** 任意时间窗内至少要能看到一次涟漪的间隔上限（秒） */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LEFT_PETALS, PETALS, petalGeometry } from "./FujiScene";
-import { PETAL_SCALE } from "./floatingPetals";
+import { fallingRatioBySize, petalEdgePx, petalFloor } from "./floatingPetals";
 import {
   CONCURRENCY_WINDOW,
   INNER_PEAK_OPACITY,
@@ -59,7 +59,7 @@ function rippleInputs(width: number, height: number): RippleInput[] {
       top: petal.top,
       dur: petal.dur,
       delay: petal.delay,
-      size: +(petal.size * PETAL_SCALE).toFixed(2),
+      size: petalEdgePx(fallingRatioBySize(petal.size), width, height),
       path: petal.path,
       sway: geometry.sway,
       fall: geometry.fall,
@@ -265,10 +265,17 @@ describe("涟漪落点与并发", () => {
 });
 
 describe("落瓣尺寸", () => {
-  it("缩小 0.85 后仍在清晰下限之上（桌面最小档 ≥ 4px，移动端沿用同一像素尺寸）", () => {
+  it.each(VIEWPORTS)("%i×%i：落在鹤高的 3–10% 档位区间，且不低于单朵下限", (width, height) => {
+    const near = petalEdgePx(fallingRatioBySize(24), width, height);
+    const mid = petalEdgePx(fallingRatioBySize(15), width, height);
+    const far = petalEdgePx(fallingRatioBySize(10), width, height);
+    // 近大远小：三档严格递减（触底截断时允许相等）
+    expect(near).toBeGreaterThanOrEqual(mid);
+    expect(mid).toBeGreaterThanOrEqual(far);
     for (const petal of [...PETALS, ...LEFT_PETALS]) {
-      // 落瓣不随视口改尺寸，最小档 10px × 0.85 = 8.5px
-      expect(petal.size * PETAL_SCALE).toBeGreaterThanOrEqual(4);
+      expect(petalEdgePx(fallingRatioBySize(petal.size), width, height)).toBeGreaterThanOrEqual(
+        petalFloor(width),
+      );
     }
   });
 });

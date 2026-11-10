@@ -21,7 +21,14 @@ import {
   type Blossom,
   type BranchSegment,
 } from "./fujiBranches";
-import { FLOATING_PETALS, PETAL_SCALE, floatingFootprint, type FloatingPetal } from "./floatingPetals";
+import {
+  CRANE_VISUAL_TO_STAGE,
+  FLOATING_PETALS,
+  fallingRatioBySize,
+  floatingRatioBySize,
+  petalEdgePx,
+  type FloatingPetal,
+} from "./floatingPetals";
 import {
   FLASH_PEAK_OPACITY,
   FLASH_SPLASH_SECONDS,
@@ -389,11 +396,13 @@ export function petalGeometry(petal: Petal) {
 
 function petalStyle(petal: Petal): CSSProperties {
   const { sway, fall } = petalGeometry(petal);
+  // 长边 = 档位比 × 鹤视觉高度；--crane-h 是舞台高度，乘 1.3898 换成含倾角的视觉高度。
+  // max() 里的 --petal-floor 由 CSS 按桌面/移动端给 4px / 3px，和涟漪用的是同一档位比
+  const ratio = +(fallingRatioBySize(petal.size) * CRANE_VISUAL_TO_STAGE).toFixed(4);
   return {
     "--p-top": `${petal.top}%`,
     "--p-left": `${petal.left}%`,
-    // 与涟漪共用同一个缩放后的尺寸，落水时刻不会因为只缩 CSS 而错位
-    "--p-size": `${+(petal.size * PETAL_SCALE).toFixed(2)}px`,
+    "--p-size": `max(var(--petal-floor), calc(var(--crane-h) * ${ratio}))`,
     "--p-dur": `${petal.dur}s`,
     "--p-delay": `${petal.delay}s`,
     "--p-spin": petal.spin,
@@ -405,12 +414,13 @@ function petalStyle(petal: Petal): CSSProperties {
 
 /** 湖面漂浮花瓣的样式变量：位置 / 深浅 / 尺寸 / 倾角 / 漂移幅度 / 周期，全部交给 CSS */
 function floatStyle(petal: FloatingPetal): CSSProperties {
-  const { width, height } = floatingFootprint(petal);
+  const aspect = 0.34 + 0.5 * petal.depth;
+  const ratio = +(floatingRatioBySize(petal.size) * CRANE_VISUAL_TO_STAGE).toFixed(4);
   return {
     "--f-x": petal.x,
     "--f-depth": petal.depth,
-    "--f-w": `${width}px`,
-    "--f-h": `${height}px`,
+    "--f-w": `max(var(--petal-floor), calc(var(--crane-h) * ${ratio}))`,
+    "--f-h": `calc(var(--f-w) * ${+aspect.toFixed(2)})`,
     "--f-rot": `${petal.rot}deg`,
     "--f-tilt": `${petal.tilt}deg`,
     "--f-dx": `${petal.dx}px`,
@@ -486,7 +496,7 @@ export function FujiScene() {
           top: petal.top,
           dur: petal.dur,
           delay: petal.delay,
-          size: +(petal.size * PETAL_SCALE).toFixed(2),
+          size: petalEdgePx(fallingRatioBySize(petal.size), vw, vh),
           path: petal.path,
           sway: geometry.sway,
           fall: geometry.fall,
