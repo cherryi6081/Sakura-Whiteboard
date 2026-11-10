@@ -89,6 +89,14 @@ describe("水面透视", () => {
     expect(near.max).toBeLessThanOrEqual(0.81);
   });
 
+  it("整体缩放后仍高于清晰下限：桌面 ≥ 4px，移动端（再乘 CSS 的 0.72）≥ 3px", () => {
+    for (const petal of FLOATING_PETALS) {
+      const { width } = floatingFootprint(petal);
+      expect(width).toBeGreaterThanOrEqual(4);
+      expect(width * 0.72).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it.each(VIEWPORTS)("%i×%i：全部落在水线以下、湖底板以上", (width, height) => {
     const band = bandHeight(width, height);
     const scale = scaleFor(width);

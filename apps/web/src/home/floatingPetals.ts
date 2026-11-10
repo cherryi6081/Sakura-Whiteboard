@@ -19,7 +19,7 @@ export type FloatingPetal = {
   x: number;
   /** 湖带内的深浅：0 = 水线，1 = 画面底 */
   depth: number;
-  /** 桌面端主轴宽度（px） */
+  /** 基准主轴宽度（px，渲染时统一乘 PETAL_SCALE，0.85） */
   size: number;
   /** 整体倾角（与水线不平行，读起来才像漂着） */
   rot: number;
@@ -40,7 +40,7 @@ export type FloatingPetal = {
 };
 
 export const FLOATING_PETALS: readonly FloatingPetal[] = [
-  // ---- 近处（depth .75–.92，最大 19–26px，纵横比约 0.72–0.80）----
+  // ---- 近处（depth .75–.92，缩放后 16.2–22.1px，纵横比约 0.72–0.80）----
   { key: 0, x: 12, depth: 0.8, size: 22, rot: -8, tilt: 14, dur: 30, delay: -4, dx: 6, dy: 3, pulse: 11, pulseDelay: -3, mobile: true },
   { key: 1, x: 29, depth: 0.9, size: 26, rot: 6, tilt: -18, dur: 34, delay: -19, dx: 5, dy: 4, pulse: 13, pulseDelay: -9, mobile: true },
   { key: 2, x: 45, depth: 0.77, size: 20, rot: 12, tilt: 8, dur: 27, delay: -11, dx: 7, dy: 3, pulse: 9.5, pulseDelay: -6, mobile: true },
@@ -52,7 +52,7 @@ export const FLOATING_PETALS: readonly FloatingPetal[] = [
   // 超宽屏左翼
   { key: 7, x: 4, depth: 0.86, size: 24, rot: -6, tilt: 16, dur: 33, delay: -22, dx: 5, dy: 4, pulse: 12.5, pulseDelay: -7, mobile: false },
 
-  // ---- 中部（depth .44–.60，13–16px，纵横比约 0.56–0.64）----
+  // ---- 中部（depth .44–.60，缩放后 11.1–13.6px，纵横比约 0.56–0.64）----
   { key: 8, x: 20, depth: 0.55, size: 15, rot: 10, tilt: -12, dur: 28, delay: -14, dx: 5, dy: 3, pulse: 10, pulseDelay: -4, mobile: true },
   { key: 9, x: 38, depth: 0.48, size: 14, rot: -14, tilt: 9, dur: 25, delay: -6, dx: 6, dy: 2, pulse: 8.5, pulseDelay: -10, mobile: true },
   { key: 10, x: 63, depth: 0.58, size: 16, rot: 7, tilt: 18, dur: 32, delay: -24, dx: 4, dy: 3, pulse: 11.5, pulseDelay: -8, mobile: true },
@@ -62,17 +62,28 @@ export const FLOATING_PETALS: readonly FloatingPetal[] = [
   // 超宽屏左翼
   { key: 13, x: 8, depth: 0.5, size: 13, rot: -4, tilt: 21, dur: 27, delay: -12, dx: 4, dy: 2, pulse: 10.5, pulseDelay: -11, mobile: false },
 
-  // ---- 远处（depth .24–.32，9–10px，纵横比约 0.46–0.50）----
+  // ---- 远处（depth .24–.32，缩放后 7.7–8.5px，纵横比约 0.46–0.50）----
   { key: 14, x: 33, depth: 0.28, size: 10, rot: 8, tilt: -14, dur: 29, delay: -17, dx: 4, dy: 2, pulse: 9, pulseDelay: -17, mobile: true },
   { key: 15, x: 68, depth: 0.24, size: 9, rot: -7, tilt: 11, dur: 26, delay: -5, dx: 5, dy: 2, pulse: 8.5, pulseDelay: -14, mobile: true },
   { key: 16, x: 15, depth: 0.32, size: 10, rot: 5, tilt: 17, dur: 30, delay: -21, dx: 4, dy: 2, pulse: 10, pulseDelay: -16, mobile: false },
   { key: 17, x: 82, depth: 0.26, size: 9, rot: -12, tilt: -8, dur: 28, delay: -13, dx: 5, dy: 2, pulse: 9.5, pulseDelay: -18, mobile: false },
 ];
 
+/**
+ * 全站花瓣的整体缩放：飘落与漂浮共用同一系数，0.85 = 线性缩 15%（面积约 72%）。
+ *
+ * 数据里的 `size` 仍保留缩小前的基准值，渲染尺寸、漂浮投影与涟漪落水时刻
+ * 都乘这一个系数，所以透视分档（越远越小越扁）与落瓣/涟漪的同相关系只是等比缩，
+ * 不会被拉平或错档。系数取 0.85 而不是更小：桌面最小档 11px→9.4px，
+ * 移动端漂浮最小档（再叠 CSS 的 0.72）9→5.5px，都还在清晰下限之上。
+ */
+export const PETAL_SCALE = 0.85;
+
 /** 纵轴压缩：越靠水线越扁（远处近似被压成一条横线），越靠底越接近正面视角 */
 export function floatingFootprint(petal: FloatingPetal) {
   const aspect = 0.34 + 0.5 * petal.depth;
-  return { width: petal.size, height: +(petal.size * aspect).toFixed(1), aspect: +aspect.toFixed(2) };
+  const size = +(petal.size * PETAL_SCALE).toFixed(2);
+  return { width: size, height: +(size * aspect).toFixed(1), aspect: +aspect.toFixed(2) };
 }
 
 export type FloatingBand = "far" | "mid" | "near";

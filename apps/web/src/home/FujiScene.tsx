@@ -21,7 +21,7 @@ import {
   type Blossom,
   type BranchSegment,
 } from "./fujiBranches";
-import { FLOATING_PETALS, floatingFootprint, type FloatingPetal } from "./floatingPetals";
+import { FLOATING_PETALS, PETAL_SCALE, floatingFootprint, type FloatingPetal } from "./floatingPetals";
 import {
   FLASH_PEAK_OPACITY,
   FLASH_SPLASH_SECONDS,
@@ -392,7 +392,8 @@ function petalStyle(petal: Petal): CSSProperties {
   return {
     "--p-top": `${petal.top}%`,
     "--p-left": `${petal.left}%`,
-    "--p-size": `${petal.size}px`,
+    // 与涟漪共用同一个缩放后的尺寸，落水时刻不会因为只缩 CSS 而错位
+    "--p-size": `${+(petal.size * PETAL_SCALE).toFixed(2)}px`,
     "--p-dur": `${petal.dur}s`,
     "--p-delay": `${petal.delay}s`,
     "--p-spin": petal.spin,
@@ -485,7 +486,7 @@ export function FujiScene() {
           top: petal.top,
           dur: petal.dur,
           delay: petal.delay,
-          size: petal.size,
+          size: +(petal.size * PETAL_SCALE).toFixed(2),
           path: petal.path,
           sway: geometry.sway,
           fall: geometry.fall,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LEFT_PETALS, PETALS, petalGeometry } from "./FujiScene";
+import { PETAL_SCALE } from "./floatingPetals";
 import {
   CONCURRENCY_WINDOW,
   INNER_PEAK_OPACITY,
@@ -58,7 +59,7 @@ function rippleInputs(width: number, height: number): RippleInput[] {
       top: petal.top,
       dur: petal.dur,
       delay: petal.delay,
-      size: petal.size,
+      size: +(petal.size * PETAL_SCALE).toFixed(2),
       path: petal.path,
       sway: geometry.sway,
       fall: geometry.fall,
@@ -260,5 +261,14 @@ describe("涟漪落点与并发", () => {
     // eslint-disable-next-line no-console
     console.table(rows);
     expect(rows).toHaveLength(VIEWPORTS.length);
+  });
+});
+
+describe("落瓣尺寸", () => {
+  it("缩小 0.85 后仍在清晰下限之上（桌面最小档 ≥ 4px，移动端沿用同一像素尺寸）", () => {
+    for (const petal of [...PETALS, ...LEFT_PETALS]) {
+      // 落瓣不随视口改尺寸，最小档 10px × 0.85 = 8.5px
+      expect(petal.size * PETAL_SCALE).toBeGreaterThanOrEqual(4);
+    }
   });
 });
