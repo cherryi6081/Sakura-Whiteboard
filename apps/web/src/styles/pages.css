@@ -502,7 +502,7 @@
   pointer-events: none;
   /* 没有动画时（reduce）停在这里：画面中部偏右，避开页脚与湖面 */
   transform: translate3d(64vw, 42vh, 0) rotate(9deg);
-  animation: wb-crane-flight 36s linear infinite;
+  animation: wb-crane-flight 25s linear infinite;
   will-change: transform, opacity;
 }
 
@@ -512,7 +512,7 @@
 .wb-scene__crane--trail {
   --crane-h: clamp(62px, 7.6vh, 108px);
   --crane-w: calc(var(--crane-h) * 1.8462);
-  animation-delay: -33s;
+  animation-delay: -22s;
 }
 
 /* 「略淡」加在镜像层上：外层 opacity 被飞行关键帧占用，写在这里才会真正叠加 */

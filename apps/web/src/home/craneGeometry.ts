@@ -69,10 +69,14 @@ export const CRANE_FLIGHT: readonly CraneFlightFrame[] = [
   { at: 100, x: 108, y: 88, rot: 13, opacity: 0 },
 ];
 
-/** 外层一圈 36s（要求在 30–50s 内）；可见段 0–80% 约 28.8s 从右下穿到左上 */
-export const CRANE_FLIGHT_SECONDS = 36;
+/**
+ * 外层一圈 25s：比上一版的 36s 快 1.44 倍，正好落在 24–26s 的中段。
+ * 取 25 而不是 24/26，是因为百分比能整除出整数秒——2% = 0.5s、4% = 1s、80% = 20s，
+ * 淡入淡出与出画时刻都可以直接用秒核对。可见段仍是 0–80%（20s 从右下穿到左上）。
+ */
+export const CRANE_FLIGHT_SECONDS = 25;
 
-/** 后一只鹤比前一只晚 3s 起飞（要求在 1.5–3s 内）；用负延时实现，加载时它正处在上圈的不可见段 */
+/** 后一只鹤比前一只晚 3s 起飞（要求在 1.5–3s 内，占一圈的 12%）；用负延时实现，加载时它正处在上圈的不可见段 */
 export const CRANE_TRAIL_DELAY_SECONDS = 3;
 
 /** 内层振翅周期 0.9s（要求在 0.7–1.1s 内） */

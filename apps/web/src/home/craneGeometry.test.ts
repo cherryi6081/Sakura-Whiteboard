@@ -130,13 +130,13 @@ describe("丹顶鹤飞行关键帧", () => {
     expect(last).toEqual({ ...first, at: 100 });
   });
 
-  it("时间点递增，总时长在 30–50s，振翅周期在 0.7–1.1s", () => {
+  it("时间点递增，总时长在 24–26s，振翅周期在 0.7–1.1s", () => {
     expect(CRANE_FLIGHT[0].at).toBe(0);
     for (let i = 1; i < CRANE_FLIGHT.length; i++) {
       expect(CRANE_FLIGHT[i].at).toBeGreaterThan(CRANE_FLIGHT[i - 1].at);
     }
-    expect(CRANE_FLIGHT_SECONDS).toBeGreaterThanOrEqual(30);
-    expect(CRANE_FLIGHT_SECONDS).toBeLessThanOrEqual(50);
+    expect(CRANE_FLIGHT_SECONDS).toBeGreaterThanOrEqual(24);
+    expect(CRANE_FLIGHT_SECONDS).toBeLessThanOrEqual(26);
     expect(CRANE_FLAP_SECONDS).toBeGreaterThanOrEqual(0.7);
     expect(CRANE_FLAP_SECONDS).toBeLessThanOrEqual(1.1);
   });
