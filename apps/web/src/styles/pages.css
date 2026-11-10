@@ -503,7 +503,27 @@
   /* 没有动画时（reduce）停在这里：画面中部偏右，避开页脚与湖面 */
   transform: translate3d(64vw, 42vh, 0) rotate(9deg);
   animation: wb-crane-flight 36s linear infinite;
-  will-change: transform;
+  will-change: transform, opacity;
+}
+
+/* 后一只鹤：同一造型，高度收到约 0.83、整体略淡，航路用负延时错后 3s。
+   负延时让它一加载就处在上圈的「不可见折返段」，3s 后才从右下角重新入画，
+   不会出现先停在起点不动的那一下。 */
+.wb-scene__crane--trail {
+  --crane-h: clamp(62px, 7.6vh, 108px);
+  --crane-w: calc(var(--crane-h) * 1.8462);
+  animation-delay: -33s;
+}
+
+/* 「略淡」加在镜像层上：外层 opacity 被飞行关键帧占用，写在这里才会真正叠加 */
+.wb-scene__crane--trail .wb-scene__crane-flip {
+  opacity: 0.88;
+}
+
+/* 振翅相位错开 0.31s（0.9s 周期的三分之一多一点），两只不会同拍扇翼 */
+.wb-scene__crane--trail .wb-crane__wing,
+.wb-scene__crane--trail .wb-scene__crane-bob {
+  animation-delay: -0.31s;
 }
 
 .wb-scene__crane-flip {
@@ -544,23 +564,25 @@
   animation-name: wb-crane-flap-near;
 }
 
-/* 远翼整组压淡，只保留翼根与躯干相交处被遮挡 */
+/* 远翼不再整组半透明（那会把墨黑飞羽一起洗成灰色），深度差由翼面的冷灰调承担 */
 .wb-crane__wing--far {
   animation-name: wb-crane-flap-far;
-  opacity: 0.62;
 }
 
 /* 白羽面：白身 + 冷灰羽缘描边。白羽在浅天空/雪上到不了 3:1，
-   可辨性交给这条 0.8 单位的描边与墨羽块 */
+   可辨性交给这条描边与墨羽块。描边 0.95 单位，在 0.64 缩放下约 0.6px，
+   是羽缘不糊成一片的下限 */
 .wb-crane__plume {
   fill: var(--crane-white);
   stroke: var(--crane-edge);
-  stroke-width: 0.8;
+  stroke-width: 0.95;
   stroke-linejoin: round;
 }
 
-.wb-crane__plume--soft {
-  stroke-width: 0.7;
+/* 远翼翼面：比近翼低一档（白 55% + 冷灰 45%），压深不压透 */
+.wb-crane__plume--far {
+  fill: color-mix(in srgb, var(--crane-white) 55%, var(--crane-shade));
+  stroke-width: 0.85;
 }
 
 /* 近翼翼面：只填色，不描边（翼根那边压在躯干上）。
@@ -601,11 +623,6 @@
   fill: var(--crane-ink);
 }
 
-.wb-crane__ink--far {
-  fill: var(--crane-ink-soft);
-  opacity: 0.55;
-}
-
 .wb-crane__crown {
   fill: var(--crane-crown);
 }
@@ -626,13 +643,21 @@
   stroke-linecap: round;
 }
 
-/* 腿脚：全图最细的一档线 */
+/* 腿脚：全图最细的一档线；远侧腿更细、更淡，读成被身体挡住的另一条 */
 .wb-crane__leg {
   fill: none;
   stroke: var(--crane-leg);
-  stroke-width: 1.9;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.wb-crane__leg-group--far {
+  opacity: 0.72;
+}
+
+.wb-crane__leg-group--far .wb-crane__leg {
+  stroke-width: 1.7;
 }
 
 /* 内层振翅：同周期同相位，近翼小幅、远翼稍大 */
@@ -667,45 +692,62 @@
   }
 }
 
-/* 外层飞行：一圈闭合回路（右下 → 左上 → 出画绕回右缘 → 回起点），
-   0% 与 100% 的位置与角度完全一致，循环处不跳帧；线性推进 + 12 个均匀采样点，
-   每段之间没有缓动停顿，曲线本身自带加速/减速 */
+/* 外层飞行：一条单程航路（右下入画 → 左上出画 → 不可见折返），
+   0–80% 可见，80% 起 opacity 归零、沿原路返回起点，下一次循环再从右下淡入。
+   首尾位置/角度/透明度完全相同，循环处不跳帧；线性推进 + 13 个采样点，
+   段与段之间没有缓动停顿，曲线本身自带加速/减速 */
 @keyframes wb-crane-flight {
   0% {
-    transform: translate3d(86vw, 84vh, 0) rotate(12deg);
+    transform: translate3d(108vw, 88vh, 0) rotate(13deg);
+    opacity: 0;
   }
-  6% {
-    transform: translate3d(73vw, 80vh, 0) rotate(11deg);
+  2% {
+    transform: translate3d(104vw, 85.5vh, 0) rotate(13deg);
+    opacity: 0;
   }
-  14% {
-    transform: translate3d(63vw, 70vh, 0) rotate(9deg);
+  4% {
+    transform: translate3d(98vw, 82vh, 0) rotate(13deg);
+    opacity: 1;
   }
-  24% {
-    transform: translate3d(54vw, 58vh, 0) rotate(7deg);
+  10% {
+    transform: translate3d(86vw, 78vh, 0) rotate(12deg);
+    opacity: 1;
   }
-  34% {
-    transform: translate3d(42vw, 46vh, 0) rotate(6deg);
+  18% {
+    transform: translate3d(73vw, 69vh, 0) rotate(10deg);
+    opacity: 1;
   }
-  44% {
-    transform: translate3d(26vw, 36vh, 0) rotate(5deg);
+  28% {
+    transform: translate3d(58vw, 57vh, 0) rotate(8deg);
+    opacity: 1;
   }
-  52% {
-    transform: translate3d(10vw, 27vh, 0) rotate(5deg);
+  38% {
+    transform: translate3d(43vw, 45vh, 0) rotate(6deg);
+    opacity: 1;
+  }
+  48% {
+    transform: translate3d(28vw, 34vh, 0) rotate(5deg);
+    opacity: 1;
   }
   58% {
-    transform: translate3d(-10vw, 23vh, 0) rotate(6deg);
+    transform: translate3d(13vw, 24vh, 0) rotate(5deg);
+    opacity: 1;
   }
-  74% {
-    transform: translate3d(16vw, -20vh, 0) rotate(9deg);
+  68% {
+    transform: translate3d(-2vw, 16vh, 0) rotate(6deg);
+    opacity: 1;
   }
-  88% {
-    transform: translate3d(112vw, 66vh, 0) rotate(11deg);
+  76% {
+    transform: translate3d(-16vw, 10vh, 0) rotate(8deg);
+    opacity: 1;
   }
-  94% {
-    transform: translate3d(98vw, 78vh, 0) rotate(12deg);
+  80% {
+    transform: translate3d(-24vw, 8vh, 0) rotate(9deg);
+    opacity: 0;
   }
   100% {
-    transform: translate3d(86vw, 84vh, 0) rotate(12deg);
+    transform: translate3d(108vw, 88vh, 0) rotate(13deg);
+    opacity: 0;
   }
 }
 
@@ -996,6 +1038,11 @@
     --crane-h: clamp(58px, 8vh, 84px);
   }
 
+  /* 窄屏下沿用同一比例的主次关系（约 0.83），不要被上面那条覆盖成同样大小 */
+  .wb-scene__crane--trail {
+    --crane-h: clamp(52px, 6.6vh, 70px);
+  }
+
   .wb-scene__branch {
     width: 58%;
     height: 72%;
@@ -1055,6 +1102,11 @@
   .wb-scene__crane-bob,
   .wb-crane__wing {
     animation: none;
+  }
+
+  /* 两只鹤在静止态要错开：后一只放到前一只的右下后方，保持「一前一后」的构图 */
+  .wb-scene__crane--trail {
+    transform: translate3d(76vw, 54vh, 0) rotate(9deg);
   }
 }
 

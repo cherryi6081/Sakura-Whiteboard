@@ -743,8 +743,11 @@ export function FujiScene() {
         ))}
       </div>
 
-      {/* 丹顶鹤：外层沿闭合曲线飞行、内层原地振翅。z-index 4 显式压在花瓣（3）之上，
-          仍低于页脚（页脚在 .wb-home 上 z-index 2，场景整体是 z-index 0） */}
+      {/* 丹顶鹤：两只一前一后（同一份造型，后一只更小更淡、延时 3s、振翅相位错开）。
+          外层沿单程航路飞向左上出画、不可见地折回起点，内层原地振翅。
+          z-index 4 显式压在花瓣（3）之上，仍低于页脚（页脚在 .wb-home 上 z-index 2，
+          场景整体是 z-index 0） */}
+      <Crane variant="trail" />
       <Crane />
 
       <div className="wb-scene__petals">

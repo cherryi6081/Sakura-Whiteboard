@@ -6,11 +6,16 @@ import {
   CRANE_FLIGHT,
   CRANE_FLIGHT_SECONDS,
   CRANE_FAR_PRIMARIES,
+  CRANE_FAR_LEG,
+  CRANE_FAR_TOES,
   CRANE_LAYERS,
+  CRANE_LEG,
   CRANE_PRIMARIES,
   CRANE_SECONDARIES,
   CRANE_SHOULDER,
   CRANE_TAIL,
+  CRANE_TOES,
+  CRANE_TRAIL_DELAY_SECONDS,
   CRANE_VIEWBOX,
   craneFlightEnvelope,
   featherPath,
@@ -69,9 +74,9 @@ describe("丹顶鹤外形比例", () => {
     expect(new Set(tips).size).toBe(5);
   });
 
-  it("次级飞羽 3 根、远翼飞羽 3 根、尾羽 3 片，且都从根部向尖端收窄", () => {
+  it("次级飞羽 3 根、远翼飞羽 4 根、尾羽 3 片，且都从根部向尖端收窄", () => {
     expect(CRANE_SECONDARIES).toHaveLength(3);
-    expect(CRANE_FAR_PRIMARIES).toHaveLength(3);
+    expect(CRANE_FAR_PRIMARIES).toHaveLength(4);
     expect(CRANE_TAIL).toHaveLength(3);
     for (const feather of [...CRANE_PRIMARIES, ...CRANE_SECONDARIES, ...CRANE_FAR_PRIMARIES, ...CRANE_TAIL]) {
       expect(feather.width).toBeGreaterThan(0);
@@ -90,6 +95,31 @@ describe("丹顶鹤外形比例", () => {
     const origin = wing.slice(0, wing.indexOf("}"));
     expect(origin).toContain("transform-box: view-box");
     expect(origin).toContain(`transform-origin: ${CRANE_SHOULDER.x}px ${CRANE_SHOULDER.y}px`);
+  });
+
+  it("同组相邻羽片彼此重叠（羽尖间距小于较窄一片的羽宽），不留断缝", () => {
+    // 次级飞羽整根压在翼面之内、不参与外缘轮廓，不适用这条约束
+    for (const group of [CRANE_PRIMARIES, CRANE_FAR_PRIMARIES, CRANE_TAIL]) {
+      for (let i = 1; i < group.length; i++) {
+        const gap = Math.hypot(
+          group[i].tip.x - group[i - 1].tip.x,
+          group[i].tip.y - group[i - 1].tip.y,
+        );
+        expect(gap).toBeLessThan(Math.min(group[i].width, group[i - 1].width));
+      }
+    }
+  });
+
+  it("有两条腿：远侧腿更短、更靠内、抬得更高", () => {
+    const nearLen = Math.hypot(CRANE_LEG[2].x - CRANE_LEG[0].x, CRANE_LEG[2].y - CRANE_LEG[0].y);
+    const farLen = Math.hypot(CRANE_FAR_LEG[2].x - CRANE_FAR_LEG[0].x, CRANE_FAR_LEG[2].y - CRANE_FAR_LEG[0].y);
+    expect(CRANE_LEG).toHaveLength(3);
+    expect(CRANE_FAR_LEG).toHaveLength(3);
+    expect(farLen).toBeLessThan(nearLen);
+    expect(CRANE_FAR_LEG[2].x).toBeGreaterThan(CRANE_LEG[2].x);
+    expect(CRANE_FAR_LEG[2].y).toBeLessThan(CRANE_LEG[2].y);
+    expect(CRANE_TOES).toHaveLength(3);
+    expect(CRANE_FAR_TOES).toHaveLength(3);
   });
 });
 
@@ -118,25 +148,56 @@ describe("丹顶鹤飞行关键帧", () => {
     }
   });
 
-  it("可见段（0–58%）一路向左上，不回摆", () => {
-    const visible = CRANE_FLIGHT.filter((frame) => frame.at <= 58);
+  it("可见段（0–80%）一路向左上，不回摆", () => {
+    const visible = CRANE_FLIGHT.filter((frame) => frame.at <= 80);
     for (let i = 1; i < visible.length; i++) {
       expect(visible[i].x).toBeLessThan(visible[i - 1].x);
       expect(visible[i].y).toBeLessThan(visible[i - 1].y);
     }
   });
 
-  it("最低点 84vh、最高点 -20vh：与页脚、视口上缘的关系只在预期范围内", () => {
-    expect(craneFlightEnvelope()).toEqual({ minX: -10, maxX: 112, minY: -20, maxY: 84 });
+  it("入画前与出画后透明度归零，折返段完全不可见", () => {
+    // 0–2% 藏在右下角外侧、全透明；2% 之后才淡入
+    expect(CRANE_FLIGHT[0].opacity).toBe(0);
+    expect(CRANE_FLIGHT[1].opacity).toBe(0);
+    const visible = CRANE_FLIGHT.filter((frame) => frame.at >= 4 && frame.at < 80);
+    expect(visible.length).toBeGreaterThan(0);
+    expect(visible.every((frame) => frame.opacity === 1)).toBe(true);
+    const hidden = CRANE_FLIGHT.filter((frame) => frame.at >= 80);
+    expect(hidden.every((frame) => frame.opacity === 0)).toBe(true);
+  });
+
+  it("两只鹤起飞间隔 1.5–3s，且后一只错开振翅相位", () => {
+    expect(CRANE_TRAIL_DELAY_SECONDS).toBeGreaterThanOrEqual(1.5);
+    expect(CRANE_TRAIL_DELAY_SECONDS).toBeLessThanOrEqual(3);
+    const trail = CSS.slice(CSS.indexOf(".wb-scene__crane--trail {"));
+    expect(trail.slice(0, trail.indexOf("}"))).toContain(
+      `animation-delay: -${CRANE_FLIGHT_SECONDS - CRANE_TRAIL_DELAY_SECONDS}s`,
+    );
+    expect(CSS).toContain(".wb-scene__crane--trail .wb-crane__wing");
+  });
+
+  it("最低点 88vh、最高点 8vh：与页脚、视口上缘的关系只在预期范围内", () => {
+    expect(craneFlightEnvelope()).toEqual({ minX: -24, maxX: 108, minY: 8, maxY: 88 });
   });
 
   it("pages.css 里的 wb-crane-flight 与 CRANE_FLIGHT 数值一一对应", () => {
     const block = keyframesBlock("wb-crane-flight");
-    const frames = Array.from(
-      block.matchAll(
-        /(\d+)%\s*\{\s*transform:\s*translate3d\((-?[\d.]+)vw,\s*(-?[\d.]+)vh,\s*0\)\s*rotate\((-?[\d.]+)deg\)/g,
-      ),
-    ).map((match) => ({ at: +match[1], x: +match[2], y: +match[3], rot: +match[4] }));
+    const frames = Array.from(block.matchAll(/(\d+)%\s*\{([^}]*)\}/g)).map((match) => {
+      const transform = match[2].match(
+        /translate3d\((-?[\d.]+)vw,\s*(-?[\d.]+)vh,\s*0\)\s*rotate\((-?[\d.]+)deg\)/,
+      );
+      const opacity = match[2].match(/opacity:\s*([\d.]+)/);
+      expect(transform, `缺少 transform: ${match[0]}`).not.toBeNull();
+      expect(opacity, `缺少 opacity: ${match[0]}`).not.toBeNull();
+      return {
+        at: +match[1],
+        x: +transform![1],
+        y: +transform![2],
+        rot: +transform![3],
+        opacity: +opacity![1],
+      };
+    });
     expect(frames).toEqual(CRANE_FLIGHT.map((frame) => ({ ...frame })));
   });
 
