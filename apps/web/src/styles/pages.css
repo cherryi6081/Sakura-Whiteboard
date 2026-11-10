@@ -480,6 +480,235 @@
   }
 }
 
+/* ---------- 丹顶鹤 ---------- */
+/* 三层容器各承担一个 transform，互不覆盖：外层飞行（translate3d + rotate）、
+   中层静态镜像（scaleX(-1)）、内层上下起伏；振翅只发生在 SVG 内部的两个翼组上 */
+.wb-scene__crane {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* 层内压在飘落花瓣（3）之上；场景层是 z-index:0 的独立层叠上下文，
+     页脚在 .wb-home 上 z-index:2，所以鹤永远在页脚文字之下，不会压住文字 */
+  z-index: 4;
+  /* 基准高度 9.2vh（1440×900 约 83px），随视口缩放并夹在 76–132px；
+     宽度按 viewBox 240×130 取 1.8462 倍，纵横比固定 */
+  --crane-h: clamp(76px, 9.2vh, 132px);
+  --crane-w: calc(var(--crane-h) * 1.8462);
+  width: var(--crane-w);
+  height: var(--crane-h);
+  /* 关键帧坐标指的是鹤的中心，用负外边距把包围盒摆正 */
+  margin-left: calc(var(--crane-w) / -2);
+  margin-top: calc(var(--crane-h) / -2);
+  pointer-events: none;
+  /* 没有动画时（reduce）停在这里：画面中部偏右，避开页脚与湖面 */
+  transform: translate3d(64vw, 42vh, 0) rotate(9deg);
+  animation: wb-crane-flight 36s linear infinite;
+  will-change: transform;
+}
+
+.wb-scene__crane-flip {
+  width: 100%;
+  height: 100%;
+  /* 造型统一朝右，向左飞靠这一层一次性镜像，不画两套 */
+  transform: scaleX(-1);
+}
+
+.wb-scene__crane-bob {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: wb-crane-bob 0.9s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* 七个部件各挂一个 <svg>，共用同一 viewBox，用 z-index 明确定层 */
+.wb-crane__layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* 两翼的旋转原点都落在共同肩点 (141,58)，整个摆幅内翼根不脱肩线 */
+.wb-crane__wing {
+  transform-box: view-box;
+  transform-origin: 141px 58px;
+  animation-duration: 0.9s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  will-change: transform;
+}
+
+.wb-crane__wing--near {
+  animation-name: wb-crane-flap-near;
+}
+
+/* 远翼整组压淡，只保留翼根与躯干相交处被遮挡 */
+.wb-crane__wing--far {
+  animation-name: wb-crane-flap-far;
+  opacity: 0.62;
+}
+
+/* 白羽面：白身 + 冷灰羽缘描边。白羽在浅天空/雪上到不了 3:1，
+   可辨性交给这条 0.8 单位的描边与墨羽块 */
+.wb-crane__plume {
+  fill: var(--crane-white);
+  stroke: var(--crane-edge);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+}
+
+.wb-crane__plume--soft {
+  stroke-width: 0.7;
+}
+
+/* 近翼翼面：只填色，不描边（翼根那边压在躯干上）。
+   外轮廓由 .wb-crane__plume-edge 单独描一条开放路径，翼根处不封口。
+   翼面比躯干低一档冷灰（白羽面 : 羽面冷灰影 = 6:4），近翼才不会与躯干糊成一片白 */
+.wb-crane__plume-fill {
+  fill: color-mix(in srgb, var(--crane-white) 60%, var(--crane-shade));
+  stroke: none;
+}
+
+.wb-crane__plume-edge {
+  fill: none;
+  stroke: var(--crane-edge);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* 次级飞羽：与翼面同色，只描一道羽缘，读成翼根处的羽片分区而不是三片白花瓣 */
+.wb-crane__plume--secondary {
+  fill: color-mix(in srgb, var(--crane-white) 60%, var(--crane-shade));
+  stroke: var(--crane-shaft);
+  stroke-width: 0.6;
+  stroke-opacity: 0.85;
+}
+
+/* 羽面冷灰影：腹部与体侧的明暗分层，不描边 */
+.wb-crane__plume-shade {
+  fill: var(--crane-shade);
+}
+
+.wb-crane__plume-shade--belly {
+  opacity: 0.72;
+}
+
+/* 墨黑飞羽与尾羽 */
+.wb-crane__ink {
+  fill: var(--crane-ink);
+}
+
+.wb-crane__ink--far {
+  fill: var(--crane-ink-soft);
+  opacity: 0.55;
+}
+
+.wb-crane__crown {
+  fill: var(--crane-crown);
+}
+
+.wb-crane__beak {
+  fill: var(--crane-beak);
+}
+
+.wb-crane__eye {
+  fill: var(--crane-eye);
+}
+
+/* 羽轴线：颈后转折线与覆羽分区线 */
+.wb-crane__shaft {
+  fill: none;
+  stroke: var(--crane-shaft);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+/* 腿脚：全图最细的一档线 */
+.wb-crane__leg {
+  fill: none;
+  stroke: var(--crane-leg);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 内层振翅：同周期同相位，近翼小幅、远翼稍大 */
+@keyframes wb-crane-flap-near {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes wb-crane-flap-far {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+}
+
+/* 轻微起伏：下压时略微下沉，幅度随鹤的尺寸缩放 */
+@keyframes wb-crane-bob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, calc(var(--crane-h) * -0.02), 0);
+  }
+}
+
+/* 外层飞行：一圈闭合回路（右下 → 左上 → 出画绕回右缘 → 回起点），
+   0% 与 100% 的位置与角度完全一致，循环处不跳帧；线性推进 + 12 个均匀采样点，
+   每段之间没有缓动停顿，曲线本身自带加速/减速 */
+@keyframes wb-crane-flight {
+  0% {
+    transform: translate3d(86vw, 84vh, 0) rotate(12deg);
+  }
+  6% {
+    transform: translate3d(73vw, 80vh, 0) rotate(11deg);
+  }
+  14% {
+    transform: translate3d(63vw, 70vh, 0) rotate(9deg);
+  }
+  24% {
+    transform: translate3d(54vw, 58vh, 0) rotate(7deg);
+  }
+  34% {
+    transform: translate3d(42vw, 46vh, 0) rotate(6deg);
+  }
+  44% {
+    transform: translate3d(26vw, 36vh, 0) rotate(5deg);
+  }
+  52% {
+    transform: translate3d(10vw, 27vh, 0) rotate(5deg);
+  }
+  58% {
+    transform: translate3d(-10vw, 23vh, 0) rotate(6deg);
+  }
+  74% {
+    transform: translate3d(16vw, -20vh, 0) rotate(9deg);
+  }
+  88% {
+    transform: translate3d(112vw, 66vh, 0) rotate(11deg);
+  }
+  94% {
+    transform: translate3d(98vw, 78vh, 0) rotate(12deg);
+  }
+  100% {
+    transform: translate3d(86vw, 84vh, 0) rotate(12deg);
+  }
+}
+
 /* 枝条：木棕色两档 — 主干与粗侧枝用深档，末梢细枝用浅档 */
 .wb-scene__branch-wood {
   stroke: var(--branch-brown-900);
@@ -761,6 +990,12 @@
     display: none;
   }
 
+  /* 鹤在窄屏按同一比例收口：高度 8vh（390×844 约 68px），
+     起始点 86vw 处右缘仍在视口内，不裁到翅膀 */
+  .wb-scene__crane {
+    --crane-h: clamp(58px, 8vh, 84px);
+  }
+
   .wb-scene__branch {
     width: 58%;
     height: 72%;
@@ -811,6 +1046,15 @@
   /* 自带的一圈扩散是动画，reduce 下停掉（静态水纹 .wb-scene__float-ring 保留） */
   .wb-scene__float-pulse {
     display: none;
+  }
+
+  /* 鹤：曲线飞行和振翅都是装饰性动效，reduce 下全部停下，但造型保留 ——
+     停在 .wb-scene__crane 的基础 transform（64vw / 42vh，画面中部偏右），
+     既不压页脚，也不会因为缺省 transform 而聚到左上角 */
+  .wb-scene__crane,
+  .wb-scene__crane-bob,
+  .wb-crane__wing {
+    animation: none;
   }
 }
 

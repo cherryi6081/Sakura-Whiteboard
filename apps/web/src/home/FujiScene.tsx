@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from "react";
+import { Crane } from "./Crane";
 import {
   LEFT_FAR_PAINT,
   LEFT_FAR_TREE,
@@ -741,6 +742,10 @@ export function FujiScene() {
           </span>
         ))}
       </div>
+
+      {/* 丹顶鹤：外层沿闭合曲线飞行、内层原地振翅。z-index 4 显式压在花瓣（3）之上，
+          仍低于页脚（页脚在 .wb-home 上 z-index 2，场景整体是 z-index 0） */}
+      <Crane />
 
       <div className="wb-scene__petals">
         {PETALS.map((petal, index) => (

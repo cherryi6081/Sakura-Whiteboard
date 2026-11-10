@@ -162,6 +162,24 @@
   --radius-xl: 20px;
   --radius-pill: 999px;
 
+  /* ---------- 首页场景：丹顶鹤 ---------- */
+  /* 取样自参考图 OIP-C（白身、墨黑飞羽、朱红顶冠）：
+     白羽面取身体受光面最高光 #fbfcfe；羽面冷灰影取翼下与腹侧的过渡色 #d7e2ec；
+     羽轴取羽片之间的分隔线 #a9bccd；羽缘描边取轮廓的冷灰边 #7e96ab；
+     墨黑飞羽与尾羽取参考图最深处 #1b2026；喙 #2a2f34、腿 #333a40 比墨羽略浅一档；
+     顶冠取朱红 #c23a2c。白羽对浅天空/雪达不到 3:1 是必然的（见交付说明），
+     可辨性由羽缘描边与墨羽块承担，不把整只鸟压成灰蓝 */
+  --crane-white: #fbfcfe;
+  --crane-shade: #d7e2ec;
+  --crane-shaft: #a9bccd;
+  --crane-edge: #7e96ab;
+  --crane-ink: #1b2026;
+  --crane-ink-soft: #2b3238;
+  --crane-beak: #2a2f34;
+  --crane-leg: #333a40;
+  --crane-crown: #c23a2c;
+  --crane-eye: #14181c;
+
   /* ---------- 阴影 ---------- */
   --shadow-0: none;
   --shadow-1: 0 1px 2px rgba(58, 46, 51, 0.06);
