@@ -14,7 +14,15 @@ import type { Palette } from "./palette";
  * 面与面之间有明确的色阶断点，而不是平滑渐变。
  */
 
-const SEG = 32;
+/**
+ * 环向分段数。32 时雪齿宽约 26 舞台单位（1440 下 23px），正面只数得出 5 个齿，
+ * 倒影里被水纹和半透明一压就只剩 2–3 个轮廓起伏，和 SVG 版那排密齿对不上。
+ * 64 把齿宽收到约 13 单位（12px），与 SVG 雪线 12–24 单位的齿距同量级；
+ * 齿深仍由下沿的 t 抖动决定（0.57–0.74），深宽比落在 SVG 的区间里，
+ * 而不是靠把齿拉得更尖。岩体与雪盖共用同一组角向采样，接触线不会因为两边
+ * 采样密度不同而露出缝或溢出。顶点量正好翻一倍（768 → 1536 三角），不是十倍。
+ */
+const SEG = 64;
 const PEAK_Y = 208;
 const HEIGHT = WATERLINE - PEAK_Y;
 const AXIS_X = 786;
@@ -369,10 +377,11 @@ export function createMountain(palette: Palette): MountainBuild {
           "#include <begin_vertex>",
           `#include <begin_vertex>
           float refDepth = max(0.0, uWater - transformed.y);
-          // 水面波动只给横向位移，幅度 0.55 + 0.008 × 深度（最深约 3.4 单位）。
-          // 纯镜像后雪齿间距恢复到约 20 单位，这个量级足以读出齿形，不会把轮廓揉掉；
-          // 纯镜像没有横向错位，波动的中心恒为 0，峰顶倒影正对峰顶
-          transformed.x += sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.55 + refDepth * 0.008);
+          // 水面波动只给横向位移。SEG 提到 64 后雪齿宽约 13 舞台单位（1440 下 12px），
+          // 原来 0.55 + 0.008 × 深度（最深 3.4 单位 ≈ 3px）会剪掉齿尖宽度的四分之一，
+          // 齿口被揉圆。收到 0.28 + 0.0035 × 深度（最深 1.5 单位 ≈ 1.4px），
+          // 水面照样有横向错动，但不再吃掉齿形；波形沿 y 的相位不变，动作频率没改。
+          transformed.x += sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.28 + refDepth * 0.0035);
           vRefDepth = refDepth;`,
         );
       shader.fragmentShader =
