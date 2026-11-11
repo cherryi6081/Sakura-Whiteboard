@@ -2,19 +2,42 @@ import * as THREE from "three";
 import { CAM_DIST, STAGE_H, STAGE_W, toWorld } from "./stage";
 import type { Palette } from "./palette";
 import { BOAT_ANCHOR, sampleBoat } from "../wave";
+import {
+  BOAT_SCALE,
+  awning,
+  awningMouth,
+  contact,
+  foam,
+  foamTail,
+  glow,
+  gunwaleLitBottom,
+  gunwaleLitTop,
+  hullGunwale,
+  hullKeel,
+  lamp,
+  lampCenter,
+  oarBlade,
+  oarShaft,
+  pole,
+  shimmer,
+  type Pt,
+} from "../boatShape";
 
 /**
  * 湖面小舟（WebGL 版）。
  *
- * 与 SVG 版同一组形状参数，只是把 1:1 的形状按船长 86 / 船宽 18 / 桅篷 34 舞台单位重画：
- * 船身 72 宽（−36…36），船头船尾各翘起 8 单位；1440 下约 77 × 16 px，
- * 相对 1232 的山脚宽度约 7%，读成「湖上有一条船」，不是玩具。
+ * 轮廓与移动端 SVG 船共用 boatShape.ts 里那套点：SVG 组 scale(1.6)，
+ * 这里乘同一个 BOAT_SCALE 换成舞台单位，两端不会再各画一套。
+ * 1440 下船身约 77 × 16px，装饰都做到 1.4 单位（约 2px）以上，再细就是噪点。
  *
  * 运动完全由 wave.ts 的 sampleBoat 驱动（与移动端 SVG 船共用同一个采样函数）：
  * 船头/船尾高度差 → 俯仰 ±3.5°，近舷/远舷高度差 → 横摇 ±2.5°，另有 ±12 单位 / 40s 的横向漂移。
  *
  * z = 90：排在水面、水纹、山体倒影、花瓣之前，船不会被它们穿模；
  * 船底有一块压暗的接触带（soft 层里的椭圆），不做镜面倒影。
+ *
+ * 只有两个 mesh（solid / soft）→ 两次 draw call。所有装饰都并进 solid 的三角形里，
+ * 灯芯、光晕、暖影的绘制顺序在几何里固定，不参与每帧的透明排序，不会出现逐帧翻转。
  */
 const Z = 90;
 const SOFT_Z = 89;
@@ -65,28 +88,69 @@ const softFragmentShader = /* glsl */ `
   }
 `;
 
-type Poly = Array<[number, number]>;
-
-/** 真正的舞台坐标 → 以锚点为原点的世界偏移（同一 z 下 k 相同，所以可以直接减原点） */
+/** 局部形状 → 舞台坐标偏移（同一 z 下 k 相同，可以直接减原点） */
 function localize(stageX: number, stageY: number): [number, number] {
   const o = toWorld(BOAT_ANCHOR.x, BOAT_ANCHOR.y, Z);
   const w = toWorld(stageX, stageY, Z);
   return [w.x - o.x, w.y - o.y];
 }
 
-function addPoly(
+/** 形状数据是 SVG 组内坐标，乘 BOAT_SCALE 才是舞台单位 */
+function stagePoint([x, y]: Pt): [number, number] {
+  return [x * BOAT_SCALE, y * BOAT_SCALE];
+}
+
+function addTriangle(
   positions: number[],
   colors: number[],
-  poly: Poly,
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
   color: THREE.Color,
   alpha: number,
 ) {
-  const pts = poly.map(([x, y]) => localize(BOAT_ANCHOR.x + x, BOAT_ANCHOR.y + y));
+  for (const p of [a, b, c]) {
+    positions.push(p[0], p[1], 0);
+    colors.push(color.r, color.g, color.b, alpha);
+  }
+}
+
+function addPoly(
+  positions: number[],
+  colors: number[],
+  poly: Pt[],
+  color: THREE.Color,
+  alpha: number,
+) {
+  const pts = poly.map((p) => {
+    const [x, y] = stagePoint(p);
+    return localize(BOAT_ANCHOR.x + x, BOAT_ANCHOR.y + y);
+  });
   for (let i = 1; i < pts.length - 1; i += 1) {
-    for (const p of [pts[0], pts[i], pts[i + 1]]) {
-      positions.push(p[0], p[1], 0);
-      colors.push(color.r, color.g, color.b, alpha);
-    }
+    addTriangle(positions, colors, pts[0], pts[i], pts[i + 1], color, alpha);
+  }
+}
+
+/** 两条等长折线之间铺三角带：船身、舷沿高光都是这种带状面，扇式三角化会在月牙里叠出双份透明度 */
+function addBand(
+  positions: number[],
+  colors: number[],
+  outer: Pt[],
+  inner: Pt[],
+  color: THREE.Color,
+  alpha: number,
+) {
+  const toStage = (p: Pt) => {
+    const [x, y] = stagePoint(p);
+    return localize(BOAT_ANCHOR.x + x, BOAT_ANCHOR.y + y);
+  };
+  for (let i = 0; i < outer.length - 1; i += 1) {
+    const o0 = toStage(outer[i]);
+    const o1 = toStage(outer[i + 1]);
+    const i0 = toStage(inner[i]);
+    const i1 = toStage(inner[i + 1]);
+    addTriangle(positions, colors, o0, o1, i0, color, alpha);
+    addTriangle(positions, colors, o1, i1, i0, color, alpha);
   }
 }
 
@@ -94,54 +158,35 @@ function buildSolid(palette: Palette): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
 
-  // 船身：上沿平直、下沿微弧，两端收到船头船尾
-  addPoly(
-    positions,
-    colors,
-    [
-      [-36, 0],
-      [-30, 6],
-      [0, 7.2],
-      [30, 6],
-      [36, 0],
-      [30, 2.6],
-      [0, 3.1],
-      [-30, 2.6],
-    ],
-    palette.ink,
-    0.62,
-  );
-  // 船头 / 船尾翘起
-  addPoly(positions, colors, [[-36, 0], [-44, -7], [-33, -1.2]], palette.ink, 0.62);
-  addPoly(positions, colors, [[36, 0], [44, -7], [33, -1.2]], palette.ink, 0.62);
-  // 船篷
-  addPoly(positions, colors, [[-12, 0], [-10, -12], [2, -14], [17, 0]], palette.ink, 0.5);
-  // 挂灯的短杆
-  addPoly(positions, colors, [[25, 0], [26.4, -15], [28, -15], [26.6, 0]], palette.ink, 0.5);
-  // 渔火：6 × 6 舞台单位的八角灯芯（1440 下约 5.4px）。上一版只有 4.2 单位，
-  // 在湖面上读不出「一颗灯芯」，只剩一圈光晕。八角而不是方片：5px 下切掉四个角，
-  // 才和 SVG 版那盏圆灯同形，不会看成一面小方旗。
-  // 中心压在挂灯短杆末端正下方，灯上沿与杆顶 -15 齐平
-  addPoly(
-    positions,
-    colors,
-    [
-      [23.5, -14.0],
-      [23.5, -10.4],
-      [24.7, -9.2],
-      [28.3, -9.2],
-      [29.5, -10.4],
-      [29.5, -14.0],
-      [28.3, -15.2],
-      [24.7, -15.2],
-    ],
-    palette.lampHot,
-    0.95,
-  );
-  // 水面暖色碎影：三段由宽到窄
-  addPoly(positions, colors, [[12, 12], [12, 14], [31, 14], [31, 12]], palette.lamp, 0.4);
-  addPoly(positions, colors, [[15, 20], [15, 21.7], [28, 21.7], [28, 20]], palette.lamp, 0.28);
-  addPoly(positions, colors, [[11, 28], [11, 29.4], [20, 29.4], [20, 28]], palette.lamp, 0.18);
+  // 绘制顺序即叠色顺序：橹 → 篷 → 篷口 → 船身 → 舷沿 → 杆 → 灯 → 白沫 → 暖影。
+  // 橹先画，杆根被船身盖住；篷先画，底边被船身压出一道更深的交界。
+  addPoly(positions, colors, oarShaft, palette.ink, 0.5);
+  addPoly(positions, colors, oarBlade, palette.ink, 0.55);
+  addPoly(positions, colors, awning, palette.ink, 0.5);
+  addPoly(positions, colors, awningMouth, palette.ink, 0.78);
+  addBand(positions, colors, hullKeel, hullGunwale, palette.ink, 0.62);
+  // 舷沿高光：墨色船身上缘一条 1.3 单位的浅色带，1440 下约 1.9px
+  addBand(positions, colors, gunwaleLitTop, gunwaleLitBottom, palette.ripple, 0.5);
+  addPoly(positions, colors, pole, palette.ink, 0.5);
+  addPoly(positions, colors, lamp, palette.lampHot, 0.95);
+  // 船头破水白沫：两段长短不一的浅色短线，第二段更淡
+  addPoly(positions, colors, foam, palette.ripple, 0.6);
+  addPoly(positions, colors, foamTail, palette.ripple, 0.42);
+  // 水面暖影：灯正下方三段窄碎影，不铺成一条连续色块
+  for (const s of shimmer) {
+    addPoly(
+      positions,
+      colors,
+      [
+        [s.x, s.y],
+        [s.x, s.y + s.h],
+        [s.x + s.w, s.y + s.h],
+        [s.x + s.w, s.y],
+      ],
+      palette.lamp,
+      s.alpha,
+    );
+  }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -183,13 +228,49 @@ function buildSoft(palette: Palette): THREE.BufferGeometry {
   const colors: number[] = [];
   const uvs: number[] = [];
   const falloffs: number[] = [];
-  // 船底接触带：贴着水线的窄椭圆，压低一点明度，让船「压」在水上
-  addSoftQuad(positions, colors, uvs, falloffs, 0, 7.5, 30, 3.6, palette.ink, 0.16, 0.55);
-  // 渔火光晕分两层：半径 40 的大晕按灯色淡淡铺开，半径 9 的小晕用灯芯色，
-  // 把「实心灯芯 → 湖面」的一步落差拆成两段。只有一层大晕时，灯的亮度
-  // 与湖面太接近（0.796 vs 0.756），灯芯边缘会像贴上去的一块色块
-  addSoftQuad(positions, colors, uvs, falloffs, 26.5, -12.2, 40, 40, palette.lamp, 0.26, 1);
-  addSoftQuad(positions, colors, uvs, falloffs, 26.5, -12.2, 9, 9, palette.lampHot, 0.4, 1);
+
+  addSoftQuad(
+    positions,
+    colors,
+    uvs,
+    falloffs,
+    contact.x * BOAT_SCALE,
+    contact.y * BOAT_SCALE,
+    contact.rx * BOAT_SCALE,
+    contact.ry * BOAT_SCALE,
+    palette.ink,
+    contact.alpha,
+    contact.falloff,
+  );
+  const [lx, ly] = stagePoint(lampCenter);
+  // 大晕只贴到 18 单位（约 26px），alpha 0.15；再大就会在水纹上铺成一块淡黄色斑
+  addSoftQuad(
+    positions,
+    colors,
+    uvs,
+    falloffs,
+    lx,
+    ly,
+    glow.outer * BOAT_SCALE,
+    glow.outer * BOAT_SCALE,
+    palette.lamp,
+    glow.outerAlpha,
+    1,
+  );
+  // 小晕用灯芯色，把「实心灯芯 → 湖面」的落差拆成两段
+  addSoftQuad(
+    positions,
+    colors,
+    uvs,
+    falloffs,
+    lx,
+    ly,
+    glow.inner * BOAT_SCALE,
+    glow.inner * BOAT_SCALE,
+    palette.lampHot,
+    glow.innerAlpha,
+    1,
+  );
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));

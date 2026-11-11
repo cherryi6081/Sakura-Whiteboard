@@ -2,6 +2,25 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
 import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
 import { sampleBoat } from "./wave";
+import {
+  awning,
+  awningMouth,
+  bandPath,
+  foam,
+  foamTail,
+  glow,
+  gunwaleLitBottom,
+  gunwaleLitTop,
+  hullGunwale,
+  hullKeel,
+  lamp,
+  lampCenter,
+  oarBlade,
+  oarShaft,
+  pole,
+  polygonPath,
+  shimmer,
+} from "./boatShape";
 import type { Period } from "./usePeriod";
 import {
   LEFT_FAR_PAINT,
@@ -788,25 +807,35 @@ export function FujiScene({ period }: { period: Period }) {
         <rect className="wb-scene__lake-horizon" x="0" y={WATERLINE - 1} width="1600" height="2.4" />
 
         {/* 湖面小舟与渔火：水线以下唯一的一点暖黄，给整片冷蓝一个温度锚点。
-            船身只留一条细长剪影，重量全交给光晕与水面倒影，不画细节。
+            形状与 WebGL 船同出 boatShape.ts（SVG 组 scale(1.6)，canvas 侧乘同一个系数），
+            装饰逐项对应：舷沿高光、篷口暗部、船尾橹、船头白沫、灯下碎影。
             位置偏画面右侧的空白水域（x≈1272），与左侧的页脚文字、居中的 01/02/03 互不打扰 */}
         <g className="wb-scene__boat" ref={boatRef} transform="translate(1272 706) scale(1.6)">
           {/* 船底投影：贴着水面的窄椭圆，让船"压"在水上而不是浮着 */}
-          <ellipse className="wb-scene__boat-shadow" cx="0" cy="7.5" rx="29" ry="3.2" />
-          <path className="wb-scene__boat-hull" d="M-27 0 Q-21 8 0 8 Q21 8 27 0 Q21 3.2 0 3.2 Q-21 3.2 -27 0 Z" />
-          {/* 船篷：船身中段的小半圆，交代"有人" */}
-          <path className="wb-scene__boat-awning" d="M-9 1.5 Q-5 -7 3 -7 Q11 -7 13 1.5 Z" />
+          <ellipse className="wb-scene__boat-shadow" cx="0" cy="6.2" rx="17" ry="2.2" opacity="0.1" />
+          {/* 光晕压在船身之下：灯的光不该透过船体，只在水面上散开。
+             半径收到 18（约 26px）：再大就会在水纹上铺成一块若隐若现的淡黄色斑 */}
+          <circle className="wb-scene__boat-glow" cx={lampCenter[0]} cy={lampCenter[1]} r={glow.outer} fill="url(#wb-boat-glow)" />
+          {/* 橹先画，杆根被船身盖住 */}
+          <path className="wb-scene__boat-oar" d={polygonPath(oarShaft)} opacity="0.5" />
+          <path className="wb-scene__boat-oar" d={polygonPath(oarBlade)} opacity="0.55" />
+          {/* 船篷：低弧篷顶 + 朝船尾的篷口暗部，底边压进船身 */}
+          <path className="wb-scene__boat-awning" d={polygonPath(awning)} opacity="0.5" />
+          <path className="wb-scene__boat-awning-mouth" d={polygonPath(awningMouth)} opacity="0.78" />
+          {/* 船身：龙骨线与舷墙顶线围成的月牙 */}
+          <path className="wb-scene__boat-hull" d={bandPath(hullKeel, hullGunwale)} opacity="0.62" />
+          <path className="wb-scene__boat-gunwale" d={bandPath(gunwaleLitTop, gunwaleLitBottom)} opacity="0.5" />
           {/* 船头挑出一根短杆，灯挂在杆端 */}
-          <path className="wb-scene__boat-pole" d="M19 0 L21 -11" />
-          <circle className="wb-scene__boat-glow" cx="21" cy="-8" r="34" fill="url(#wb-boat-glow)" />
-          {/* 灯芯半径 1.875 × 组缩放 1.6 = 舞台 3.0 半径 / 6.0 直径，
-              与 WebGL 船的 6 单位灯芯同尺寸；原来 2.1 是 6.72 单位，反而比 canvas 里的灯大 */}
-          <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="1.875" />
-          {/* 水面倒影：三段由宽到窄的暖色短线，越往下越淡 */}
+          <path className="wb-scene__boat-pole" d={polygonPath(pole)} opacity="0.5" />
+          <path className="wb-scene__boat-lamp" d={polygonPath(lamp)} />
+          {/* 船头破水白沫：两段长短不一的浅色短线 */}
+          <path className="wb-scene__boat-foam" d={polygonPath(foam)} opacity="0.6" />
+          <path className="wb-scene__boat-foam" d={polygonPath(foamTail)} opacity="0.42" />
+          {/* 水面倒影：灯正下方三段窄碎影，越往下越淡 */}
           <g className="wb-scene__boat-shimmer">
-            <rect x="12" y="12" width="19" height="2" rx="1" />
-            <rect x="15" y="20" width="13" height="1.7" rx=".85" />
-            <rect x="11" y="28" width="9" height="1.4" rx=".7" />
+            {shimmer.map((s) => (
+              <rect key={`${s.x}-${s.y}`} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.r} opacity={s.alpha} />
+            ))}
           </g>
         </g>
 
