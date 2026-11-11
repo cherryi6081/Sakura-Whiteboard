@@ -684,6 +684,21 @@ export function FujiScene({ period }: { period: Period }) {
             <stop offset="78%" className="wb-scene__ref-stop-2" />
             <stop offset="100%" className="wb-scene__ref-stop-3" />
           </linearGradient>
+          {/* 倒影提浅：与 WebGL 的 uLift 同一系数（朝雾色混 9%）。
+              渐变定义在镜像组的局部坐标里：y1=水线，y2=WATERLINE−(900−WATERLINE)，
+              即屏幕上的水线 → 画面底；前 7% 从 0 爬满，水线处不留亮阶 */}
+          <linearGradient
+            id="wb-ref-lift"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1={WATERLINE}
+            x2="0"
+            y2={WATERLINE - (900 - WATERLINE)}
+          >
+            <stop offset="0%" className="wb-scene__ref-lift-0" />
+            <stop offset="7%" className="wb-scene__ref-lift-1" />
+            <stop offset="100%" className="wb-scene__ref-lift-1" />
+          </linearGradient>
           {/* 霞带：径向渐隐。以椭圆自身为 100%，横竖两个方向同步柔化，
               没有「中间一整条实白、到端头才消失」的硬芯，读起来只是一团薄雾 */}
           <radialGradient id="wb-cloud-soft">
@@ -743,6 +758,12 @@ export function FujiScene({ period }: { period: Period }) {
             WebGL 侧同一套几何同样落到舞台底之外，被画布底边裁掉，两边收口一致。
             自下而上的衰减交给下面的 #wb-ref-fade，单段没有段边界接缝 */}
         <g className="wb-scene__reflection" opacity={REFLECT_OPACITY} transform={REFLECT_MIRROR}>
+          <MountainShapes />
+        </g>
+
+        {/* 倒影提浅：同一组山体路径再镜像画一遍，填充换成 wb-ref-lift 渐变，
+            只落在倒影本体上（不碰湖面），系数与 WebGL 的 uLift 一致 */}
+        <g className="wb-scene__ref-veil" transform={REFLECT_MIRROR} aria-hidden="true">
           <MountainShapes />
         </g>
 

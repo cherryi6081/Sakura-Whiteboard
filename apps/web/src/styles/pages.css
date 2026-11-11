@@ -265,6 +265,24 @@
   stop-opacity: 0.62;
 }
 
+/* 倒影提浅层：与 WebGL 的 uHaze/uLift 完全相同的系数（雾色 = color-mix(srgb, 雪 55% + 地平线 45%)，
+   混合 9%，和 palette.mist 的 sRGB 插值一致）。水线处 0、7% 深度内爬满，
+   所以山体与倒影之间不会多出一条亮阶；只覆盖倒影本体的路径（同一组山体路径镜像），水面不受影响 */
+.wb-scene__ref-veil path {
+  fill: url(#wb-ref-lift);
+  opacity: 1;
+}
+
+.wb-scene__ref-lift-0 {
+  stop-color: var(--fuji-snow);
+  stop-opacity: 0;
+}
+
+.wb-scene__ref-lift-1 {
+  stop-color: color-mix(in srgb, var(--fuji-snow) 55%, var(--sky-horizon));
+  stop-opacity: 0.09;
+}
+
 .wb-scene__lake-line {
   fill: var(--lake-ripple);
 }
@@ -2927,6 +2945,7 @@ body:has(.wb-home) {
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-line,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-horizon,
 .wb-home__scene[data-render="webgl"] .wb-scene__reflection,
+.wb-home__scene[data-render="webgl"] .wb-scene__ref-veil,
 .wb-home__scene[data-render="webgl"] .wb-scene__far-ridge,
 .wb-home__scene[data-render="webgl"] .wb-scene__cloud,
 .wb-home__scene[data-render="webgl"] .wb-scene__fuji,

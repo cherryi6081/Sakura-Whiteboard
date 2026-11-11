@@ -45,6 +45,18 @@ const REFLECT_COMPRESS = 1;
 const REFLECT_DEPTH = HEIGHT * REFLECT_COMPRESS;
 const REFLECT_OPACITY = 0.9;
 
+/**
+ * 倒影整层再浅一档：把倒影颜色朝「水面雾色」（palette.mist = 雪混地平线 55:45）混 9%。
+ * 实测相对亮度：受光 +0.033、背光 +0.048、雪面 +0.01 左右（黄昏与白天同量级）。
+ * 雾色盖在倒影之上，受光/背光的差会乘 0.9 × 0.91 ≈ 0.82：
+ * 黄昏 0.112 → 0.088、白天 0.120 → 0.105，仍读得出分阶；
+ * 雪齿轮廓来自几何镜像，一个齿都不会少。
+ * 混合系数从水线起 0 → 4.5% 深度内爬满，水线处不产生亮阶，
+ * 山体与倒影仍然接得住。SVG 分支用同一系数（.wb-scene__ref-lift-1 的 stop-opacity）。
+ */
+const REFLECT_LIFT = 0.09;
+const REFLECT_LIFT_RAMP = 0.045;
+
 function halfWidth(t: number): number {
   // 指数 1.3：山腰收得比直线更紧，侧面才有富士山那种内凹的轮廓；
   // 1.0 会得到一座笔直的火山三角，和 SVG 山形对不上。
@@ -368,6 +380,8 @@ export function createMountain(palette: Palette): MountainBuild {
       uWater: reflectionUniforms.uWater,
       uOpacity: { value: REFLECT_OPACITY },
       uDepth: { value: REFLECT_DEPTH },
+      uHaze: { value: palette.mist.clone() },
+      uLift: { value: REFLECT_LIFT },
     };
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
@@ -385,7 +399,7 @@ export function createMountain(palette: Palette): MountainBuild {
           vRefDepth = refDepth;`,
         );
       shader.fragmentShader =
-        "uniform float uTime;\nuniform float uOpacity;\nuniform float uDepth;\nvarying float vRefDepth;\n" +
+        "uniform float uTime;\nuniform float uOpacity;\nuniform float uDepth;\nuniform vec3 uHaze;\nuniform float uLift;\nvarying float vRefDepth;\n" +
         shader.fragmentShader.replace(
           "#include <colorspace_fragment>",
           `float d = clamp(vRefDepth / uDepth, 0.0, 1.0);
@@ -396,6 +410,9 @@ export function createMountain(palette: Palette): MountainBuild {
           float tipFade = 1.0 - smoothstep(0.96, 1.0, d);
           // 轻微的水面明暗呼吸，只影响明度、不参与轮廓
           float shimmer = 0.92 + 0.08 * sin(vRefDepth * 0.24 - uTime * 1.4);
+          // 整层提浅：朝水面雾色混 uLift，水线处从 0 起步，避免在山体与倒影之间拉出一条亮阶
+          float lift = uLift * smoothstep(0.0, ${REFLECT_LIFT_RAMP.toFixed(3)}, d);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, lift);
           gl_FragColor.a *= uOpacity * fade * tipFade * shimmer;
           #include <colorspace_fragment>`,
         );
