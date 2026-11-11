@@ -799,7 +799,9 @@ export function FujiScene({ period }: { period: Period }) {
           {/* 船头挑出一根短杆，灯挂在杆端 */}
           <path className="wb-scene__boat-pole" d="M19 0 L21 -11" />
           <circle className="wb-scene__boat-glow" cx="21" cy="-8" r="34" fill="url(#wb-boat-glow)" />
-          <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="2.1" />
+          {/* 灯芯半径 1.875 × 组缩放 1.6 = 舞台 3.0 半径 / 6.0 直径，
+              与 WebGL 船的 6 单位灯芯同尺寸；原来 2.1 是 6.72 单位，反而比 canvas 里的灯大 */}
+          <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="1.875" />
           {/* 水面倒影：三段由宽到窄的暖色短线，越往下越淡 */}
           <g className="wb-scene__boat-shimmer">
             <rect x="12" y="12" width="19" height="2" rx="1" />

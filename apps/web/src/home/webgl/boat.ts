@@ -118,11 +118,23 @@ function buildSolid(palette: Palette): THREE.BufferGeometry {
   addPoly(positions, colors, [[-12, 0], [-10, -12], [2, -14], [17, 0]], palette.ink, 0.5);
   // 挂灯的短杆
   addPoly(positions, colors, [[25, 0], [26.4, -15], [28, -15], [26.6, 0]], palette.ink, 0.5);
-  // 渔火
+  // 渔火：6 × 6 舞台单位的八角灯芯（1440 下约 5.4px）。上一版只有 4.2 单位，
+  // 在湖面上读不出「一颗灯芯」，只剩一圈光晕。八角而不是方片：5px 下切掉四个角，
+  // 才和 SVG 版那盏圆灯同形，不会看成一面小方旗。
+  // 中心压在挂灯短杆末端正下方，灯上沿与杆顶 -15 齐平
   addPoly(
     positions,
     colors,
-    [[24.4, -15.5], [24.4, -11.3], [28.6, -11.3], [28.6, -15.5]],
+    [
+      [23.5, -14.0],
+      [23.5, -10.4],
+      [24.7, -9.2],
+      [28.3, -9.2],
+      [29.5, -10.4],
+      [29.5, -14.0],
+      [28.3, -15.2],
+      [24.7, -15.2],
+    ],
     palette.lampHot,
     0.95,
   );
@@ -173,16 +185,19 @@ function buildSoft(palette: Palette): THREE.BufferGeometry {
   const falloffs: number[] = [];
   // 船底接触带：贴着水线的窄椭圆，压低一点明度，让船「压」在水上
   addSoftQuad(positions, colors, uvs, falloffs, 0, 7.5, 30, 3.6, palette.ink, 0.16, 0.55);
-  // 渔火光晕
-  addSoftQuad(positions, colors, uvs, falloffs, 26.5, -15.5, 40, 40, palette.lamp, 0.26, 1);
+  // 渔火光晕分两层：半径 40 的大晕按灯色淡淡铺开，半径 9 的小晕用灯芯色，
+  // 把「实心灯芯 → 湖面」的一步落差拆成两段。只有一层大晕时，灯的亮度
+  // 与湖面太接近（0.796 vs 0.756），灯芯边缘会像贴上去的一块色块
+  addSoftQuad(positions, colors, uvs, falloffs, 26.5, -12.2, 40, 40, palette.lamp, 0.26, 1);
+  addSoftQuad(positions, colors, uvs, falloffs, 26.5, -12.2, 9, 9, palette.lampHot, 0.4, 1);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute("aColor", new THREE.Float32BufferAttribute(colors, 4));
   geometry.setAttribute("aUv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setAttribute("aFalloff", new THREE.Float32BufferAttribute(falloffs, 1));
-  // 两个 quad 各自两个三角形（顶点顺序与 corners 的 push 顺序一致）
-  geometry.setIndex([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7]);
+  // 三个 quad 各自两个三角形（顶点顺序与 corners 的 push 顺序一致）
+  geometry.setIndex([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7, 8, 9, 10, 10, 9, 11]);
   return geometry;
 }
 
