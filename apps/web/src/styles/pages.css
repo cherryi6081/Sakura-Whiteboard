@@ -48,7 +48,7 @@
 }
 
 /* ============ 首页内容层 ============ */
-.wb-home__nav { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--ui-fs) * .45) clamp(24px, 5vw, 72px); }
+.wb-home__nav { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--ui-fs) * .45) clamp(24px, 5vw, 72px); background: var(--paper); }
 .wb-home__wordmark { color: var(--rose-900); text-decoration: none; display: inline-flex; align-items: center; gap: calc(var(--ui-fs) * .58); font-size: var(--ui-fs); line-height: 1; font-weight: 700; letter-spacing: .08em; }
 .wb-home__wordmark-mark { display: grid; place-items: center; width: calc(var(--ui-fs) * 1.55); height: calc(var(--ui-fs) * 1.55); border-radius: 50%; background: var(--rose-900); color: var(--paper); font-family: var(--font-display); font-size: calc(var(--ui-fs) * .92); }
 .wb-home__links { display: flex; align-items: center; gap: clamp(18px, 3vw, 40px); font-size: var(--ui-fs); line-height: 1; letter-spacing: .06em; }
