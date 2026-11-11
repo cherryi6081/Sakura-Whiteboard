@@ -82,10 +82,14 @@ function pushTriangle(out: StageMesh, a: StageVertex, b: StageVertex, c: StageVe
 /**
  * 由一圈圈截面拼出锥体（非索引、每面独立颜色）。
  * 三角形绕序保证法线朝外：先 (下 j, 上 j, 下 j+1)，再 (上 j, 上 j+1, 下 j+1)。
+ *
+ * `shadeAt` 按该面的方位角余弦（右坡 = +1、山脊 = 0、左坡 = −1）预乘一档明度，
+ * 与 SVG 版右侧那块固定的 `--fuji-shadow` 同源。为什么必须烘焙而不是靠灯光，见 facingShade。
  */
 function buildCone(
   rings: RingDef[],
   colorAt: (t: number, seed: number) => THREE.Color,
+  shadeAt?: (cosA: number) => number,
 ): StageMesh {
   const out: StageMesh = { positions: [], colors: [] };
   for (let i = 0; i < rings.length - 1; i += 1) {
@@ -96,6 +100,14 @@ function buildCone(
       const u1 = ringVertex(rings[i + 1], j + 1);
       const t = (l0.t + l1.t + u0.t + u1.t) / 4;
       const color = colorAt(t, i * 97 + j * 7.3);
+      if (shadeAt) {
+        const shade = shadeAt(Math.cos(((j + 0.5) / SEG) * Math.PI * 2));
+        color.setRGB(
+          Math.min(1, color.r * shade),
+          Math.min(1, color.g * shade),
+          Math.min(1, color.b * shade),
+        );
+      }
       pushTriangle(out, l0, u0, l1, color);
       pushTriangle(out, u0, u1, l1, color);
     }
@@ -178,6 +190,28 @@ function toonGradient(): THREE.DataTexture {
   return texture;
 }
 
+/**
+ * 背光坡的烘焙明度。
+ *
+ * 为什么不靠灯光：Z_RATIO = 0.13 把锥体在 z 向压得很扁，朝向相机的那半边
+ * 法线几乎全都指向镜头（水平分量 |nx| 平均只有 0.17，最大 0.78），
+ * 两坡的 N·L 差得很少（day 0.81 vs 0.65、dusk 0.50 vs 0.75），再被 4 阶 toon
+ * 量化后，day 下 96% 的面、dusk 下 100% 的面落在同一阶 —— 所以左右坡渲染同色
+ * （1440 实测都是 0.746）。想把背光坡压到下一阶，主光必须压到近乎水平，
+ * 受光面会跟着一起掉档，违反「受光面明度不能变」。
+ *
+ * 因此按坡向在顶点色里预乘一档明度，和 SVG 版右侧那块固定的 --fuji-shadow 同源：
+ * 山脊（cosA = 0）不压，往右山脚平滑压到 1 − BACKFACE_SHADE。用 smoothstep 而不是
+ * 阈值，坡面上不会出现新的色阶硬边，山脊线也不会断层。倒影复用同一份顶点色，
+ * 因此镜像里的背光面自动跟着变暗，两坡差值不需要另算。
+ */
+const BACKFACE_SHADE = 0.25;
+
+function facingShade(cosA: number): number {
+  const u = Math.min(1, Math.max(0, (cosA - 0.05) / 0.8));
+  return 1 - BACKFACE_SHADE * u * u * (3 - 2 * u);
+}
+
 function rockColor(palette: Palette, t: number, seed: number): THREE.Color {
   const color = palette.rock.clone();
   color.lerp(palette.rockDeep, Math.min(0.7, (1 - t) * 0.75));
@@ -251,6 +285,7 @@ export function createMountain(palette: Palette): MountainBuild {
       { t: 1, radiusScale: 1, radiusOffset: 0 },
     ],
     (t, seed) => rockColor(palette, t, seed),
+    facingShade,
   );
 
   // 雪盖是独立网格：下沿按角度逐齿抖动（0.57–0.75），再整体外扩一点点压在岩面上
