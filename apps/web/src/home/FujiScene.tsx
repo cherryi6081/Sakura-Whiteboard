@@ -475,7 +475,8 @@ export function FujiScene({ period }: { period: Period }) {
    * 桌面端 WebGL 接管天空以外的绘画层后，SVG 里被替掉的部分用 CSS 隐藏，
    * 只保留樱花枝、鹤、小舟、雁群这些前景覆盖层。渲染模式在首次渲染前同步判定：
    * `data-render` 第一帧就是最终值，不会先画 SVG 再跳成 WebGL。
-   * 判定不通过（窄屏 / reduce / 省流 / 无 WebGL2）时首帧直接出 SVG。
+   * 判定不通过（触摸主设备 / 物理像素宽度不足 / reduce / 省流 / 无 WebGL2）时首帧直接出 SVG。
+   * 断点看的是物理像素宽度，所以浏览器页面缩放（Ctrl +/−）不会把桌面改判成移动端。
    */
   const [renderMode, setRenderMode] = useState<"svg" | "webgl">(decideRenderMode);
   /** WebGL 首帧画完的标志：用于把静态湖色衬底交接给 WebGL 水面 */

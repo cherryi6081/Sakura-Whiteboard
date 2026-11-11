@@ -9,17 +9,41 @@ import type { SceneHandle } from "./renderer";
  * `data-render`，所以首屏第一帧就是 WebGL 模式，不会再出现“先 SVG、再跳一下切 WebGL”。
  *
  * 降级条件（任一成立就完全不加载 three，首帧直接出 SVG）：
- *   - 视口小于 1024px（平板/手机）；
+ *   - 触摸主设备（hover: none + pointer: coarse），或物理像素宽度小于 1024；
  *   - 系统开启“减少动态效果”；
  *   - 浏览器开了省流模式；
  *   - 没有 WebGL2。
+ * 宽度取物理像素（innerWidth × devicePixelRatio），页面缩放不会改变它。
  * 这些条件都在挂载前判定，不存在“先渲染 SVG 占位再尝试 WebGL”的路径。
- * 只有运行时出错（动态 import 失败、context 创建失败、视口缩到 1024 以下）才回退 SVG。
+ * 只有运行时出错（动态 import 失败、context 创建失败、物理宽度真的跌破断点）才回退 SVG。
  *
  * three 用动态 import 单独打包，移动端用户不会为它付首屏字节。
  */
 
 const MIN_WIDTH = 1024;
+
+/**
+ * 判定用的宽度必须是**物理像素**，不能用 CSS 像素。
+ *
+ * 页面缩放（Ctrl +/−、Ctrl+滚轮、浏览器菜单里的缩放）只改两个量：CSS 视口变小、
+ * devicePixelRatio 按同一比例变大，物理像素宽度不变（1440 的窗口在 150% 下是
+ * innerWidth 960 / dpr 1.5）。用 `(min-width: 1024px)` 判定时，1440 的窗口缩到
+ * 150% 就只剩 960 CSS px，判定当场翻成 false，于是 canvas 被卸载、场景退回静态 SVG，
+ * 而且这条路径是单向的——再缩回 100% 也不会重新挂载。用 innerWidth × dpr 判定，
+ * 任何缩放档位下都是同一个数，缩放不再影响渲染模式。
+ */
+function physicalWidth(): number {
+  return Math.round(window.innerWidth * (window.devicePixelRatio || 1));
+}
+
+/**
+ * 真手机/平板：没有悬停能力、主指针是粗指针。触屏笔记本同时有细指针与悬停，
+ * 不会被误判。只把「确定是触摸主设备」的情况降级，识别不出指针能力的旧浏览器
+ * 仍然按桌面处理，避免把 WebGL 误关掉。
+ */
+function isCoarseOnlyPointer(): boolean {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
 
 export function canUseWebgl(): boolean {
   if (typeof window === "undefined") return false;
@@ -39,7 +63,8 @@ export function canUseWebgl(): boolean {
 /** 同步判定首屏渲染模式：在首次 render 里调用，保证第一帧就落定 */
 export function decideRenderMode(): "svg" | "webgl" {
   if (typeof window === "undefined") return "svg";
-  if (!window.matchMedia(`(min-width: ${MIN_WIDTH}px)`).matches) return "svg";
+  if (isCoarseOnlyPointer()) return "svg";
+  if (physicalWidth() < MIN_WIDTH) return "svg";
   return canUseWebgl() ? "webgl" : "svg";
 }
 
@@ -61,15 +86,24 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
 
   periodRef.current = period;
 
-  // 运行中跌破 1024px：卸载 three，回退 SVG（首屏判定不受影响）
+  // 运行中真的缩到断点以下（或指针变成触摸主设备）：卸载 three，回退 SVG。
+  // 判定同样只看物理像素宽度，所以页面缩放（Ctrl +/−）不会触发；
+  // 延迟 150ms 再判，避开缩放/拖拽窗口过程中 dpr 与 innerWidth 短暂不同步的中间帧。
   useEffect(() => {
-    const query = window.matchMedia(`(min-width: ${MIN_WIDTH}px)`);
+    if (mode !== "webgl") return;
+    let timer = 0;
     const sync = () => {
-      if (!query.matches) onModeChange?.("svg");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (isCoarseOnlyPointer() || physicalWidth() < MIN_WIDTH) onModeChange?.("svg");
+      }, 150);
     };
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
+    window.addEventListener("resize", sync);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", sync);
+    };
+  }, [mode, onModeChange]);
 
   useEffect(() => {
     if (mode !== "webgl") return;
