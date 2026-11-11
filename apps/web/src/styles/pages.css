@@ -85,7 +85,7 @@
    天空渐变已经在 .wb-home__scene 上铺满视口，缺的只是水线以下那段湖色，所以这里补一条
    与视口同宽、底边贴底的湖带：
    - 高度 = (900 − 566) / 900 = 0.371111 × H，与 SVG 中湖面 rect 的 334/900 一致；
-   - 两层渐变复刻 SVG 的 #wb-lake-grad（0/28/66/100%）与 #wb-ref-fade（0/50/100%）；
+   - 两层渐变复刻 SVG 的 #wb-lake-grad（0/28/66/100%）与 #wb-ref-fade（0/55/78/100%）；
    - ::before 复刻 SVG 里 2.4/900 高的水线亮线（从水线上方 1 单位到下方 1.4 单位）。
    中间 16:9 区域会被 SVG 自己的湖面不透明渐变整块盖住，所以这层不影响已有的正常视口 */
 .wb-scene__water {
@@ -99,8 +99,9 @@
     linear-gradient(
       to bottom,
       color-mix(in srgb, var(--sky-blue-horizon) 0%, transparent) 0%,
-      color-mix(in srgb, var(--sky-blue-horizon) 36%, transparent) 50%,
-      color-mix(in srgb, var(--sky-blue-horizon) 58%, transparent) 100%
+      color-mix(in srgb, var(--sky-blue-horizon) 4%, transparent) 55%,
+      color-mix(in srgb, var(--sky-blue-horizon) 34%, transparent) 78%,
+      color-mix(in srgb, var(--sky-blue-horizon) 62%, transparent) 100%
     ),
     linear-gradient(
       to bottom,
@@ -189,7 +190,8 @@
   stop-color: var(--lake-700);
 }
 
-/* 倒影往下渐隐：用近白蓝的湖面色压一层，越往下越淡 */
+/* 倒影渐隐：前 55% 完全透明（水线附近保持镜面），78% 之后才明显压向湖色，
+   只把最靠近画面底部的一段化开。色标全部取自 --sky-blue-horizon */
 .wb-scene__ref-stop-0 {
   stop-color: var(--sky-blue-horizon);
   stop-opacity: 0;
@@ -197,12 +199,17 @@
 
 .wb-scene__ref-stop-1 {
   stop-color: var(--sky-blue-horizon);
-  stop-opacity: 0.36;
+  stop-opacity: 0.04;
 }
 
 .wb-scene__ref-stop-2 {
   stop-color: var(--sky-blue-horizon);
-  stop-opacity: 0.58;
+  stop-opacity: 0.34;
+}
+
+.wb-scene__ref-stop-3 {
+  stop-color: var(--sky-blue-horizon);
+  stop-opacity: 0.62;
 }
 
 .wb-scene__lake-line {

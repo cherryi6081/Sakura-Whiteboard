@@ -225,30 +225,35 @@ function MountainShapes() {
 }
 
 /**
- * 倒影分段：[水线以下的 y 起点, 高度, 横向错位, 纵向压缩比, 明度]。
- * 每段都镜像整座山，再裁到自己那一条横带 —— 相邻段横向错开，
- * 交界处就出现水面常见的错位台阶；越往下压缩比越小、越淡。
+ * 倒影分段：[水线以下的 y 起点, 高度, 横向错位, 纵向压缩比, 不透明度]。
+ *
+ * 三段共用同一个压缩比 0.72：山体在水线以上高 358 单位，压缩后 258 单位，
+ * 落在 566 → 824，正好占满湖带的 77%，底部留 76 单位（约 1/4 湖面）给近岸水面与页脚。
+ * 取 0.72 而不是更狠的 0.58：雪齿间距约 20 单位，0.72 后仍有 14 单位，齿形可辨；
+ * 再压到 0.58 就只有 11.6 单位，远看会糊成锯齿噪点。三段压缩比一致，段与段之间
+ * 只有几单位的横向错位，所以倒影的脊线和坡面不会被二次压缩折断。
+ *
+ * 横向错位 0 / +4 / −5 单位（旧值 0 / +10 / −14）：保留水面台阶的水感，
+ * 但峰值处偏移不到山体宽度的 1%，脊线和换坡拐点仍然对得上。
  */
 const REFLECTION_BANDS = [
-  { id: "wb-ref-0", y: 566, height: 100, dx: 0, scale: 0.72, opacity: 0.46 },
-  { id: "wb-ref-1", y: 666, height: 84, dx: 10, scale: 0.66, opacity: 0.33 },
-  { id: "wb-ref-2", y: 750, height: 96, dx: -14, scale: 0.58, opacity: 0.22 },
+  { id: "wb-ref-0", y: 566, height: 96, dx: 0, scale: 0.72, opacity: 0.9 },
+  { id: "wb-ref-1", y: 662, height: 82, dx: 4, scale: 0.72, opacity: 0.85 },
+  { id: "wb-ref-2", y: 744, height: 80, dx: -5, scale: 0.72, opacity: 0.76 },
 ];
 
-/** 静态水面波纹：[x, y, 宽度, 不透明度]，只有形状没有动画；靠近水线的更亮更长，往下逐渐变细变淡 */
+/**
+ * 静态水面波纹：[x, y, 宽度, 不透明度]，只有形状没有动画。
+ * 只留在两处开阔水面：水线以下的左右两端（山体倒影之外，x < 165 / x > 1404），
+ * 以及倒影底边（y = 824）以下的近岸带。倒影区域内不放波纹线，
+ * 否则亮线会横穿脊线和融雪齿。
+ */
 const RIPPLES: Array<[number, number, number, number]> = [
-  [120, 596, 148, 0.62],
-  [430, 612, 112, 0.44],
-  [760, 600, 168, 0.55],
-  [1080, 618, 132, 0.4],
-  [1330, 606, 118, 0.48],
-  [236, 690, 132, 0.38],
-  [620, 706, 158, 0.34],
-  [1010, 684, 120, 0.3],
-  [1288, 700, 138, 0.32],
-  [150, 792, 108, 0.26],
-  [540, 806, 150, 0.24],
-  [980, 788, 128, 0.22],
+  [40, 594, 110, 0.5],
+  [1444, 604, 112, 0.42],
+  [292, 856, 148, 0.26],
+  [686, 874, 126, 0.22],
+  [1116, 842, 138, 0.24],
 ];
 
 /** 单瓣：单位长度 1，上端收圆、中间带樱花特有的小缺口，下端收到花心 */
@@ -613,8 +618,9 @@ export function FujiScene() {
           </linearGradient>
           <linearGradient id="wb-ref-fade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" className="wb-scene__ref-stop-0" />
-            <stop offset="50%" className="wb-scene__ref-stop-1" />
-            <stop offset="100%" className="wb-scene__ref-stop-2" />
+            <stop offset="55%" className="wb-scene__ref-stop-1" />
+            <stop offset="78%" className="wb-scene__ref-stop-2" />
+            <stop offset="100%" className="wb-scene__ref-stop-3" />
           </linearGradient>
           {REFLECTION_BANDS.map((band) => (
             <clipPath id={band.id} key={band.id}>
@@ -626,24 +632,8 @@ export function FujiScene() {
         {/* 湖面：从水线一直铺到画面底边 */}
         <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-lake-grad)" />
 
-        {/* 倒影：整座山连同雪顶垂直镜像，分三段各自横向错位 + 纵向压缩 + 降低明度，
-            段与段之间自然形成水面错位；越往下压缩越狠、越淡 */}
-        {REFLECTION_BANDS.map((band) => (
-          <g clipPath={`url(#${band.id})`} key={band.id}>
-            <g
-              className="wb-scene__reflection"
-              opacity={band.opacity}
-              transform={`translate(${band.dx} 0) matrix(1 0 0 ${-band.scale} 0 ${WATERLINE * (1 + band.scale)})`}
-            >
-              <MountainShapes />
-            </g>
-          </g>
-        ))}
-
-        {/* 水面加深层：倒影越往下越淡，最终融进湖色 */}
-        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-ref-fade)" />
-
-        {/* 静态横向波纹与反光，不做动画、不引滤镜 */}
+        {/* 静态横向波纹与反光，不做动画、不引滤镜。
+            画在倒影之下：只在水线两端的开阔水面与倒影底边以下出现，不会横穿倒影轮廓 */}
         {RIPPLES.map(([x, y, width, opacity]) => (
           <rect
             className="wb-scene__lake-line"
@@ -656,6 +646,24 @@ export function FujiScene() {
             opacity={opacity}
           />
         ))}
+
+        {/* 倒影：整座山连同雪顶垂直镜像，三段各自小幅横向错位、统一纵向压缩，
+            不透明度接近山体本身（0.9 / 0.85 / 0.76），保证雪顶、山脊与融雪齿都能认出来 */}
+        {REFLECTION_BANDS.map((band) => (
+          <g clipPath={`url(#${band.id})`} key={band.id}>
+            <g
+              className="wb-scene__reflection"
+              opacity={band.opacity}
+              transform={`translate(${band.dx} 0) matrix(1 0 0 ${-band.scale} 0 ${WATERLINE * (1 + band.scale)})`}
+            >
+              <MountainShapes />
+            </g>
+          </g>
+        ))}
+
+        {/* 水面加深层：前 55% 近乎不动，78% 之后才把最靠近画面底部的一段化进湖色 */}
+        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-ref-fade)" />
+
         <rect className="wb-scene__lake-horizon" x="0" y={WATERLINE - 1} width="1600" height="2.4" />
 
         {/* 山体本体：压在水线之上 */}
