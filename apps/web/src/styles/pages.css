@@ -2501,6 +2501,14 @@ body:has(.wb-home) {
   padding-right: 30px;
 }
 
+/* 浏览器自带的密码可见性开关：Chromium 版 Edge 在输入框里画了一只实心眼（::-ms-reveal），
+   与右侧自己的 .wb-auth__eye 并排成两个图标。这里只关掉浏览器那只，保留与表单状态联动的
+   眼睛按钮；Chrome / Safari 没有对应伪元素映射，规则不生效也不会占位。
+   自动填充钥匙（::-webkit-credentials-auto-fill-button）属于密码管理器入口，不动。 */
+.wb-auth .wb-input[type="password"]::-ms-reveal {
+  display: none;
+}
+
 .wb-auth__eye {
   position: absolute;
   right: 0;
@@ -2915,8 +2923,24 @@ body:has(.wb-home) {
   opacity: 1;
 }
 
+/* 丹顶鹤的专用透明 canvas：只画鹤，每帧清成全透明，与主 canvas 共用相机与 rAF。
+   为什么需要第二块：主 canvas 在 z-index 0，钻不到小舟与雁群（1）前面；鹤要压住它们，
+   就得单独拿 z-index 2。它与枝条 / 涟漪 / 浮瓣同为 2，但 DOM 排在它们之前，
+   所以被枝条压住；落瓣（3）仍在最上。层级与 SVG 版鹤完全一致。
+   点击穿透靠 pointer-events: none，不改变任何现有 DOM 顺序 */
+.wb-scene__crane-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 /* WebGL 接管水面、雾、山体、雪盖与花瓣后，把这些重复的 SVG 层隐掉；
-   樱花枝、鹤、小舟、雁群仍作为前景覆盖层留在 SVG 里。
+   樱花枝、小舟、雁群仍作为前景覆盖层留在 SVG 里；鹤交给第二块透明 canvas：
+   这里只隐藏显示，节点与样式全部保留 —— 跌破 1024px 或运行时失败时会整体回到 SVG 分支。
    例外是 .wb-scene__water：首帧画完之前它是静态湖色衬底，先在（见下一条），
    避免 three 还在下载时水线以下露出天空色。 */
 .wb-home__scene[data-render="webgl"] .wb-scene__lake,
@@ -2935,6 +2959,7 @@ body:has(.wb-home) {
 .wb-home__scene[data-render="webgl"] .wb-scene__snow-fold,
 .wb-home__scene[data-render="webgl"] .wb-scene__snow-crest,
 .wb-home__scene[data-render="webgl"] .wb-scene__snow-contact,
+.wb-home__scene[data-render="webgl"] .wb-scene__crane,
 .wb-home__scene[data-render="webgl"] .wb-scene__petals {
   display: none;
 }

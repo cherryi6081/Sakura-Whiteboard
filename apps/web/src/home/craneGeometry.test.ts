@@ -222,6 +222,9 @@ describe("丹顶鹤运动与降级约束", () => {
     const reduce = CSS.slice(CSS.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduce).toContain(".wb-scene__crane,");
     expect(reduce).toContain("animation: none");
-    expect(reduce).not.toMatch(/\.wb-scene__crane[^{]*\{[^}]*display:\s*none/);
+    // 只看「直接以 .wb-scene__crane 开头」的规则：WebGL 分支的
+    // `.wb-home__scene[data-render="webgl"] .wb-scene__crane { display: none }`
+    // 在 reduce 下根本不会命中（reduce 与 webgl 互斥），不算违反这条约束
+    expect(reduce).not.toMatch(/(^|\n)\s*\.wb-scene__crane[^{]*\{[^}]*display:\s*none/);
   });
 });

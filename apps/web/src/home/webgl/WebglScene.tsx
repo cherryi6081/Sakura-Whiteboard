@@ -55,6 +55,7 @@ type Props = {
 
 export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const craneCanvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<SceneHandle | null>(null);
   const periodRef = useRef(period);
 
@@ -83,6 +84,7 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
         handleRef.current = mountScene(canvas, {
           period: periodRef.current,
           onFirstFrame,
+          craneCanvas: craneCanvasRef.current ?? undefined,
         });
       })
       .catch(() => {
@@ -103,5 +105,13 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
   }, [period]);
 
   if (mode !== "webgl") return null;
-  return <canvas ref={canvasRef} className="wb-scene__canvas" aria-hidden />;
+  return (
+    <>
+      <canvas ref={canvasRef} className="wb-scene__canvas" aria-hidden />
+      {/* 丹顶鹤单独一块透明 canvas：主 canvas 在 z-index 0，压不住 z-index 1 的小舟与雁群；
+          这块拿 z-index 2，DOM 排在枝条（同为 2、在后）之前，于是压住山体/小舟/雁群、
+          又钻到枝条与落瓣之下。只画鹤，透明清屏，与主场景共用同一个相机与同一个 rAF */}
+      <canvas ref={craneCanvasRef} className="wb-scene__crane-canvas" aria-hidden />
+    </>
+  );
 }
