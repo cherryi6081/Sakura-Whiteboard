@@ -384,11 +384,15 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     tint.copy(baseColors[0]).lerp(sunSrgb, 0.16);
     tintSoft.copy(baseColors[0]).lerp(sunSrgb, 0.1);
 
+    // 白羽：**不能乘 tint**。tint 本身是由同一个白羽色向阳光色 lerp 出来的，
+    // 两个接近 1 的通道相乘只会把白压暗（#fbfcfe → #f7f8fa，L 0.973 → 0.938），
+    // 而 SVG 分支的白羽是实打实的 #fbfcfe —— 鹤一搬到 WebGL 就整体变深一档。
+    // 改成向阳光色 lerp 同样的 0.16，色偏还在、明度不再被乘掉；夜里也不再额外压 10%，
+    // 夜色交给与 SVG 同一层的 CSS 叠色，两个分支才对得上。
     colors[CRANE_ROLE.white]
       .copy(baseColors[CRANE_ROLE.white])
-      .multiply(tint)
-      .lerp(skySrgb, 0.04 + 0.05 * night)
-      .multiplyScalar(1 - 0.1 * night);
+      .lerp(sunSrgb, 0.16)
+      .lerp(skySrgb, 0.04 + 0.05 * night);
     colors[CRANE_ROLE.shade]
       .copy(baseColors[CRANE_ROLE.shade])
       .lerp(skySrgb, 0.16)

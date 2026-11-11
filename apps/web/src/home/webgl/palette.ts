@@ -125,11 +125,17 @@ export const PERIOD_SUN: Record<Period, SunState> = {
     dir: new THREE.Vector3(0.68, 0.34, 0.52).normalize(),
   },
   night: {
-    color: new THREE.Color("#cdd9f2"),
-    intensity: 1.25,
-    sky: new THREE.Color("#8d9cc8"),
-    ground: new THREE.Color("#55607a"),
-    hemiIntensity: 0.7,
+    // 夜里只有山体与鹤是被 three 打光的（湖面、天空都是 CSS/着色器固有色），
+    // 主光一旦压到 1.25，山体受光面 L 会从黄昏的 0.441 直接掉到 0.160，
+    // 而同一帧的湖面还有 0.494 —— 山体变成剪影、鹤也一起发黑。
+    // 现在把夜光提到 2.4（色温更冷、比黄昏更暗一档），山体受光面落在 0.357、
+    // 背光 0.271、雪面 0.598，同帧湖面 0.494 —— 夜色里山体仍是蓝灰而不是剪影，
+    // 19:00 换时辰也不会再出现一档黑崖。
+    color: new THREE.Color("#dde6f9"),
+    intensity: 2.4,
+    sky: new THREE.Color("#c6d1ec"),
+    ground: new THREE.Color("#77849f"),
+    hemiIntensity: 0.95,
     dir: new THREE.Vector3(0.55, 0.78, 0.42).normalize(),
   },
 };
