@@ -589,31 +589,88 @@
 }
 
 /* ---------- 湖面小舟与渔火 ---------- */
-/* 水线以下唯一的暖色：船身是墨色剪影，灯与光晕是整幅冷蓝里的一点温度锚点 */
+/* 水线以下唯一的暖色：船身是墨色剪影，灯与光晕是整幅冷蓝里的一点温度锚点。
+   C 版造型：穹顶苫布篷 + 篷檐右肩挂灯 + 上翘船首 + 船尾橹与绳结。
+   局部坐标 y=0 是吃水线，向上为负；1 单位 = 2 舞台单位（scale 2）。 */
+
+/* 船身：整条墨色楔形。比旧版抬到 .72，79px 下才压得住浅蓝湖面 */
 .wb-scene__boat-hull {
   fill: var(--crane-ink);
-  opacity: 0.62;
+  opacity: 0.72;
 }
 
+/* 舷侧板缝：0.45 单位 ≈ 0.8px，1440 下是纹理不是结构 */
+.wb-scene__boat-seam {
+  fill: none;
+  stroke: var(--crane-shade);
+  stroke-width: 0.45;
+  stroke-linecap: round;
+  opacity: 0.34;
+}
+
+/* 篷：比船身再透一档，读成布而不是第二块船板 */
 .wb-scene__boat-awning {
   fill: var(--crane-ink);
   opacity: 0.5;
 }
 
-.wb-scene__boat-pole {
+/* 篷骨：竹骨唯一的线索，近看是骨、远看是极淡的纹理 */
+.wb-scene__boat-rib {
+  fill: none;
+  stroke: var(--crane-shade);
+  stroke-width: 0.32;
+  stroke-linecap: round;
+  opacity: 0.3;
+}
+
+/* 篷檐压线：把篷与船身切开的那一道，删掉就糊成一坨 */
+.wb-scene__boat-eave {
   fill: none;
   stroke: var(--crane-ink);
-  stroke-width: 1.1;
+  stroke-width: 0.7;
   stroke-linecap: round;
+  opacity: 0.72;
+}
+
+/* 橹：全船唯一的长斜线，远看是一笔，近看是橹 */
+.wb-scene__boat-oar,
+.wb-scene__boat-oar-pivot {
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 0.85;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.wb-scene__boat-oar-pivot {
+  stroke-width: 0.6;
   opacity: 0.5;
+}
+
+/* 橹绳：贴着橹杭的两个绳圈，0.7px，读作索具 */
+.wb-scene__boat-rope {
+  fill: none;
+  stroke: var(--crane-ink-soft);
+  stroke-width: 0.4;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+/* 灯挑：从篷肩伸出的一小截，把灯笼挑在篷檐之外 */
+.wb-scene__boat-lamp-arm {
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 0.45;
+  stroke-linecap: round;
+  opacity: 0.6;
 }
 
 .wb-scene__boat-shadow {
   fill: var(--crane-ink);
-  opacity: 0.1;
+  opacity: 0.09;
 }
 
-/* 船放大一倍后光晕面积变成 4 倍，中心与中调各压一档，避免糊成一块暖色 */
+/* 光晕半径由 34 收到 12：面积剩 12%，不再叠水纹成色斑 */
 .wb-scene__boat-glow-0 {
   stop-color: var(--lamp-100);
   stop-opacity: 0.42;
@@ -629,8 +686,19 @@
   stop-opacity: 0;
 }
 
-.wb-scene__boat-lamp {
+/* 灯身：暖黄面 + 中调描边，全图唯一暖色，也是整条船唯一的渐变落点 */
+.wb-scene__boat-lantern {
   fill: var(--lamp-100);
+  stroke: var(--lamp-300);
+  stroke-width: 0.3;
+}
+
+.wb-scene__boat-lamp-cap {
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 0.5;
+  stroke-linecap: round;
+  opacity: 0.55;
 }
 
 /* 灯与水面倒影共用同一条极缓的呼吸：幅度只有 8%，读成灯火在风里晃，不是闪烁 */
