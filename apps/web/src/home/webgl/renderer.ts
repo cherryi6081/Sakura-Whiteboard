@@ -4,7 +4,6 @@ import { createMountain } from "./fuji";
 import { createWater } from "./water";
 import { createMist } from "./mist";
 import { createPetals } from "./petals";
-import { createBoat } from "./boat";
 import { layoutCamera } from "./stage";
 import type { Period } from "../usePeriod";
 
@@ -73,16 +72,7 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
   const mountain = createMountain(palette);
   const mist = createMist(palette);
   const petals = createPetals(palette);
-  const boat = createBoat(palette);
-  scene.add(
-    water.mesh,
-    water.lines,
-    mountain.reflection,
-    mountain.group,
-    mist.group,
-    petals.mesh,
-    boat.group,
-  );
+  scene.add(water.mesh, water.lines, mountain.reflection, mountain.group, mist.group, petals.mesh);
 
   const sun = new THREE.DirectionalLight(0xffffff, 2.6);
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9);
@@ -144,7 +134,6 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
     mountain.update(time);
     mist.update(time);
     petals.update(time);
-    boat.update(time);
 
     const lightDamping = 1 - Math.exp(-delta * 1.4);
     currentSun.color.lerp(targetSun.color, lightDamping);
@@ -191,7 +180,6 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
       mountain.dispose();
       mist.dispose();
       petals.dispose();
-      boat.dispose();
       ambient.dispose();
       sun.dispose();
       hemi.dispose();

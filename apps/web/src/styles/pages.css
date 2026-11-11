@@ -571,38 +571,28 @@
 }
 
 /* ---------- 湖面小舟与渔火 ---------- */
-/* 水线以下唯一的暖色：船身是墨色剪影，灯与光晕是整幅冷蓝里的一点温度锚点。
-   形状与透明度都来自 boatShape.ts（SVG 与 WebGL 共用），这里只负责填色 */
+/* 水线以下唯一的暖色：船身是墨色剪影，灯与光晕是整幅冷蓝里的一点温度锚点 */
 .wb-scene__boat-hull {
   fill: var(--crane-ink);
+  opacity: 0.62;
 }
 
 .wb-scene__boat-awning {
   fill: var(--crane-ink);
-}
-
-/* 篷口暗部：藏在篷里的那一块更深，给「篷里有人」一个落点 */
-.wb-scene__boat-awning-mouth {
-  fill: var(--crane-ink);
-}
-
-/* 舷沿高光：墨色船身上缘的一条浅色受光带，与白沫同色系 */
-.wb-scene__boat-gunwale,
-.wb-scene__boat-foam {
-  fill: var(--lake-ripple-hi);
-}
-
-/* 船尾橹：细杆与桨叶都是填充面，不用描边 */
-.wb-scene__boat-oar {
-  fill: var(--crane-ink);
+  opacity: 0.5;
 }
 
 .wb-scene__boat-pole {
-  fill: var(--crane-ink);
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  opacity: 0.5;
 }
 
 .wb-scene__boat-shadow {
   fill: var(--crane-ink);
+  opacity: 0.1;
 }
 
 /* 船放大一倍后光晕面积变成 4 倍，中心与中调各压一档，避免糊成一块暖色 */
@@ -613,7 +603,7 @@
 
 .wb-scene__boat-glow-1 {
   stop-color: var(--lamp-300);
-  stop-opacity: 0.15;
+  stop-opacity: 0.13;
 }
 
 .wb-scene__boat-glow-2 {
@@ -633,6 +623,16 @@
 
 .wb-scene__boat-shimmer rect {
   fill: var(--lamp-300);
+  opacity: 0.42;
+}
+
+/* 越往下越淡：倒影是灯在水面上的拖影，不是三段等亮的色块 */
+.wb-scene__boat-shimmer rect:nth-child(2) {
+  opacity: 0.3;
+}
+
+.wb-scene__boat-shimmer rect:nth-child(3) {
+  opacity: 0.2;
 }
 
 @keyframes wb-boat-flicker {
@@ -2656,15 +2656,14 @@ body:has(.wb-home) {
   opacity: 1;
 }
 
-/* WebGL 接管水面、雾、山体、雪盖、花瓣与小舟后，把这些重复的 SVG 层隐掉；
-   樱花枝、鹤、雁群仍作为前景覆盖层留在 SVG 里。
+/* WebGL 接管水面、雾、山体、雪盖与花瓣后，把这些重复的 SVG 层隐掉；
+   樱花枝、鹤、小舟、雁群仍作为前景覆盖层留在 SVG 里。
    例外是 .wb-scene__water：首帧画完之前它是静态湖色衬底，先在（见下一条），
    避免 three 还在下载时水线以下露出天空色。 */
 .wb-home__scene[data-render="webgl"] .wb-scene__lake,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-fade,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-line,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-horizon,
-.wb-home__scene[data-render="webgl"] .wb-scene__boat,
 .wb-home__scene[data-render="webgl"] .wb-scene__reflection,
 .wb-home__scene[data-render="webgl"] .wb-scene__far-ridge,
 .wb-home__scene[data-render="webgl"] .wb-scene__cloud,
