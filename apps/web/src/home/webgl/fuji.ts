@@ -22,6 +22,23 @@ const BASE_HALF = 606;
 const TOP_HALF = 13;
 const Z_RATIO = 0.13;
 
+/**
+ * 湖面倒影：与 SVG 版（FujiScene 的 REFLECTION_BANDS）同一套几何参数。
+ *
+ * - 压缩比 0.72：山体在水线以上高 358 单位，压缩后 257.8，正好从 566 落到 823.8，
+ *   占满湖带的 77%，底部留出近岸水面；再压狠一点雪齿间距只剩 11 单位，远看会糊成锯齿。
+ * - 三段 96 / 82 / 80 共用同一个压缩比，只在段边界给 0 / +4 / −5 单位的横向错位，
+ *   保留水面的台阶感，又不会把山脊和换坡拐点折断。
+ * - 不透明度 0.9 / 0.85 / 0.76 直接照搬 SVG，倒影才是“同一座山的镜像”而不是一层灰影。
+ */
+const REFLECT_COMPRESS = 0.72;
+const REFLECT_DEPTH = HEIGHT * REFLECT_COMPRESS;
+const REFLECT_BANDS = [
+  { top: 0, bottom: 96, dx: 0, opacity: 0.9 },
+  { top: 96, bottom: 178, dx: 4, opacity: 0.85 },
+  { top: 178, bottom: REFLECT_DEPTH + 4, dx: -5, opacity: 0.76 },
+];
+
 function halfWidth(t: number): number {
   // 指数 1.3：山腰收得比直线更紧，侧面才有富士山那种内凹的轮廓；
   // 1.0 会得到一座笔直的火山三角，和 SVG 山形对不上。
@@ -88,25 +105,68 @@ function buildCone(
   return out;
 }
 
-/** 舞台坐标 → 世界坐标；mirror 用于湖面倒影，flattenZ 把倒影压成一张贴水面的薄片 */
+/**
+ * 舞台坐标 → 世界坐标。
+ *
+ * `reflect` 是湖面倒影专用：绕水线镜像后按 compress 纵向压缩。**不压平 z**——
+ * 山体是闭合锥面，朝向相机那一半的 z 恒为正，本来就排在不透明水面（z = −2）之前；
+ * 压平反而会让背面与正面落到同一深度、被透明混合两次，整片倒影发灰。
+ *
+ * 镜像会翻转三角形绕序，因此这里把每个三角形的第 2、3 个顶点一起交换
+ * （位置 / 颜色 / 法线三组属性同步交换），正面仍然朝外，背面照常被剔除。
+ *
+ * `normalSource` 用来复用山体本身的法线：镜像后再自己算，法线会跟着翻，
+ * 受光面就跑到另一侧；沿用山体法线，倒影的受光面 / 背光面才与山体同侧同档。
+ */
 function toGeometry(
   mesh: StageMesh,
-  options: { zShift?: number; mirror?: boolean; flattenZ?: number } = {},
+  options: {
+    zShift?: number;
+    reflect?: { compress: number };
+    normalSource?: THREE.BufferGeometry;
+  } = {},
 ): THREE.BufferGeometry {
-  const { zShift = 0, mirror = false, flattenZ } = options;
+  const { zShift = 0, reflect, normalSource } = options;
   const positions = new Float32Array(mesh.positions.length);
 
   for (let i = 0; i < mesh.positions.length; i += 3) {
-    const x = mesh.positions[i];
-    const y = mirror ? WATERLINE * 2 - mesh.positions[i + 1] : mesh.positions[i + 1];
-    const z = (flattenZ ?? mesh.positions[i + 2]) + zShift;
+    let x = mesh.positions[i];
+    let y = mesh.positions[i + 1];
+    if (reflect) {
+      y = WATERLINE + (WATERLINE - y) * reflect.compress;
+      // x 的横向错位由着色器按分段加，几何本身保持 0，三段可以共用同一份顶点
+    }
+    const z = mesh.positions[i + 2] + zShift;
     toWorld(x, y, z).toArray(positions, i);
   }
 
+  const colors = new THREE.Float32BufferAttribute(mesh.colors, 3);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(mesh.colors, 3));
-  geometry.computeVertexNormals();
+  geometry.setAttribute("color", colors);
+  if (normalSource) {
+    const source = normalSource.getAttribute("normal");
+    geometry.setAttribute("normal", source.clone());
+  } else {
+    geometry.computeVertexNormals();
+  }
+
+  // 换绕序时必须三个逐顶点属性一起换，否则颜色 / 法线会错位到相邻顶点上
+  if (reflect) {
+    for (const name of ["position", "color", "normal"]) {
+      const attribute = geometry.getAttribute(name) as THREE.BufferAttribute;
+      const array = attribute.array as Float32Array;
+      for (let i = 0; i < array.length; i += 9) {
+        for (let k = 0; k < 3; k += 1) {
+          const tmp = array[i + 3 + k];
+          array[i + 3 + k] = array[i + 6 + k];
+          array[i + 6 + k] = tmp;
+        }
+      }
+      attribute.needsUpdate = true;
+    }
+  }
+
   return geometry;
 }
 
@@ -237,50 +297,80 @@ export function createMountain(palette: Palette): MountainBuild {
   ridgeMesh.renderOrder = 0;
   group.add(ridgeMesh);
 
-  // ---- 湖面倒影：镜像 + 压平 + 横向波纹、越往下越淡 ----
+  // ---- 湖面倒影：镜像 + 0.72 压缩 + 三段横向错位 / 不透明度 ----
+  // 材质与山体共用同一张 gradientMap、同一组灯光和同一套顶点色（法线也沿用山体的），
+  // 所以倒影的受光岩面、背光面、雪顶、雪影与山体是同一档明度，而不是一块同色淡影。
   const reflection = new THREE.Group();
   const reflectionUniforms = { uTime: { value: 0 }, uWater: { value: STAGE_H / 2 - WATERLINE } };
 
-  const makeReflectionMaterial = (opacity: number) => {
-    const material = new THREE.MeshBasicMaterial({
+  const rockReflectionGeometry = toGeometry(rockMesh, {
+    reflect: { compress: REFLECT_COMPRESS },
+    normalSource: rockGeometry,
+  });
+  const snowReflectionGeometry = toGeometry(snowMesh, {
+    reflect: { compress: REFLECT_COMPRESS },
+    normalSource: snowGeometry,
+  });
+
+  const reflectionMeshes: THREE.Mesh[] = [];
+
+  const makeReflectionMaterial = (band: (typeof REFLECT_BANDS)[number]) => {
+    const material = new THREE.MeshToonMaterial({
+      color: 0xffffff,
       vertexColors: true,
+      gradientMap: gradient,
       transparent: true,
-      opacity,
       depthWrite: false,
-      side: THREE.DoubleSide,
     });
+    const uniforms = {
+      uTime: reflectionUniforms.uTime,
+      uWater: reflectionUniforms.uWater,
+      uDx: { value: band.dx },
+      uTop: { value: band.top },
+      uBottom: { value: band.bottom },
+      uOpacity: { value: band.opacity },
+      uDepth: { value: REFLECT_DEPTH },
+    };
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = reflectionUniforms.uTime;
-      shader.uniforms.uWater = reflectionUniforms.uWater;
+      Object.assign(shader.uniforms, uniforms);
       shader.vertexShader =
-        "uniform float uTime;\nuniform float uWater;\nvarying float vDepth;\n" +
+        "uniform float uTime;\nuniform float uWater;\nuniform float uDx;\nvarying float vRefDepth;\n" +
         shader.vertexShader.replace(
           "#include <begin_vertex>",
           `#include <begin_vertex>
-          float dip = max(0.0, uWater - transformed.y);
-          transformed.x += sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.7 + dip * 0.012);
-          vDepth = clamp(dip / 220.0, 0.0, 1.0);`,
+          float refDepth = max(0.0, uWater - transformed.y);
+          // 水面波动只给横向位移，幅度 0.55 + 0.008 × 深度（最深约 2.6 单位）。
+          // 融雪齿压缩后间距约 23 单位，这个量级足以读出齿形，不会把轮廓揉掉
+          transformed.x += uDx + sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.55 + refDepth * 0.008);
+          vRefDepth = refDepth;`,
         );
       shader.fragmentShader =
-        "uniform float uTime;\nvarying float vDepth;\n" +
+        "uniform float uTime;\nuniform float uTop;\nuniform float uBottom;\nuniform float uOpacity;\nuniform float uDepth;\nvarying float vRefDepth;\n" +
         shader.fragmentShader.replace(
           "#include <colorspace_fragment>",
-          `gl_FragColor.a *= (1.0 - smoothstep(0.02, 1.0, vDepth)) * (0.72 + 0.28 * sin(vDepth * 62.0 - uTime * 1.4));
+          `// 每个材质只画自己那一条水平带：三段共享同一份几何，段边界是硬切
+          if (vRefDepth < uTop || vRefDepth >= uBottom) discard;
+          float d = clamp(vRefDepth / uDepth, 0.0, 1.0);
+          // 前 60% 基本不衰减（镜面清晰），之后只淡到 0.82，最底部 4% 再收干净：
+          // 雪顶倒影落在 d≈0.63–1.0，衰减过狠会把整块高光雪面抹成灰
+          float fade = 1.0 - 0.18 * smoothstep(0.6, 1.0, d);
+          float tipFade = 1.0 - smoothstep(0.96, 1.0, d);
+          // 轻微的水面明暗呼吸，只影响明度、不参与轮廓
+          float shimmer = 0.92 + 0.08 * sin(vRefDepth * 0.24 - uTime * 1.4);
+          gl_FragColor.a *= uOpacity * fade * tipFade * shimmer;
           #include <colorspace_fragment>`,
         );
     };
     return material;
   };
 
-  const rockReflection = new THREE.Mesh(
-    toGeometry(rockMesh, { mirror: true, flattenZ: 1.5 }),
-    makeReflectionMaterial(0.18),
-  );
-  const snowReflection = new THREE.Mesh(
-    toGeometry(snowMesh, { mirror: true, flattenZ: 1.5 }),
-    makeReflectionMaterial(0.26),
-  );
-  reflection.add(rockReflection, snowReflection);
+  for (const band of REFLECT_BANDS) {
+    reflectionMeshes.push(
+      new THREE.Mesh(rockReflectionGeometry, makeReflectionMaterial(band)),
+      new THREE.Mesh(snowReflectionGeometry, makeReflectionMaterial(band)),
+    );
+  }
+  reflection.add(...reflectionMeshes);
 
   return {
     group,
@@ -293,13 +383,12 @@ export function createMountain(palette: Palette): MountainBuild {
       rockGeometry.dispose();
       snowGeometry.dispose();
       ridgeGeometry.dispose();
-      rockReflection.geometry.dispose();
-      snowReflection.geometry.dispose();
+      rockReflectionGeometry.dispose();
+      snowReflectionGeometry.dispose();
       rockMaterial.dispose();
       snowMaterial.dispose();
       ridgeMaterial.dispose();
-      rockReflection.material.dispose();
-      snowReflection.material.dispose();
+      reflectionMeshes.forEach((mesh) => (mesh.material as THREE.Material).dispose());
     },
   };
 }
