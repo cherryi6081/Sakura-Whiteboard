@@ -237,22 +237,19 @@ function MountainShapes() {
 }
 
 /**
- * 倒影分段：[水线以下的 y 起点, 高度, 横向错位, 纵向压缩比, 不透明度]。
+ * 倒影：绕水线做纯镜像，y' = 2·WATERLINE − y（等价于 translate(0, 1132) scale(1, -1)）。
  *
- * 三段共用同一个压缩比 0.72：山体在水线以上高 358 单位，压缩后 258 单位，
- * 落在 566 → 824，正好占满湖带的 77%，底部留 76 单位（约 1/4 湖面）给近岸水面与页脚。
- * 取 0.72 而不是更狠的 0.58：雪齿间距约 20 单位，0.72 后仍有 14 单位，齿形可辨；
- * 再压到 0.58 就只有 11.6 单位，远看会糊成锯齿噪点。三段压缩比一致，段与段之间
- * 只有几单位的横向错位，所以倒影的脊线和坡面不会被二次压缩折断。
+ * 上一版是三段、每段 0.72 纵向压缩 + 0 / +4 / −5 横向错位。纯镜像后这两项都失去意义：
+ * 压缩比统一成 1（山体水线以上高 358，倒影尖端落到 566 + 358 = 924，超出 900 的画布，
+ * 被画面底干净裁掉 24 单位 —— 这是纯镜像的必然结果，不缩放、不抬水线），横向错位归零，
+ * 峰顶倒影正对峰顶。
  *
- * 横向错位 0 / +4 / −5 单位（旧值 0 / +10 / −14）：保留水面台阶的水感，
- * 但峰值处偏移不到山体宽度的 1%，脊线和换坡拐点仍然对得上。
+ * 三段合并成一段：纯镜像后段与段之间不再有几何差，只剩不透明度台阶（0.9 / 0.85 / 0.76），
+ * 留着必然在 662 / 744 两条边界上留下可见接缝。合并后由下面 #wb-ref-fade 渐变
+ * （0 / 55 / 78 / 100%）做自下而上的连续衰减，与 WebGL 着色器里的 fade 曲线同量级。
  */
-const REFLECTION_BANDS = [
-  { id: "wb-ref-0", y: 566, height: 96, dx: 0, scale: 0.72, opacity: 0.9 },
-  { id: "wb-ref-1", y: 662, height: 82, dx: 4, scale: 0.72, opacity: 0.85 },
-  { id: "wb-ref-2", y: 744, height: 80, dx: -5, scale: 0.72, opacity: 0.76 },
-];
+const REFLECT_MIRROR = `translate(0 ${WATERLINE * 2}) scale(1 -1)`;
+const REFLECT_OPACITY = 0.9;
 
 /**
  * 静态水面波纹：[x, y, 宽度, 不透明度]，只有形状没有动画。
@@ -692,11 +689,6 @@ export function FujiScene({ period }: { period: Period }) {
             <stop offset="42%" className="wb-scene__boat-glow-1" />
             <stop offset="100%" className="wb-scene__boat-glow-2" />
           </radialGradient>
-          {REFLECTION_BANDS.map((band) => (
-            <clipPath id={band.id} key={band.id}>
-              <rect x="-140" y={band.y} width="1880" height={band.height} />
-            </clipPath>
-          ))}
         </defs>
 
         {/* 霞带（峰侧斜霞）：左右两条微微倾斜、互不等高的云带自画面外伸入，
@@ -737,20 +729,13 @@ export function FujiScene({ period }: { period: Period }) {
           />
         ))}
 
-        {/* 倒影：整座山连同雪顶垂直镜像，三段共用同一个压缩比 0.72，
-            只在段边界留几单位的横向错位；不透明度 0.9 / 0.85 / 0.76，
-            倒影的岩面、背光面、雪顶与雪影都直接复用山体那一套形状与色值 */}
-        {REFLECTION_BANDS.map((band) => (
-          <g clipPath={`url(#${band.id})`} key={band.id}>
-            <g
-              className="wb-scene__reflection"
-              opacity={band.opacity}
-              transform={`translate(${band.dx} 0) matrix(1 0 0 ${-band.scale} 0 ${WATERLINE * (1 + band.scale)})`}
-            >
-              <MountainShapes />
-            </g>
-          </g>
-        ))}
+        {/* 倒影：整座山连同雪顶绕水线纯镜像（y' = 2·WATERLINE − y，dx = 0），单段不透明度 0.9。
+            山体水线以上高 358，镜像尖端落到 y = 924，超出 900 的 viewBox 后被 svg 视口干净裁掉；
+            WebGL 侧同一套几何同样落到舞台底之外，被画布底边裁掉，两边收口一致。
+            自下而上的衰减交给下面的 #wb-ref-fade，单段没有段边界接缝 */}
+        <g className="wb-scene__reflection" opacity={REFLECT_OPACITY} transform={REFLECT_MIRROR}>
+          <MountainShapes />
+        </g>
 
         {/* 水面渐隐层：前 55% 完全不动倒影，78% 之后才明显压向湖色，
             只把最靠近画面底部的一段化开，水线附近保持镜面清晰 */}

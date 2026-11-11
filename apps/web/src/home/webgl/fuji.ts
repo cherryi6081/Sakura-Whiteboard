@@ -23,21 +23,19 @@ const TOP_HALF = 13;
 const Z_RATIO = 0.13;
 
 /**
- * 湖面倒影：与 SVG 版（FujiScene 的 REFLECTION_BANDS）同一套几何参数。
+ * 湖面倒影：与 SVG 版（FujiScene 的 REFLECT_MIRROR）同一套几何参数。
  *
- * - 压缩比 0.72：山体在水线以上高 358 单位，压缩后 257.8，正好从 566 落到 823.8，
- *   占满湖带的 77%，底部留出近岸水面；再压狠一点雪齿间距只剩 11 单位，远看会糊成锯齿。
- * - 三段 96 / 82 / 80 共用同一个压缩比，只在段边界给 0 / +4 / −5 单位的横向错位，
- *   保留水面的台阶感，又不会把山脊和换坡拐点折断。
- * - 不透明度 0.9 / 0.85 / 0.76 直接照搬 SVG，倒影才是“同一座山的镜像”而不是一层灰影。
+ * - 纯镜像，压缩比 1：y' = 2·WATERLINE − y，dx = 0。
+ *   山体水线以上高 358，倒影尖端落到 566 + 358 = 924，比 900 的舞台底多出 24 单位，
+ *   被画面底干净裁掉 —— 这是纯镜像的必然结果，不为它缩放或抬高水线。
+ * - 只有一段：纯镜像下三段之间不再有压缩差和横向错位，只剩不透明度台阶，
+ *   留着必然在段边界留下可见接缝；合并成一段后，自下而上的衰减交给
+ *   着色器里连续的 fade 曲线（与 SVG 的 #wb-ref-fade 同一档）。
+ * - 不透明度 0.9 与 SVG 版一致，倒影才是“同一座山的镜像”而不是一层灰影。
  */
-const REFLECT_COMPRESS = 0.72;
+const REFLECT_COMPRESS = 1;
 const REFLECT_DEPTH = HEIGHT * REFLECT_COMPRESS;
-const REFLECT_BANDS = [
-  { top: 0, bottom: 96, dx: 0, opacity: 0.9 },
-  { top: 96, bottom: 178, dx: 4, opacity: 0.85 },
-  { top: 178, bottom: REFLECT_DEPTH + 4, dx: -5, opacity: 0.76 },
-];
+const REFLECT_OPACITY = 0.9;
 
 function halfWidth(t: number): number {
   // 指数 1.3：山腰收得比直线更紧，侧面才有富士山那种内凹的轮廓；
@@ -297,7 +295,7 @@ export function createMountain(palette: Palette): MountainBuild {
   ridgeMesh.renderOrder = 0;
   group.add(ridgeMesh);
 
-  // ---- 湖面倒影：镜像 + 0.72 压缩 + 三段横向错位 / 不透明度 ----
+  // ---- 湖面倒影：绕水线纯镜像（compress = 1、dx = 0），单段 ----
   // 材质与山体共用同一张 gradientMap、同一组灯光和同一套顶点色（法线也沿用山体的），
   // 所以倒影的受光岩面、背光面、雪顶、雪影与山体是同一档明度，而不是一块同色淡影。
   const reflection = new THREE.Group();
@@ -314,7 +312,7 @@ export function createMountain(palette: Palette): MountainBuild {
 
   const reflectionMeshes: THREE.Mesh[] = [];
 
-  const makeReflectionMaterial = (band: (typeof REFLECT_BANDS)[number]) => {
+  const makeReflectionMaterial = () => {
     const material = new THREE.MeshToonMaterial({
       color: 0xffffff,
       vertexColors: true,
@@ -325,34 +323,31 @@ export function createMountain(palette: Palette): MountainBuild {
     const uniforms = {
       uTime: reflectionUniforms.uTime,
       uWater: reflectionUniforms.uWater,
-      uDx: { value: band.dx },
-      uTop: { value: band.top },
-      uBottom: { value: band.bottom },
-      uOpacity: { value: band.opacity },
+      uOpacity: { value: REFLECT_OPACITY },
       uDepth: { value: REFLECT_DEPTH },
     };
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.vertexShader =
-        "uniform float uTime;\nuniform float uWater;\nuniform float uDx;\nvarying float vRefDepth;\n" +
+        "uniform float uTime;\nuniform float uWater;\nvarying float vRefDepth;\n" +
         shader.vertexShader.replace(
           "#include <begin_vertex>",
           `#include <begin_vertex>
           float refDepth = max(0.0, uWater - transformed.y);
-          // 水面波动只给横向位移，幅度 0.55 + 0.008 × 深度（最深约 2.6 单位）。
-          // 融雪齿压缩后间距约 23 单位，这个量级足以读出齿形，不会把轮廓揉掉
-          transformed.x += uDx + sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.55 + refDepth * 0.008);
+          // 水面波动只给横向位移，幅度 0.55 + 0.008 × 深度（最深约 3.4 单位）。
+          // 纯镜像后雪齿间距恢复到约 20 单位，这个量级足以读出齿形，不会把轮廓揉掉；
+          // 纯镜像没有横向错位，波动的中心恒为 0，峰顶倒影正对峰顶
+          transformed.x += sin(transformed.y * 0.16 + uTime * 1.7 + transformed.z * 0.05) * (0.55 + refDepth * 0.008);
           vRefDepth = refDepth;`,
         );
       shader.fragmentShader =
-        "uniform float uTime;\nuniform float uTop;\nuniform float uBottom;\nuniform float uOpacity;\nuniform float uDepth;\nvarying float vRefDepth;\n" +
+        "uniform float uTime;\nuniform float uOpacity;\nuniform float uDepth;\nvarying float vRefDepth;\n" +
         shader.fragmentShader.replace(
           "#include <colorspace_fragment>",
-          `// 每个材质只画自己那一条水平带：三段共享同一份几何，段边界是硬切
-          if (vRefDepth < uTop || vRefDepth >= uBottom) discard;
-          float d = clamp(vRefDepth / uDepth, 0.0, 1.0);
+          `float d = clamp(vRefDepth / uDepth, 0.0, 1.0);
           // 前 60% 基本不衰减（镜面清晰），之后只淡到 0.82，最底部 4% 再收干净：
-          // 雪顶倒影落在 d≈0.63–1.0，衰减过狠会把整块高光雪面抹成灰
+          // 雪顶倒影落在 d≈0.63–1.0，衰减过狠会把整块高光雪面抹成灰。
+          // 单段连续曲线，没有段边界，也就不会出现横向接缝
           float fade = 1.0 - 0.18 * smoothstep(0.6, 1.0, d);
           float tipFade = 1.0 - smoothstep(0.96, 1.0, d);
           // 轻微的水面明暗呼吸，只影响明度、不参与轮廓
@@ -364,12 +359,10 @@ export function createMountain(palette: Palette): MountainBuild {
     return material;
   };
 
-  for (const band of REFLECT_BANDS) {
-    reflectionMeshes.push(
-      new THREE.Mesh(rockReflectionGeometry, makeReflectionMaterial(band)),
-      new THREE.Mesh(snowReflectionGeometry, makeReflectionMaterial(band)),
-    );
-  }
+  reflectionMeshes.push(
+    new THREE.Mesh(rockReflectionGeometry, makeReflectionMaterial()),
+    new THREE.Mesh(snowReflectionGeometry, makeReflectionMaterial()),
+  );
   reflection.add(...reflectionMeshes);
 
   return {
