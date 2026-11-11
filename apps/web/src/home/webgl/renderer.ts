@@ -72,7 +72,7 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
   const mountain = createMountain(palette);
   const mist = createMist(palette);
   const petals = createPetals(palette);
-  scene.add(water.mesh, mountain.reflection, mountain.group, mist.group, petals.mesh);
+  scene.add(water.mesh, water.lines, mountain.reflection, mountain.group, mist.group, petals.mesh);
 
   const sun = new THREE.DirectionalLight(0xffffff, 2.6);
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9);

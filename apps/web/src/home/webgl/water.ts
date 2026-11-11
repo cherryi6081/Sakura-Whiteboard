@@ -90,9 +90,109 @@ const fragmentShader = /* glsl */ `
 
 export type WaterBuild = {
   mesh: THREE.Mesh;
+  /** 静态水纹：12 条 2.4 单位高的圆角横条（与 SVG 的 .wb-scene__lake-line 同一组坐标） */
+  lines: THREE.Mesh;
   update(time: number): void;
   dispose(): void;
 };
+
+/**
+ * 静态水纹：[舞台 x, 舞台 y, 宽度, 不透明度]，与 FujiScene 的 RIPPLES 逐项一致。
+ * 高度固定 2.4、两端圆角半径 1.2（等于半高，端头是半圆），颜色取 palette.ripple
+ * （= --paper 与 --lake-horizon 的 26% 混合，和 CSS 的 --lake-ripple 同源）。
+ *
+ * 画在水面（z = −2）之前、倒影（z ≈ 0）之后：倒影不透明度 0.9，水纹被压住 9 成，
+ * 只会在轮廓之外的水面上露出来，不会横穿脊线或融雪齿 —— 与 SVG 的叠放次序一致。
+ */
+const LAKE_LINES: Array<[number, number, number, number]> = [
+  [40, 594, 110, 0.5],
+  [1444, 604, 112, 0.42],
+  [236, 620, 86, 0.34],
+  [1268, 636, 94, 0.3],
+  [92, 668, 132, 0.28],
+  [1382, 694, 118, 0.26],
+  [520, 712, 96, 0.22],
+  [980, 732, 108, 0.24],
+  [1150, 790, 102, 0.3],
+  [292, 856, 148, 0.26],
+  [686, 874, 126, 0.22],
+  [1116, 842, 138, 0.24],
+];
+const LINE_H = 2.4;
+const LINE_Z = -1.6;
+
+const lineVertexShader = /* glsl */ `
+  attribute vec2 aSize;
+  attribute vec2 aLocal;
+  attribute float aAlpha;
+  varying vec2 vSize;
+  varying vec2 vLocal;
+  varying float vAlpha;
+
+  void main() {
+    vSize = aSize;
+    // 相对条中心的舞台单位偏移（透视反补偿的 k≈1.0016，这里直接用舞台偏移做 SDF 足够准）
+    vLocal = aLocal;
+    vAlpha = aAlpha;
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+  }
+`;
+
+const lineFragmentShader = /* glsl */ `
+  uniform vec3 uColor;
+  varying vec2 vSize;
+  varying vec2 vLocal;
+  varying float vAlpha;
+
+  void main() {
+    // 端头是半径 = 半高的半圆，用胶囊 SDF 裁出圆角横条
+    float r = vSize.y * 0.5;
+    vec2 p = vec2(abs(vLocal.x) - (vSize.x * 0.5 - r), 0.0);
+    float d = length(max(p, 0.0)) - r;
+    float a = (1.0 - smoothstep(-0.35, 0.35, d)) * vAlpha;
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(uColor, a);
+    #include <colorspace_fragment>
+  }
+`;
+
+function buildLineGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const sizes: number[] = [];
+  const locals: number[] = [];
+  const alphas: number[] = [];
+  const index: number[] = [];
+  let base = 0;
+
+  for (const [x, y, width, opacity] of LAKE_LINES) {
+    const cx = x + width / 2;
+    const cy = y + LINE_H / 2;
+    const hw = width / 2;
+    const hh = LINE_H / 2;
+    for (const [dx, dy] of [
+      [-hw, -hh],
+      [-hw, hh],
+      [hw, -hh],
+      [hw, hh],
+    ]) {
+      const v = toWorld(cx + dx, cy + dy, LINE_Z);
+      positions.push(v.x, v.y, v.z);
+      sizes.push(width, LINE_H);
+      locals.push(dx, dy);
+      alphas.push(opacity);
+    }
+    index.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+    base += 4;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 2));
+  geometry.setAttribute("aLocal", new THREE.Float32BufferAttribute(locals, 2));
+  geometry.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
+  geometry.setIndex(index);
+  return geometry;
+}
 
 function buildGeometry(): THREE.BufferGeometry {
   const x0 = -1400;
@@ -140,14 +240,31 @@ export function createWater(palette: Palette): WaterBuild {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
 
+  // 静态水纹：12 条合并成一份几何，1 个 draw call、96 个顶点
+  const lineGeometry = buildLineGeometry();
+  const lineMaterial = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: palette.ripple } },
+    vertexShader: lineVertexShader,
+    fragmentShader: lineFragmentShader,
+    transparent: true,
+    depthWrite: false,
+  });
+  const lines = new THREE.Mesh(lineGeometry, lineMaterial);
+  lines.frustumCulled = false;
+  // 不设 renderOrder：12 条 z = −1.6，倒影在 z ≈ 0，透明队列按深度从远到近排，
+  // 水纹自然后于水面、先于倒影，与 SVG 的「水纹在倒影下面」一致
+
   return {
     mesh,
+    lines,
     update(time: number) {
       uniforms.uTime.value = time;
     },
     dispose() {
       geometry.dispose();
       material.dispose();
+      lineGeometry.dispose();
+      lineMaterial.dispose();
     },
   };
 }
