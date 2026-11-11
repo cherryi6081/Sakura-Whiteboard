@@ -4,6 +4,7 @@ import { createMountain } from "./fuji";
 import { createWater } from "./water";
 import { createMist } from "./mist";
 import { createPetals } from "./petals";
+import { createCraneLayer, type CraneLayer } from "./crane";
 import { layoutCamera } from "./stage";
 import type { Period } from "../usePeriod";
 
@@ -27,6 +28,12 @@ type MountOptions = {
   period: Period;
   /** 第一帧真正画完之后再回调：用来淡入 canvas、隐藏 SVG 层，避免闪一下 */
   onFirstFrame?: () => void;
+  /**
+   * 丹顶鹤专用透明 canvas（z-index 2，压在山体/小舟之上、枝条之下）。
+   * 鹤必须压住小舟与雁群，而主 canvas 在最底层做不到，所以单独一块；
+   * 这里把它并进同一条渲染循环：同一个 camera、同一个 rAF、同一份 currentSun。
+   */
+  craneCanvas?: HTMLCanvasElement;
 };
 
 function cloneSun(source: SunState): SunState {
@@ -74,6 +81,11 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
   const petals = createPetals(palette);
   scene.add(water.mesh, water.lines, mountain.reflection, mountain.group, mist.group, petals.mesh);
 
+  // 第二块 canvas 只画鹤：独立 WebGL 上下文、透明清屏、与主场景共用 camera 和 currentSun
+  const crane: CraneLayer | null = options.craneCanvas
+    ? createCraneLayer(options.craneCanvas, palette)
+    : null;
+
   const sun = new THREE.DirectionalLight(0xffffff, 2.6);
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9);
   const ambient = new THREE.AmbientLight(0xffffff, 0.08);
@@ -106,6 +118,8 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height, false);
     layoutCamera(camera, width, height);
+    // 鹤 canvas 与主 canvas 同框同尺寸：尺寸/DPR 一起更新，落点用同一份舞台换算
+    crane?.resize(width, height, window.innerWidth, window.innerHeight);
   };
 
   const observer = new ResizeObserver(resize);
@@ -147,6 +161,14 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
 
     renderer.render(scene, camera);
 
+    // 鹤在主画面之后画：camera 的世界矩阵刚被上面这次 render 更新过，
+    // 两块 canvas 天然共用同一个视口与同一帧的鼠标视差；currentSun 也已经阻尼到本帧，
+    // 所以四个时辰切换时鹤与山体是同帧、同曲线变色（不另起一套光）
+    if (crane) {
+      crane.update(time, currentSun);
+      crane.render(camera);
+    }
+
     if (!firstFrame) {
       firstFrame = true;
       options.onFirstFrame?.();
@@ -180,6 +202,7 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
       mountain.dispose();
       mist.dispose();
       petals.dispose();
+      crane?.dispose();
       ambient.dispose();
       sun.dispose();
       hemi.dispose();

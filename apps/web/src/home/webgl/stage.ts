@@ -25,26 +25,48 @@ export function stageY(y: number): number {
   return STAGE_H / 2 - y;
 }
 
+export type StageLayout = {
+  /** 1 舞台单位 = 多少 CSS px */
+  scale: number;
+  /** 舞台左上角在画布内的 CSS px 偏移 */
+  left: number;
+  top: number;
+  stageW: number;
+  stageH: number;
+};
+
 /**
  * 让正交舞台在任意视口里沿用 CSS 的 meet 规则：
  *   stageH = min(vh, vw * 9 / 16)，stageW = stageH * 16 / 9，
  * 舞台底边贴视口底（对应 preserveAspectRatio="xMidYMax meet"）。
  * 视口更宽时上下留白为零、左右露出湖面延展；更窄时左右撑满、上方露出天空。
+ *
+ * 鹤用的第二块 canvas 与主 canvas 尺寸、位置完全相同，也必须用同一份换算，
+ * 否则鹤的落点会和 SVG 版差几个像素 —— 所以这里导出成纯数据，两边共用。
  */
+export function readStageLayout(width: number, height: number): StageLayout {
+  const stageH = Math.min(height, (width * 9) / 16);
+  const stageW = (stageH * 16) / 9;
+  return {
+    stageH,
+    stageW,
+    scale: stageH / STAGE_H,
+    left: (width - stageW) / 2,
+    top: height - stageH,
+  };
+}
+
+/** 相机取景：与 readStageLayout 同一份舞台，只是进一步换算成 fov / 观察中心 */
 export function layoutCamera(camera: THREE.PerspectiveCamera, width: number, height: number): void {
   if (width <= 0 || height <= 0) return;
 
-  const stageH = Math.min(height, (width * 9) / 16);
-  const stageW = (stageH * 16) / 9;
-  const scale = stageH / STAGE_H;
+  const { scale, left, top } = readStageLayout(width, height);
   const visibleH = height / scale;
   const visibleW = width / scale;
-  const stageTop = height - stageH;
-  const stageLeft = (width - stageW) / 2;
 
   // 视口中心换算成舞台坐标 = 相机在 z=0 平面上的观察中心
-  const cx = (width / 2 - stageLeft) / scale;
-  const cy = (height / 2 - stageTop) / scale;
+  const cx = (width / 2 - left) / scale;
+  const cy = (height / 2 - top) / scale;
 
   camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(visibleH / 2 / CAM_DIST));
   camera.aspect = visibleW / visibleH;
