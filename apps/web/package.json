@@ -16,11 +16,13 @@
     "@whiteboard/shared": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.1.0",
     "puppeteer-core": "^24.10.0",
     "typescript": "^5.7.2",

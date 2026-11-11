@@ -47,7 +47,27 @@
   font-weight: 700;
 }
 
-/* ============ 首页 / 展示页 ============ */
+/* ============ 首页内容层 ============ */
+.wb-home__nav { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--ui-fs) * .45) clamp(24px, 5vw, 72px); }
+.wb-home__wordmark { color: var(--rose-900); text-decoration: none; display: inline-flex; align-items: center; gap: calc(var(--ui-fs) * .58); font-size: var(--ui-fs); line-height: 1; font-weight: 700; letter-spacing: .08em; }
+.wb-home__wordmark-mark { display: grid; place-items: center; width: calc(var(--ui-fs) * 1.55); height: calc(var(--ui-fs) * 1.55); border-radius: 50%; background: var(--rose-900); color: var(--paper); font-family: var(--font-display); font-size: calc(var(--ui-fs) * .92); }
+.wb-home__links { display: flex; align-items: center; gap: clamp(18px, 3vw, 40px); font-size: var(--ui-fs); line-height: 1; letter-spacing: .06em; }
+.wb-home__links a { color: var(--rose-900); text-decoration: none; opacity: .8; cursor: pointer; border-bottom: 1px solid transparent; padding-bottom: 3px; transition: opacity var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); } .wb-home__links a:hover { opacity: 1; border-bottom-color: #000; } .wb-home__links a:last-child { border-bottom-color: currentColor; } .wb-home__links a:last-child:hover { border-bottom-color: #000; }
+.wb-home__menu { display: none; border: 0; background: transparent; padding: calc(var(--ui-fs) * .55); cursor: pointer; } .wb-home__menu span { display: block; width: calc(var(--ui-fs) * 1.6); height: 1px; margin: calc(var(--ui-fs) * .36) 0; background: var(--rose-900); }
+.wb-home__content { position: relative; z-index: 3; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: flex-end; padding: 0 24px calc(var(--stage-h) * 0.371111 + clamp(6px, 1.6vh, 22px)); text-align: center; }
+.wb-home__brand { /* 品牌块底边不得压到雪顶：可用高度 = 峰顶 − 导航栏 − 留白，字再大也先让位 */ --brand-space: calc(var(--peak-y) - var(--nav-h) - clamp(16px, 3.2vh, 40px)); --brand-size: clamp(12px, min(2.9vw, 4.3vh, calc(var(--brand-space) - 58px)), 40px); position: absolute; top: calc(var(--nav-h) + clamp(4px, 1.2vh, 14px)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(3px, .5vh, 6px); margin: 0; color: var(--rose-900); text-align: center; animation: wb-home-rise .8s var(--ease-standard) both; }
+.wb-home__brand-name, .wb-home__brand-en { display: block; width: 100%; text-align: center; }
+.wb-home__brand-name { font-family: var(--font-display); font-size: var(--brand-size); line-height: 1; letter-spacing: .18em; font-weight: 600; text-shadow: 0 0 1px rgba(255, 198, 219, .6), 0 0 5px rgba(255, 186, 210, .3), 0 0 10px rgba(255, 176, 203, .16); } .wb-home__brand-en { font-family: var(--font-mono); font-size: 9px; line-height: 1; letter-spacing: .45em; opacity: .62; margin-top: clamp(8px, 1.6vh, 18px); } .wb-home__brand-eyebrow { font-family: var(--font-mono); font-size: 9px; line-height: 1; letter-spacing: .2em; opacity: .75; margin-top: clamp(6px, 1.2vh, 12px); padding-bottom: clamp(4px, .9vh, 8px); border-bottom: 1px solid currentColor; }
+.wb-home__hero { animation: wb-home-rise .9s .1s var(--ease-standard) both; }
+.wb-home__hero h1 { margin: 0; color: var(--rose-900); font-family: var(--font-display); font-size: clamp(26px, min(5vw, 7.2vh), 70px); line-height: 1.12; font-weight: 500; letter-spacing: .04em; } .wb-home__hero h1 em { color: #b32c56; font-style: normal; }
+.wb-home__intro { margin: clamp(10px, 2.4vh, 22px) 0 0; color: var(--neutral-700); font-size: clamp(11px, min(1.35vw, 1.95vh), 14px); line-height: 2; letter-spacing: .06em; } .wb-home__actions { display: flex; align-items: center; justify-content: center; gap: 24px; margin-top: clamp(14px, 3.2vh, 28px); }
+.wb-home__cta { display: inline-flex; align-items: center; gap: calc(var(--ui-fs) * 1.55); height: var(--ui-h); padding: 0 calc(var(--ui-fs) * 1.45) 0 calc(var(--ui-fs) * 1.7); border: 0; border-radius: 3px; background: var(--rose-900); color: var(--paper); font-family: inherit; font-size: var(--ui-fs); line-height: 1; font-weight: 600; letter-spacing: .08em; cursor: pointer; box-shadow: 0 8px 20px rgba(90,42,63,.2); transition: transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); } .wb-home__cta:hover:not(:disabled) { background: var(--rose-700); transform: translateY(-2px); } .wb-home__cta:disabled { opacity: .7; cursor: wait; } .wb-home__cta span { font-size: calc(var(--ui-fs) * 1.45); font-weight: 400; }
+.wb-home__secondary { color: var(--rose-900); font-size: var(--ui-fs); text-decoration: none; letter-spacing: .06em; border-bottom: 1px solid rgba(90,42,63,.45); padding-bottom: calc(var(--ui-fs) * .36); } .wb-home__secondary span { margin-left: calc(var(--ui-fs) * .58); font-size: calc(var(--ui-fs) * 1.3); } .wb-home__error { margin: 12px 0 0; color: var(--danger-text); font-size: 12px; }
+.wb-home__features { position: absolute; left: 0; right: 0; bottom: calc(var(--stage-h) * 0.045); display: grid; grid-template-columns: repeat(3, 1fr); width: min(calc(var(--stage-w) * 0.56), 100%); margin: 0 auto; padding: clamp(16px, 3.4vh, 38px) 0 0; border-top: 1px solid rgba(90,42,63,.16); animation: wb-home-rise 1s .2s var(--ease-standard) both; } .wb-home__features article { display: flex; flex-direction: column; gap: clamp(4px, calc(var(--stage-h) * .0088), 8px); padding: 0 clamp(16px, calc(var(--stage-w) * .019), 30px); border-right: 1px solid rgba(90,42,63,.13); text-align: left; } .wb-home__features article:last-child { border-right: 0; } .wb-home__features span { color: var(--rose-700); font-family: var(--font-mono); font-size: clamp(9px, calc(var(--stage-h) * .0122), 11px); } .wb-home__features strong { color: var(--rose-900); font-family: var(--font-display); font-size: clamp(15px, calc(var(--stage-h) * .0244), 22px); font-weight: 600; } .wb-home__features p { margin: 0; color: var(--neutral-700); font-size: clamp(10px, calc(var(--stage-h) * .0144), 13px); }
+.wb-home__foot-note { margin-left: auto; font-family: var(--font-display); font-size: 12px; } @keyframes wb-home-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 700px) { .wb-home__nav { padding: calc(var(--ui-fs) * .55) 20px; } .wb-home__menu { display: block; position: relative; z-index: 2; } .wb-home__links { display: none; position: absolute; top: 38px; right: 20px; flex-direction: column; align-items: flex-end; gap: 16px; padding: 18px 20px; border: 1px solid rgba(90,42,63,.12); border-radius: 8px; background: rgba(255,255,255,.82); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); } .wb-home__links.is-open { display: flex; } .wb-home__brand { top: calc(var(--nav-h) + 8px); } .wb-home__content { justify-content: flex-end; padding: 0 20px calc(var(--stage-h) * 0.371111 + 12px); } .wb-home__hero { margin-top: 0; } .wb-home__hero h1 { font-size: clamp(24px, min(9vw, 6.2vh), 42px); } .wb-home__intro br { display: none; } .wb-home__actions { flex-direction: column; gap: calc(var(--ui-fs) * 1.3); } .wb-home__features { display: none; } .wb-home__foot-note { display: none; } }
+
+
 /* 首页只保留整页场景与页脚：顶栏、品牌、导航与文案区块都已移除，页内没有可聚焦元素 */
 .wb-home {
   position: relative;
@@ -58,6 +78,21 @@
   /* 单独建立层叠上下文，场景层 z-index:0 不会盖住其他页面的浮层 */
   isolation: isolate;
   background: var(--sky-blue-top);
+  /* 虚拟 16:9 舞台基准：与 .wb-scene__mountains 的 viewBox 0 0 1600 900 及
+     preserveAspectRatio="xMidYMax meet" 完全同步。所有场景内的绝对定位元素
+     （富士山、樱花枝、品牌标题、features）都用这两个变量推导位置，
+     从而保证视口缩放时相对关系丝毫不乱。 */
+  --stage-w: min(100dvw, calc(100dvh * 16 / 9));
+  --stage-h: min(100dvh, calc(100dvw * 9 / 16));
+  /* meet + xMidYMax：舞台底部贴视口底，所以顶部偏移 = 视口高 − 舞台高 */
+  --stage-top: calc(100dvh - var(--stage-h));
+  /* 雪顶峰顶在舞台内的固定比例：viewBox 里峰顶 y=208 / 900 */
+  --peak-y: calc(var(--stage-top) + var(--stage-h) * 0.2311);
+  /* 导航栏实际高度：品牌标题始终从这条线往下排布，不再依赖富士山位置 */
+  --nav-h: calc(var(--ui-fs) * 2.4);
+  /* 控件基准：字号 / 高度同时吃视口宽高，窗口缩小时导航与按钮一起等比缩小 */
+  --ui-fs: clamp(10px, min(1.05vw, 1.6vh), 14px);
+  --ui-h: clamp(30px, min(3.4vw, 5vh), 48px);
 }
 
 /* ---------- 整页场景：富士山全景 + 樱花枝 + 曲线花瓣 ---------- */
@@ -220,16 +255,181 @@
   fill: var(--lake-horizon);
 }
 
+/* 霞带径向渐隐：中心留 0.72 的柔白，到椭圆边缘（100%）完全归零。
+   三档过渡一路递减，没有一处平台段，所以放大看也找不到云的轮廓线 */
+.wb-scene__cloud-stop-0 {
+  stop-color: #ffffff;
+  stop-opacity: 0.72;
+}
+
+.wb-scene__cloud-stop-1 {
+  stop-color: #ffffff;
+  stop-opacity: 0.48;
+}
+
+.wb-scene__cloud-stop-2 {
+  stop-color: #ffffff;
+  stop-opacity: 0.2;
+}
+
+.wb-scene__cloud-stop-3 {
+  stop-color: #ffffff;
+  stop-opacity: 0;
+}
+
+/* 远山剪影：比主山更淡更灰，只做一层色块 */
+.wb-scene__far-ridge {
+  fill: var(--fuji-500);
+  opacity: 0.34;
+}
+
+/* 雁群：只有笔触，不填色 */
+.wb-scene__geese path {
+  fill: none;
+  stroke: var(--rose-900);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.45;
+}
+
+/* ============ 时辰色温 ============ */
+/* 全屏色偏遮罩：只做色相/明度偏移，不改变任何元素的可读性。
+   soft-light 让渐变只"染色"而不像一层塑料膜，底色本身仍由天空渐变决定。
+   默认（白天）完全透明，其余时段由 data-period 打开。 */
+.wb-home__tint {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  opacity: 0;
+  transition: opacity 1200ms linear;
+}
+
+/* 黎明：天顶冷蓝、地平线偏粉 */
+[data-period="dawn"] .wb-home__tint {
+  opacity: 0.72;
+  background: linear-gradient(
+    180deg,
+    rgba(96, 128, 196, 0.9) 0%,
+    rgba(168, 156, 204, 0.6) 46%,
+    rgba(240, 176, 190, 0.55) 100%
+  );
+}
+
+/* 白天：不叠色，保持原有浅蓝 */
+[data-period="day"] .wb-home__tint {
+  opacity: 0;
+}
+
+/* 黄昏：上部偏紫、下部偏橙 */
+[data-period="dusk"] .wb-home__tint {
+  opacity: 0.8;
+  background: linear-gradient(
+    180deg,
+    rgba(120, 96, 168, 0.85) 0%,
+    rgba(196, 132, 148, 0.55) 46%,
+    rgba(240, 158, 104, 0.5) 100%
+  );
+}
+
+/* 夜：靛蓝压暗。透明度刻意压低，黑字在浅湖底上仍要保持足够对比度 */
+[data-period="night"] .wb-home__tint {
+  opacity: 0.5;
+  background: linear-gradient(
+    180deg,
+    rgba(44, 58, 108, 0.95) 0%,
+    rgba(64, 76, 124, 0.7) 55%,
+    rgba(96, 104, 140, 0.5) 100%
+  );
+}
+
+/* ============ 和纸颗粒 ============ */
+/* 一层 160×160 自平铺的 fractalNoise 纤维噪点，multiply 叠在场景上。
+   3.5% 不透明度：放大看得到纸感，正常距离只觉画面"不那么数码"。 */
+.wb-home__grain {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  background-repeat: repeat;
+}
+
+/* ============ 竖排题词 ============ */
+/* 左右留白各一行小字，纯纹理：低透明、不可选、不参与交互 */
+.wb-home__inscription {
+  position: absolute;
+  top: calc(var(--nav-h) + var(--stage-h) * 0.17);
+  z-index: 2;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-family: var(--font-display);
+  font-size: clamp(9px, 1.05vh, 12px);
+  line-height: 1;
+  letter-spacing: 0.42em;
+  color: var(--rose-900);
+  opacity: 0.22;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+.wb-home__inscription--left {
+  left: clamp(10px, 1.6vw, 30px);
+}
+
+.wb-home__inscription--right {
+  right: clamp(10px, 1.6vw, 30px);
+  opacity: 0.17;
+}
+
+/* ============ 朱印 ============ */
+/* 页脚版本号换成方印：细朱色描边 + 竖排两字，微微歪一点贴回"盖章"的手感 */
+.wb-home__seal {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border: 1.5px solid #b4402c;
+  border-radius: 2px;
+  color: #b4402c;
+  font-family: var(--font-display);
+  font-size: calc(var(--ui-fs) * 0.82);
+  line-height: 1.05;
+  letter-spacing: 0;
+  transform: rotate(-2deg);
+  /* 页脚是 flex 行，默认 stretch 会把方印拉成细长条 */
+  align-self: center;
+}
+
+/* 窄屏：两侧没有留白了，题词直接隐藏；颗粒略降，避免小图被噪点糊住 */
+@media (max-width: 700px) {
+  .wb-home__inscription {
+    display: none;
+  }
+
+  .wb-home__grain {
+    opacity: 0.028;
+  }
+}
+
 /* 右侧前景樱花枝：静态 SVG，锚在右上角 */
 .wb-scene__branch {
   position: absolute;
   /* 枝条在花瓣之下、山体之上：花瓣从枝前飘过，不会被枝干或山体遮住 */
   z-index: 2;
-  /* 从右上角下方一点进入，让枝条自然地从画面外伸进来 */
-  top: 7%;
+  /* 从右上角下方一点进入，让枝条自然地从画面外伸进来；
+     定位基于虚拟 16:9 舞台基准，与富士山同步缩放 */
+  top: calc(var(--stage-top) + var(--stage-h) * 0.07);
   right: 0;
-  width: min(44%, 560px);
-  height: 80%;
+  width: calc(var(--stage-w) * 0.44);
+  height: calc(var(--stage-h) * 0.80);
   overflow: visible;
   /* 折线枝条：拐点用 miter 保留硬角，端点用 butt 直接接管下一段，不做圆角过渡 */
   stroke-linejoin: miter;
@@ -243,9 +443,9 @@
   left: 0;
   right: auto;
   top: auto;
-  bottom: 16%;
-  width: min(38%, 480px);
-  height: 78%;
+  bottom: calc(var(--stage-h) * 0.16);
+  width: calc(var(--stage-w) * 0.38);
+  height: calc(var(--stage-h) * 0.78);
 }
 
 /* 新增的独立枝干丛：每组自带主干与分叉，不挂在现有两棵主树上。
@@ -255,37 +455,37 @@
 .wb-scene__branch--left-high {
   left: 0;
   right: auto;
-  top: 3%;
+  top: calc(var(--stage-top) + var(--stage-h) * 0.03);
   bottom: auto;
-  width: min(26%, 300px);
-  height: 26%;
+  width: calc(var(--stage-w) * 0.26);
+  height: calc(var(--stage-h) * 0.26);
 }
 
 .wb-scene__branch--left-low {
   left: 0;
   right: auto;
   top: auto;
-  bottom: 33%;
-  width: min(30%, 360px);
-  height: 34%;
+  bottom: calc(var(--stage-h) * 0.33);
+  width: calc(var(--stage-w) * 0.30);
+  height: calc(var(--stage-h) * 0.34);
 }
 
 .wb-scene__branch--right-high {
   right: 0;
   left: auto;
-  top: 2%;
+  top: calc(var(--stage-top) + var(--stage-h) * 0.02);
   bottom: auto;
-  width: min(24%, 280px);
-  height: 30%;
+  width: calc(var(--stage-w) * 0.24);
+  height: calc(var(--stage-h) * 0.30);
 }
 
 .wb-scene__branch--right-low {
   right: 0;
   left: auto;
   top: auto;
-  bottom: 38%;
-  width: min(28%, 340px);
-  height: 30%;
+  bottom: calc(var(--stage-h) * 0.38);
+  width: calc(var(--stage-w) * 0.28);
+  height: calc(var(--stage-h) * 0.30);
 }
 
 /* ---------- 花瓣入水涟漪 ---------- */
@@ -348,6 +548,110 @@
     transparent 58%,
     color-mix(in srgb, var(--lake-ripple-hi) 24%, transparent) 100%
   );
+}
+
+/* 主圈之外的两圈余波：更宽、描边更细、没有内部垫色，
+   只是把主圈周围那一片水"托"起来，让湖面读成水而不是色块 */
+.wb-scene__ripple-ring--wide {
+  left: -36px;
+  top: -10px;
+  width: 72px;
+  height: 20px;
+  border-width: 1.5px;
+  background: none;
+}
+
+.wb-scene__ripple-ring--wider {
+  left: -52px;
+  top: -14px;
+  width: 104px;
+  height: 28px;
+  border-width: 1px;
+  background: none;
+}
+
+/* ---------- 湖面小舟与渔火 ---------- */
+/* 水线以下唯一的暖色：船身是墨色剪影，灯与光晕是整幅冷蓝里的一点温度锚点 */
+.wb-scene__boat-hull {
+  fill: var(--crane-ink);
+  opacity: 0.62;
+}
+
+.wb-scene__boat-awning {
+  fill: var(--crane-ink);
+  opacity: 0.5;
+}
+
+.wb-scene__boat-pole {
+  fill: none;
+  stroke: var(--crane-ink);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+
+.wb-scene__boat-shadow {
+  fill: var(--crane-ink);
+  opacity: 0.1;
+}
+
+/* 船放大一倍后光晕面积变成 4 倍，中心与中调各压一档，避免糊成一块暖色 */
+.wb-scene__boat-glow-0 {
+  stop-color: var(--lamp-100);
+  stop-opacity: 0.42;
+}
+
+.wb-scene__boat-glow-1 {
+  stop-color: var(--lamp-300);
+  stop-opacity: 0.13;
+}
+
+.wb-scene__boat-glow-2 {
+  stop-color: var(--lamp-300);
+  stop-opacity: 0;
+}
+
+.wb-scene__boat-lamp {
+  fill: var(--lamp-100);
+}
+
+/* 灯与水面倒影共用同一条极缓的呼吸：幅度只有 8%，读成灯火在风里晃，不是闪烁 */
+.wb-scene__boat-glow,
+.wb-scene__boat-shimmer {
+  animation: wb-boat-flicker 5.2s ease-in-out infinite;
+}
+
+.wb-scene__boat-shimmer rect {
+  fill: var(--lamp-300);
+  opacity: 0.42;
+}
+
+/* 越往下越淡：倒影是灯在水面上的拖影，不是三段等亮的色块 */
+.wb-scene__boat-shimmer rect:nth-child(2) {
+  opacity: 0.3;
+}
+
+.wb-scene__boat-shimmer rect:nth-child(3) {
+  opacity: 0.2;
+}
+
+@keyframes wb-boat-flicker {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  24% {
+    opacity: 1;
+  }
+  47% {
+    opacity: 0.86;
+  }
+  68% {
+    opacity: 0.97;
+  }
+  84% {
+    opacity: 0.88;
+  }
 }
 
 /* ---------- 湖面漂浮花瓣层 ---------- */
@@ -498,9 +802,11 @@
   position: absolute;
   left: 0;
   top: 0;
-  /* 层内压在飘落花瓣（3）之上；场景层是 z-index:0 的独立层叠上下文，
-     页脚在 .wb-home 上 z-index:2，所以鹤永远在页脚文字之下，不会压住文字 */
-  z-index: 4;
+  /* 飞过樱花枝时要被枝条挡住：层级压到 1，与山体同层（DOM 在后 → 仍压在山体之上），
+     低于枝条 / 涟漪 / 漂浮花瓣（2）与飘落花瓣（3）。
+     场景层是 z-index:0 的独立层叠上下文，页脚在 .wb-home 上 z-index:2，
+     所以鹤永远在页脚文字之下，不会压住文字 */
+  z-index: 1;
   /* 基准高度 9.2vh（1440×900 约 83px），随视口缩放并夹在 76–132px；
      宽度按 viewBox 240×130 取 1.8462 倍，纵横比固定 */
   --crane-h: clamp(76px, 9.2vh, 132px);
@@ -998,13 +1304,17 @@
 }
 
 .wb-home__foot {
-  position: relative;
-  z-index: 2;
+  /* 脱离文档流：主体区的底边按水线计算，不再被页脚高度顶偏 */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
   flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: auto;
+  margin-top: 0;
   padding: var(--space-4) var(--space-8) var(--space-6);
   font-size: var(--text-footer);
   line-height: var(--lh-footer);
@@ -1013,7 +1323,64 @@
   color: var(--rose-900);
 }
 
-/* 平板：场景仍是整页背景，页脚留白与移动端一致收紧 */
+/* 首页文字统一为黑色 */
+.wb-home__nav,
+.wb-home__nav a,
+.wb-home__wordmark,
+.wb-home__content,
+.wb-home__content h1,
+.wb-home__content em,
+.wb-home__content p,
+.wb-home__content strong,
+.wb-home__content span,
+.wb-home__foot,
+.wb-home__foot-note {
+  color: #000000;
+}
+
+.wb-home__wordmark-mark {
+  color: #000000;
+  background: var(--paper);
+  border: 1px solid #000000;
+}
+
+.wb-home__cta {
+  color: #000000;
+  background: var(--paper);
+  border: 1px solid #000000;
+}
+
+.wb-home__cta:hover:not(:disabled) {
+  color: #000000;
+  background: var(--paper);
+}
+
+.wb-home__secondary {
+  color: #000000;
+  border-bottom-color: #000000;
+}
+
+.wb-home__brand-eyebrow,
+.wb-home__features span {
+  color: #000000;
+}
+/* 首页固定为单屏视口，避免页面出现纵向滚动条 */
+html:has(.wb-home),
+body:has(.wb-home) {
+  overflow: hidden;
+}
+
+.wb-home {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-home__content {
+  min-height: 0;
+  overflow: hidden;
+}
+
 @media (max-width: 900px) {
   .wb-home__foot {
     padding: var(--space-4) var(--space-6) var(--space-8);
@@ -1057,33 +1424,33 @@
   }
 
   .wb-scene__branch {
-    width: 58%;
-    height: 72%;
+    width: calc(var(--stage-w) * 0.58);
+    height: calc(var(--stage-h) * 0.72);
   }
 
   /* 新增四组在窄屏按同一比例收口，保持贴边与高低错落，不撑满画面 */
   .wb-scene__branch--left-high {
-    width: 44%;
-    height: 22%;
-    top: 2%;
+    width: calc(var(--stage-w) * 0.44);
+    height: calc(var(--stage-h) * 0.22);
+    top: calc(var(--stage-top) + var(--stage-h) * 0.02);
   }
 
   .wb-scene__branch--left-low {
-    width: 48%;
-    height: 28%;
-    bottom: 36%;
+    width: calc(var(--stage-w) * 0.48);
+    height: calc(var(--stage-h) * 0.28);
+    bottom: calc(var(--stage-h) * 0.36);
   }
 
   .wb-scene__branch--right-high {
-    width: 42%;
-    height: 24%;
-    top: 2%;
+    width: calc(var(--stage-w) * 0.42);
+    height: calc(var(--stage-h) * 0.24);
+    top: calc(var(--stage-top) + var(--stage-h) * 0.02);
   }
 
   .wb-scene__branch--right-low {
-    width: 46%;
-    height: 26%;
-    bottom: 40%;
+    width: calc(var(--stage-w) * 0.46);
+    height: calc(var(--stage-h) * 0.26);
+    bottom: calc(var(--stage-h) * 0.40);
   }
 }
 
@@ -1096,6 +1463,12 @@
   /* 花瓣不飘了，涟漪也跟着一起隐藏（脚本同时不会创建涟漪动画） */
   .wb-scene__ripples {
     display: none;
+  }
+
+  /* 渔火的呼吸是装饰性动效，reduce 下停在满亮，灯与光晕都保留 */
+  .wb-scene__boat-glow,
+  .wb-scene__boat-shimmer {
+    animation: none;
   }
 
   /* 漂浮花瓣是静态装饰，不能跟着落瓣一起消失：只停漂移动画，花瓣与静态水纹仍然可见 */
@@ -1620,20 +1993,42 @@
   text-decoration: line-through;
 }
 
-/* ============ 登录 / 注册 ============ */
+/* ============ 登录 / 注册（障子居中：整幅场景 + 和纸卡片 + 朱印） ============ */
 .wb-auth {
+  /* 场景层与首页共用同一套 16:9 舞台变量，竖排题词、色温遮罩、颗粒层才能原样复用 */
+  --stage-w: min(100dvw, calc(100dvh * 16 / 9));
+  --stage-h: min(100dvh, calc(100dvw * 9 / 16));
+  --stage-top: calc(100dvh - var(--stage-h));
+  --nav-h: calc(var(--ui-fs) * 2.4);
+  --ui-fs: clamp(10px, min(1.05vw, 1.6vh), 14px);
+  /* 和纸上的墨色与朱色：朱色与页脚印章同款 */
+  --auth-ink: #2f2a26;
+  --auth-muted: #6b6058;
+  --auth-washi: rgba(253, 250, 245, 0.94);
+  --auth-vermilion: #b4402c;
+  /* 强度四档：朱 → 黄褐 → 青灰 → 深青，与和纸上的墨、朱同属低饱和暖冷对打 */
+  --auth-weak: #b4402c;
+  --auth-fair: #b07a3c;
+  --auth-strong: #3f6b57;
+  --auth-very-strong: #2f4a44;
   position: relative;
-  min-height: 100%;
-  display: grid;
-  place-items: center;
-  padding: var(--space-12) var(--space-4);
-  background: var(--bg);
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2vh, 20px);
+  min-height: 100dvh;
+  padding: clamp(56px, 9vh, 92px) var(--space-4) clamp(24px, 4vh, 48px);
+  overflow: hidden;
+  background: var(--sky-blue-top);
 }
 
 .wb-auth__back {
   position: absolute;
-  top: var(--space-4);
-  left: var(--space-4);
+  top: clamp(14px, 2.4vh, 26px);
+  left: clamp(14px, 2vw, 30px);
+  z-index: 4;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -1642,47 +2037,430 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--auth-ink);
   font: inherit;
   font-size: var(--text-caption);
-  cursor: pointer;
+  text-decoration: none;
+  opacity: 0.72;
+  transition: opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
 }
 
 .wb-auth__back:hover {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* 雾行：两条羽化白雾以不同周期横穿卡片后方；只用 transform / opacity，不触发重排 */
+.wb-auth__fog {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wb-auth__fog-band {
+  position: absolute;
+  top: calc(var(--nav-h) + var(--stage-h) * 0.17);
+  left: 0;
+  width: 64%;
+  height: clamp(36px, 5.4vh, 56px);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.5) 38%,
+    rgba(255, 255, 255, 0.45) 62%,
+    transparent 100%
+  );
+  filter: blur(clamp(10px, 1.6vh, 18px));
+  will-change: transform;
+  animation: wb-auth-fog 26s linear infinite;
+}
+
+.wb-auth__fog-band--slow {
+  top: calc(var(--nav-h) + var(--stage-h) * 0.225);
+  width: 52%;
+  height: clamp(24px, 3.6vh, 40px);
+  opacity: 0.66;
+  animation-duration: 38s;
+  animation-delay: -9s;
+}
+
+@keyframes wb-auth-fog {
+  from {
+    transform: translate3d(-108%, 0, 0);
+  }
+  to {
+    transform: translate3d(172%, 0, 0);
+  }
+}
+
+/* 渔火呼吸：只改光晕明暗，位置与水下倒影不动，读起来是灯在风里晃 */
+.wb-auth .wb-scene__boat-glow {
+  animation: wb-auth-lamp 6s ease-in-out infinite;
+}
+
+@keyframes wb-auth-lamp {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-auth__fog-band,
+  .wb-auth .wb-scene__boat-glow {
+    animation: none;
+  }
+}
+
+/* 卡片 + 朱印共用同一个定位容器：印章压在卡片右下角外沿 */
+.wb-auth__panel {
+  position: relative;
+  z-index: 3;
+  width: min(448px, 100%);
 }
 
 .wb-auth__card {
-  width: 400px;
-  max-width: 100%;
-  padding: var(--space-8);
-  background: var(--paper);
-  border: 1px solid var(--neutral-200);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* 三字段（昵称 / 邮箱 / 密码）时的自然高度，login 两字段也保持同样体量，切换不跳 */
+  min-height: clamp(392px, 52vh, 470px);
+  padding: clamp(24px, 3.4vh, 40px) clamp(22px, 2.6vw, 36px) clamp(22px, 3vh, 34px);
+  background: var(--auth-washi);
+  border: 1px solid rgba(90, 42, 63, 0.16);
+  border-radius: 2px;
+  box-shadow: 0 18px 48px rgba(58, 46, 51, 0.1);
+  backdrop-filter: blur(3px);
+  color: var(--auth-ink);
+}
+
+.wb-auth__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--auth-ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-decoration: none;
+}
+
+.wb-auth__brand-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--auth-ink);
+  color: #fdfaf5;
+  font-size: 11px;
+}
+
+.wb-auth__title {
+  margin: clamp(14px, 2.2vh, 22px) 0 0;
+  color: var(--auth-ink);
+  font-family: var(--font-display);
+  font-size: clamp(24px, 2.4vw + 6px, 30px);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+}
+
+.wb-auth__caption {
+  margin: 8px 0 0;
+  color: var(--auth-muted);
+  font-size: var(--text-caption);
+  line-height: 1.7;
 }
 
 .wb-auth__form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  margin-top: var(--space-6);
+  gap: clamp(14px, 2.2vh, 20px);
+  margin-top: clamp(18px, 2.8vh, 26px);
 }
 
 .wb-auth__fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: clamp(12px, 1.8vh, 18px);
+}
+
+/* 和纸上的字段：去掉填充与圆角，只留一条墨线；聚焦时线转为朱色并加粗一档 */
+.wb-auth .wb-field {
+  gap: 4px;
+}
+
+.wb-auth .wb-field__label {
+  color: var(--auth-muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.wb-auth .wb-input {
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(47, 42, 38, 0.32);
+  border-radius: 0;
+  background: transparent;
+  color: var(--auth-ink);
+  font-size: 15px;
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.wb-auth .wb-input::placeholder {
+  color: rgba(107, 96, 88, 0.45);
+}
+
+.wb-auth .wb-input:focus,
+.wb-auth .wb-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--auth-vermilion);
+  box-shadow: inset 0 -1px 0 var(--auth-vermilion);
+}
+
+.wb-auth .wb-help {
+  color: var(--auth-muted);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* 密码框：右侧眼睛按钮；按钮只在框内占一条线，不改变字段高度 */
+.wb-auth__password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wb-auth__password .wb-input {
+  padding-right: 30px;
+}
+
+.wb-auth__eye {
+  position: absolute;
+  right: 0;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--auth-muted);
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.wb-auth__eye:hover {
+  opacity: 1;
+}
+
+.wb-auth__eye:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(180, 64, 44, 0.38);
+}
+
+/* 强度条：四段等分、间距 6px，只点亮当前档位之前的格子；与下划线留出 16px 净空 */
+.wb-auth__strength {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.wb-auth__strength-bars {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.wb-auth__strength-bars span {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(47, 42, 38, 0.12);
+  transition: background var(--dur-base) var(--ease-standard);
+}
+
+.wb-auth__strength[data-level="weak"] .wb-auth__strength-bars span[data-on] { background: var(--auth-weak); }
+.wb-auth__strength[data-level="fair"] .wb-auth__strength-bars span[data-on] { background: var(--auth-fair); }
+.wb-auth__strength[data-level="strong"] .wb-auth__strength-bars span[data-on] { background: var(--auth-strong); }
+.wb-auth__strength[data-level="very-strong"] .wb-auth__strength-bars span[data-on] { background: var(--auth-very-strong); }
+
+.wb-auth__strength-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+  color: var(--auth-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+}
+
+.wb-auth__strength-level {
+  font-weight: 600;
+}
+
+.wb-auth__strength[data-level="weak"] .wb-auth__strength-level { color: var(--auth-weak); }
+.wb-auth__strength[data-level="fair"] .wb-auth__strength-level { color: var(--auth-fair); }
+.wb-auth__strength[data-level="strong"] .wb-auth__strength-level { color: var(--auth-strong); }
+.wb-auth__strength[data-level="very-strong"] .wb-auth__strength-level { color: var(--auth-very-strong); }
+
+/* hover / focus 解释：悬停档位名或问号时，在上方展开一张小纸片 */
+.wb-auth__strength-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 3px;
+  cursor: help;
+  outline: none;
+}
+
+.wb-auth__strength-help:focus-visible {
+  box-shadow: 0 0 0 2px rgba(180, 64, 44, 0.22);
+}
+
+.wb-auth__strength-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(47, 42, 38, 0.28);
+  border-radius: 50%;
+  color: var(--auth-muted);
+  font-size: 8px;
+  line-height: 1;
+  transition: border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-auth__strength-help:hover .wb-auth__strength-mark,
+.wb-auth__strength-help:focus-visible .wb-auth__strength-mark {
+  border-color: var(--auth-vermilion);
+  color: var(--auth-vermilion);
+}
+
+.wb-auth__strength-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -4px;
+  z-index: 6;
+  width: max-content;
+  max-width: 246px;
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 42, 38, 0.12);
+  border-radius: 6px;
+  background: rgba(253, 250, 245, 0.98);
+  box-shadow: 0 10px 24px rgba(58, 46, 51, 0.14);
+  color: var(--auth-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(3px);
+  transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard),
+    visibility var(--dur-fast) var(--ease-standard);
+  pointer-events: none;
+}
+
+.wb-auth__strength-help:hover .wb-auth__strength-tip,
+.wb-auth__strength-help:focus-visible .wb-auth__strength-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* 主按钮：朱色实底，字距拉开来充当「按下印章」的动作 */
+.wb-auth .wb-btn--primary {
+  height: 44px;
+  border-radius: 2px;
+  background: var(--auth-vermilion);
+  color: #fdfaf5;
+  letter-spacing: 0.18em;
+  box-shadow: 0 8px 20px rgba(180, 64, 44, 0.2);
+}
+
+.wb-auth .wb-btn--primary:hover:not(:disabled) {
+  background: #9c3226;
+}
+
+.wb-auth .wb-btn--primary:active:not(:disabled) {
+  background: #8a2b21;
+}
+
+.wb-auth__switch {
+  align-self: flex-start;
+  padding: 0 0 2px;
+  border: 0;
+  border-bottom: 1px solid rgba(107, 96, 88, 0.35);
+  background: none;
+  color: var(--auth-muted);
+  font: inherit;
+  font-size: var(--text-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-auth__switch:hover {
+  color: var(--auth-ink);
+  border-bottom-color: var(--auth-ink);
+}
+
+/* 朱印：斜盖在卡片右下角，压住纸边 */
+.wb-auth__seal {
+  position: absolute;
+  right: -14px;
+  bottom: -14px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--auth-vermilion);
+  border-radius: 3px;
+  background: rgba(253, 250, 245, 0.55);
+  color: var(--auth-vermilion);
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.05;
+  transform: rotate(-3deg);
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .wb-auth__aside {
-  margin-top: var(--space-6);
+  position: relative;
+  z-index: 3;
   text-align: center;
 }
 
 .wb-auth__aside .wb-link {
+  color: var(--auth-ink);
   font-size: var(--text-caption);
+  opacity: 0.72;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(47, 42, 38, 0.28);
+  padding-bottom: 2px;
+}
+
+.wb-auth__aside .wb-link:hover {
+  opacity: 1;
+  border-bottom-color: var(--auth-ink);
 }
 
 /* ============ 认领对话框 ============ */
@@ -1857,3 +2635,53 @@
     box-shadow: var(--shadow-1);
   }
 }
+
+/* ---------- WebGL 场景层（仅桌面端挂载；移动端完全不加载） ---------- */
+/* canvas 铺满场景层、压在最底下；天空仍是 .wb-home__scene 的 CSS 渐变，
+   canvas 透明，所以两个页面（首页 / 登录）共用同一套天空与色彩 token */
+.wb-scene__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 渲染模式在首帧前就判定完毕，canvas 第一帧即为最终不透明度：
+   没有 0→1 的过渡，也就不会出现“先 SVG 再淡入 WebGL”的中间态 */
+.wb-home__scene[data-render="webgl"] .wb-scene__canvas {
+  opacity: 1;
+}
+
+/* WebGL 接管水面、雾、山体、雪盖与花瓣后，把这些重复的 SVG 层隐掉；
+   樱花枝、鹤、小舟、雁群仍作为前景覆盖层留在 SVG 里。
+   例外是 .wb-scene__water：首帧画完之前它是静态湖色衬底，先在（见下一条），
+   避免 three 还在下载时水线以下露出天空色。 */
+.wb-home__scene[data-render="webgl"] .wb-scene__lake,
+.wb-home__scene[data-render="webgl"] .wb-scene__lake-fade,
+.wb-home__scene[data-render="webgl"] .wb-scene__lake-line,
+.wb-home__scene[data-render="webgl"] .wb-scene__lake-horizon,
+.wb-home__scene[data-render="webgl"] .wb-scene__reflection,
+.wb-home__scene[data-render="webgl"] .wb-scene__far-ridge,
+.wb-home__scene[data-render="webgl"] .wb-scene__cloud,
+.wb-home__scene[data-render="webgl"] .wb-scene__fuji,
+.wb-home__scene[data-render="webgl"] .wb-scene__fuji-shadow,
+.wb-home__scene[data-render="webgl"] .wb-scene__foothill,
+.wb-home__scene[data-render="webgl"] .wb-scene__snow,
+.wb-home__scene[data-render="webgl"] .wb-scene__snow-shadow,
+.wb-home__scene[data-render="webgl"] .wb-scene__snow-fold,
+.wb-home__scene[data-render="webgl"] .wb-scene__snow-crest,
+.wb-home__scene[data-render="webgl"] .wb-scene__snow-contact,
+.wb-home__scene[data-render="webgl"] .wb-scene__petals {
+  display: none;
+}
+
+/* WebGL 首帧画完之后，静态湖色衬底交接给 WebGL 水面。
+   两者水线以下用同一套 --lake-* 四档色，交接时没有色差跳变 */
+.wb-home__scene[data-render="webgl"][data-webgl-ready="true"] .wb-scene__water {
+  display: none;
+}
+

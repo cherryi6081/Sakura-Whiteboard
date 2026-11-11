@@ -1,5 +1,7 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
+import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
+import type { Period } from "./usePeriod";
 import {
   LEFT_FAR_PAINT,
   LEFT_FAR_TREE,
@@ -45,6 +47,14 @@ import {
   planRipples,
   splashFrames,
   waterTime,
+  WIDE_PEAK_OPACITY,
+  WIDE_SPLASH_DELAY,
+  WIDE_SPLASH_SECONDS,
+  WIDE_START_SCALE,
+  WIDER_PEAK_OPACITY,
+  WIDER_SPLASH_DELAY,
+  WIDER_SPLASH_SECONDS,
+  WIDER_START_SCALE,
   type RippleInput,
 } from "./petalRipples";
 
@@ -87,6 +97,8 @@ export type Petal = {
   opacity: number;
   tone: PetalTone;
   path: PetalPath;
+  /** 贴近水面前行的慢速花瓣：周期拉长，制造风流般的滞空感 */
+  slow?: boolean;
 };
 
 export const PETALS: Petal[] = [
@@ -114,10 +126,10 @@ export const PETALS: Petal[] = [
   { left: 94, top: 24, size: 20, dur: 16, delay: -1, spin: 1.1, opacity: 0.82, tone: "deep", path: "a" },
   { left: 95, top: 18, size: 13, dur: 25, delay: -18, spin: 0.8, opacity: 0.45, tone: "light", path: "c" },
   { left: 68, top: 31, size: 11, dur: 28, delay: -23, spin: 1.2, opacity: 0.34, tone: "light", path: "a" },
-  { left: 76, top: 34, size: 16, dur: 19, delay: -13, spin: 1.05, opacity: 0.64, tone: "mid", path: "c" },
-  { left: 84, top: 37, size: 13, dur: 24, delay: -5, spin: 0.9, opacity: 0.52, tone: "light", path: "a" },
+  { left: 76, top: 34, size: 16, dur: 19, delay: -13, spin: 1.05, opacity: 0.64, tone: "mid", path: "c", slow: true },
+  { left: 84, top: 37, size: 13, dur: 24, delay: -5, spin: 0.9, opacity: 0.52, tone: "light", path: "a", slow: true },
   { left: 91, top: 32, size: 18, dur: 17, delay: -15, spin: 1.15, opacity: 0.72, tone: "mid", path: "a" },
-  { left: 96, top: 40, size: 15, dur: 22, delay: -7, spin: 1, opacity: 0.6, tone: "deep", path: "b" },
+  { left: 96, top: 40, size: 15, dur: 22, delay: -7, spin: 1, opacity: 0.6, tone: "deep", path: "b", slow: true },
 ];
 
 /**
@@ -408,7 +420,7 @@ function petalStyle(petal: Petal): CSSProperties {
     "--p-top": `${petal.top}%`,
     "--p-left": `${petal.left}%`,
     "--p-size": `max(var(--petal-floor), calc(var(--crane-h) * ${ratio}))`,
-    "--p-dur": `${petal.dur}s`,
+    "--p-dur": `${petal.slow ? +(petal.dur * 1.75).toFixed(1) : petal.dur}s`,
     "--p-delay": `${petal.delay}s`,
     "--p-spin": petal.spin,
     "--p-opacity": petal.opacity,
@@ -447,8 +459,20 @@ const MOBILE_LEFT_VISIBLE = 8;
 /** 并发统计的时间窗口（秒）：覆盖 14–29s 的各种周期 */
 const RIPPLE_HORIZON = 900;
 
-export function FujiScene() {
+export function FujiScene({ period }: { period: Period }) {
   const rippleLayer = useRef<HTMLDivElement>(null);
+  /**
+   * 桌面端 WebGL 接管天空以外的绘画层后，SVG 里被替掉的部分用 CSS 隐藏，
+   * 只保留樱花枝、鹤、小舟、雁群这些前景覆盖层。渲染模式在首次渲染前同步判定：
+   * `data-render` 第一帧就是最终值，不会先画 SVG 再跳成 WebGL。
+   * 判定不通过（窄屏 / reduce / 省流 / 无 WebGL2）时首帧直接出 SVG。
+   */
+  const [renderMode, setRenderMode] = useState<"svg" | "webgl">(decideRenderMode);
+  /** WebGL 首帧画完的标志：用于把静态湖色衬底交接给 WebGL 水面 */
+  const [webglReady, setWebglReady] = useState(false);
+  useEffect(() => {
+    if (renderMode !== "webgl") setWebglReady(false);
+  }, [renderMode]);
 
   /**
    * 涟漪的排布。为什么放在 effect 里而不是渲染时算：
@@ -515,12 +539,12 @@ export function FujiScene() {
         const node = petalNodes[key];
         if (node) {
           const fade = petalFade(waterTime(input, waterlinePct, vh));
-          const frames: Keyframe[] = [
-            { opacity: 0, offset: 0 },
-            { opacity: petal.opacity, offset: 0.05 },
-            { opacity: petal.opacity, offset: fade.start },
-            { opacity: 0, offset: fade.end },
-          ];
+          // 入水点在周期极靠前时，fade.start 会早于固定的 0.05 淡入点；
+          // 关键帧 offset 必须单调不减，所以这里取两者的较小值，且不重复插同一个点
+          const fadeIn = Math.min(0.05, fade.start);
+          const frames: Keyframe[] = [{ opacity: 0, offset: 0 }];
+          if (fadeIn < fade.start) frames.push({ opacity: petal.opacity, offset: fadeIn });
+          frames.push({ opacity: petal.opacity, offset: fade.start }, { opacity: 0, offset: fade.end });
           if (fade.end < 0.999) frames.push({ opacity: 0, offset: 1 });
           animations.push(
             node.animate(frames, {
@@ -551,8 +575,9 @@ export function FujiScene() {
         slot.style.left = `${plan.x.toFixed(2)}%`;
         const rings = Array.from(slot.children) as HTMLElement[];
         const timing = { duration: plan.cycle * 1000, delay: plan.delay * 1000, iterations: Infinity };
-        // 三圈叠加：外圈 1.7s、内圈 1.45s（晚 0.32s）、入水瞬间 0.5s 的亮面短闪。
-        // 都跟花瓣同周期同延迟，只在入水时刻张开一次，不重影也不同拍
+        // 五圈叠加：外圈 1.7s、内圈 1.45s（晚 0.32s）、两圈余波 2.4s / 3.2s（更宽更淡）、
+        // 入水瞬间 0.5s 的亮面短闪。都跟花瓣同周期同延迟，只在入水时刻张开一次，
+        // 不重影也不同拍；余波从更小的相对尺度起振，张开后仍落在主圈之外
         animations.push(
           rings[0].animate(splashFrames(plan.at, plan.cycle, OUTER_SPLASH_SECONDS, OUTER_PEAK_OPACITY), timing),
           rings[1].animate(
@@ -565,6 +590,26 @@ export function FujiScene() {
             timing,
           ),
           rings[2].animate(
+            splashFrames(
+              plan.at + WIDE_SPLASH_DELAY / plan.cycle,
+              plan.cycle,
+              WIDE_SPLASH_SECONDS,
+              WIDE_PEAK_OPACITY,
+              WIDE_START_SCALE,
+            ),
+            timing,
+          ),
+          rings[3].animate(
+            splashFrames(
+              plan.at + WIDER_SPLASH_DELAY / plan.cycle,
+              plan.cycle,
+              WIDER_SPLASH_SECONDS,
+              WIDER_PEAK_OPACITY,
+              WIDER_START_SCALE,
+            ),
+            timing,
+          ),
+          rings[4].animate(
             splashFrames(plan.at, plan.cycle, FLASH_SPLASH_SECONDS, FLASH_PEAK_OPACITY, 0.5),
             timing,
           ),
@@ -593,7 +638,18 @@ export function FujiScene() {
   }, []);
 
   return (
-    <div className="wb-home__scene" aria-hidden="true">
+    <div
+      className="wb-home__scene"
+      aria-hidden="true"
+      data-render={renderMode}
+      data-webgl-ready={webglReady ? "true" : "false"}
+    >
+      <WebglScene
+        period={period}
+        mode={renderMode}
+        onModeChange={setRenderMode}
+        onFirstFrame={() => setWebglReady(true)}
+      />
       {/* 水天延展层：天空渐变已由 .wb-home__scene 的 CSS 背景铺满整个视口，
           但湖面渐变画在下面的 SVG 里，只能覆盖 16:9 内容宽。视口比 16:9 更宽时
           （21:9、带鱼屏）内容两侧会露出"天空一直延伸到画面底部"的色带。
@@ -622,6 +678,20 @@ export function FujiScene() {
             <stop offset="78%" className="wb-scene__ref-stop-2" />
             <stop offset="100%" className="wb-scene__ref-stop-3" />
           </linearGradient>
+          {/* 霞带：径向渐隐。以椭圆自身为 100%，横竖两个方向同步柔化，
+              没有「中间一整条实白、到端头才消失」的硬芯，读起来只是一团薄雾 */}
+          <radialGradient id="wb-cloud-soft">
+            <stop offset="0%" className="wb-scene__cloud-stop-0" />
+            <stop offset="34%" className="wb-scene__cloud-stop-1" />
+            <stop offset="70%" className="wb-scene__cloud-stop-2" />
+            <stop offset="100%" className="wb-scene__cloud-stop-3" />
+          </radialGradient>
+          {/* 渔火光晕：中心近白偏黄、向外两档收淡到全透明 */}
+          <radialGradient id="wb-boat-glow">
+            <stop offset="0%" className="wb-scene__boat-glow-0" />
+            <stop offset="42%" className="wb-scene__boat-glow-1" />
+            <stop offset="100%" className="wb-scene__boat-glow-2" />
+          </radialGradient>
           {REFLECTION_BANDS.map((band) => (
             <clipPath id={band.id} key={band.id}>
               <rect x="-140" y={band.y} width="1880" height={band.height} />
@@ -629,11 +699,31 @@ export function FujiScene() {
           ))}
         </defs>
 
-        {/* 湖面：从水线一直铺到画面底边 */}
-        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-lake-grad)" />
+        {/* 霞带（峰侧斜霞）：左右两条微微倾斜、互不等高的云带自画面外伸入，
+            中央整块让开品牌区（樱花白板 / SHIRO / REAL-TIME… 约占 x 650–950、y 45–145）。
+            上沿约在 y≈152（倾斜端头已渐隐到几乎无色），不与品牌区重叠；肩部再补一道极淡短纱，
+            它压在雪顶下方、且被后画的山体压住中段，读作从山后飘过的薄云。
+            全部用同一个径向渐隐渐变，横竖两个方向一起化进天空，没有硬边 */}
+        <ellipse className="wb-scene__cloud" cx="270" cy="178" rx="330" ry="18" transform="rotate(-2.5 270 178)" fill="url(#wb-cloud-soft)" opacity="0.62" />
+        <ellipse className="wb-scene__cloud" cx="300" cy="204" rx="235" ry="11" transform="rotate(-2 300 204)" fill="url(#wb-cloud-soft)" opacity="0.36" />
+        <ellipse className="wb-scene__cloud" cx="1310" cy="197" rx="355" ry="20" transform="rotate(2.2 1310 197)" fill="url(#wb-cloud-soft)" opacity="0.55" />
+        <ellipse className="wb-scene__cloud" cx="800" cy="248" rx="230" ry="11" transform="rotate(-1.2 800 248)" fill="url(#wb-cloud-soft)" opacity="0.28" />
 
-        {/* 静态横向波纹与反光，不做动画、不引滤镜。
-            画在倒影之下：只在水线两端的开阔水面与倒影底边以下出现，不会横穿倒影轮廓 */}
+        {/* 雁群：极简 V 形笔触斜向上飞，只走右侧与左上空域，避开中央品牌区 */}
+        <g className="wb-scene__geese">
+          <path d="M1150 196 q10 -9 17 0 q7 -9 17 0" />
+          <path d="M1198 216 q8 -7 14 0 q6 -7 14 0" />
+          <path d="M1112 222 q7 -6 12 0 q5 -6 12 0" />
+          <path d="M1230 190 q6 -5 10 0 q4 -5 10 0" />
+          <path d="M300 246 q7 -6 12 0 q5 -6 12 0" />
+          <path d="M352 262 q6 -5 10 0 q4 -5 10 0" />
+        </g>
+
+        {/* 湖面：从水线一直铺到画面底边 */}
+        <rect className="wb-scene__lake" x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-lake-grad)" />
+
+        {/* 静态水面反光：先画在倒影下面，只在倒影轮廓之外露出，
+            所以不会有一条亮线横穿脊线或融雪齿 */}
         {RIPPLES.map(([x, y, width, opacity]) => (
           <rect
             className="wb-scene__lake-line"
@@ -647,8 +737,9 @@ export function FujiScene() {
           />
         ))}
 
-        {/* 倒影：整座山连同雪顶垂直镜像，三段各自小幅横向错位、统一纵向压缩，
-            不透明度接近山体本身（0.9 / 0.85 / 0.76），保证雪顶、山脊与融雪齿都能认出来 */}
+        {/* 倒影：整座山连同雪顶垂直镜像，三段共用同一个压缩比 0.72，
+            只在段边界留几单位的横向错位；不透明度 0.9 / 0.85 / 0.76，
+            倒影的岩面、背光面、雪顶与雪影都直接复用山体那一套形状与色值 */}
         {REFLECTION_BANDS.map((band) => (
           <g clipPath={`url(#${band.id})`} key={band.id}>
             <g
@@ -661,10 +752,38 @@ export function FujiScene() {
           </g>
         ))}
 
-        {/* 水面加深层：前 55% 近乎不动，78% 之后才把最靠近画面底部的一段化进湖色 */}
-        <rect x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-ref-fade)" />
+        {/* 水面渐隐层：前 55% 完全不动倒影，78% 之后才明显压向湖色，
+            只把最靠近画面底部的一段化开，水线附近保持镜面清晰 */}
+        <rect className="wb-scene__lake-fade" x="0" y={WATERLINE} width="1600" height={900 - WATERLINE} fill="url(#wb-ref-fade)" />
 
         <rect className="wb-scene__lake-horizon" x="0" y={WATERLINE - 1} width="1600" height="2.4" />
+
+        {/* 湖面小舟与渔火：水线以下唯一的一点暖黄，给整片冷蓝一个温度锚点。
+            船身只留一条细长剪影，重量全交给光晕与水面倒影，不画细节。
+            位置偏画面右侧的空白水域（x≈1272），与左侧的页脚文字、居中的 01/02/03 互不打扰 */}
+        <g className="wb-scene__boat" transform="translate(1272 706) scale(2)">
+          {/* 船底投影：贴着水面的窄椭圆，让船"压"在水上而不是浮着 */}
+          <ellipse className="wb-scene__boat-shadow" cx="0" cy="7.5" rx="29" ry="3.2" />
+          <path className="wb-scene__boat-hull" d="M-27 0 Q-21 8 0 8 Q21 8 27 0 Q21 3.2 0 3.2 Q-21 3.2 -27 0 Z" />
+          {/* 船篷：船身中段的小半圆，交代"有人" */}
+          <path className="wb-scene__boat-awning" d="M-9 1.5 Q-5 -7 3 -7 Q11 -7 13 1.5 Z" />
+          {/* 船头挑出一根短杆，灯挂在杆端 */}
+          <path className="wb-scene__boat-pole" d="M19 0 L21 -11" />
+          <circle className="wb-scene__boat-glow" cx="21" cy="-8" r="34" fill="url(#wb-boat-glow)" />
+          <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="2.1" />
+          {/* 水面倒影：三段由宽到窄的暖色短线，越往下越淡 */}
+          <g className="wb-scene__boat-shimmer">
+            <rect x="12" y="12" width="19" height="2" rx="1" />
+            <rect x="15" y="20" width="13" height="1.7" rx=".85" />
+            <rect x="11" y="28" width="9" height="1.4" rx=".7" />
+          </g>
+        </g>
+
+        {/* 远山剪影：对岸一层更淡更灰的低矮山脊，只做色块不做细节 */}
+        <path
+          className="wb-scene__far-ridge"
+          d={`M0 ${WATERLINE} L0 540 Q120 512 240 536 Q340 554 440 528 Q540 504 640 532 Q740 556 840 536 Q940 512 1040 534 Q1140 556 1240 534 Q1340 512 1440 536 Q1520 554 1600 540 L1600 ${WATERLINE} Z`}
+        />
 
         {/* 山体本体：压在水线之上 */}
         <MountainShapes />
@@ -728,13 +847,16 @@ export function FujiScene() {
       </svg>
 
       {/* 花瓣入水涟漪：整层只铺在水线以下（高度与 .wb-scene__water 一致），
-          每个占位点由 effect 在初始化 / resize 时写 left，并挂上与花瓣同周期的三圈动画：
-          外圈、内圈、入水瞬间的亮面短闪。没有落到水面的花瓣不会挂动画，占位点保持 opacity:0 */}
+          每个占位点由 effect 在初始化 / resize 时写 left，并挂上与花瓣同周期的五圈动画：
+          外圈、内圈、两圈更宽更淡的同心弧、入水瞬间的亮面短闪。
+          没有落到水面的花瓣不会挂动画，占位点保持 opacity:0 */}
       <div className="wb-scene__ripples" ref={rippleLayer}>
         {ALL_PETALS.map((_petal, key) => (
           <span className="wb-scene__ripple" key={key}>
             <i className="wb-scene__ripple-ring" />
             <i className="wb-scene__ripple-ring" />
+            <i className="wb-scene__ripple-ring wb-scene__ripple-ring--wide" />
+            <i className="wb-scene__ripple-ring wb-scene__ripple-ring--wider" />
             <i className="wb-scene__ripple-ring wb-scene__ripple-flash" />
           </span>
         ))}
