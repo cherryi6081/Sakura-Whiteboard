@@ -133,6 +133,25 @@ export const INNER_SPLASH_DELAY = 0.32;
 /** 入水瞬间的一次极短亮面：0.5s 内张开并消失，用来把「入水」这一下点出来 */
 export const FLASH_SPLASH_SECONDS = 0.5;
 /**
+ * 主圈之外的两圈「余波」：比外圈更宽、更慢、更淡，让入水点读成一片水面而不是一个圆圈。
+ * 起步略晚于主圈，形成由内向外依次荡开的层次；峰值只有外圈的 0.2 / 0.12，
+ * 目的只是把湖面从"色块"变成"有水在动"的质地，不能抢主圈。
+ */
+export const WIDE_SPLASH_SECONDS = 2.4;
+export const WIDER_SPLASH_SECONDS = 3.2;
+/** 余波相对主圈的起振延迟（秒） */
+export const WIDE_SPLASH_DELAY = 0.24;
+export const WIDER_SPLASH_DELAY = 0.5;
+export const WIDE_PEAK_OPACITY = 0.2;
+export const WIDER_PEAK_OPACITY = 0.12;
+/**
+ * 余波的起振相对尺度。两圈基准直径本来就更大（72 / 104px 对 44px），
+ * 如果再按主圈 0.12 起振，会先缩成一个比主圈还小的小点；
+ * 0.42 / 0.5 让它们起步时正好落在主圈外沿，张开后成为更宽的同心弧。
+ */
+export const WIDE_START_SCALE = 0.42;
+export const WIDER_START_SCALE = 0.5;
+/**
  * 峰值透明度。上一版外圈 0.32 叠 1px 描边，实测与水面只差 9 个色阶（见自检记录），
  * 属于「实现上根本看不见」而不是「轻微」。现在外圈 0.50、内圈 0.34、闪光 0.62，
  * 配合 2px 描边与近白高光色，峰值实测差 30 个色阶以上，同时总量仍是两圈淡纹 + 一次短闪。
