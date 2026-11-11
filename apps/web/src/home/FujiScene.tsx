@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
 import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
+import { sampleBoat } from "./wave";
 import type { Period } from "./usePeriod";
 import {
   LEFT_FAR_PAINT,
@@ -480,6 +481,40 @@ export function FujiScene({ period }: { period: Period }) {
     if (renderMode !== "webgl") setWebglReady(false);
   }, [renderMode]);
 
+  /** SVG 分支（移动端 / reduce）的小舟：用与 WebGL 船同一个 sampleBoat 驱动 */
+  const boatRef = useRef<SVGGElement>(null);
+  useEffect(() => {
+    if (renderMode !== "svg") return;
+    const node = boatRef.current;
+    if (!node) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const base = "translate(1272 706) rotate(0) scale(1.6)";
+    let raf = 0;
+    const tick = (now: number) => {
+      if (reduce.matches) {
+        node.setAttribute("transform", base);
+        return;
+      }
+      const pose = sampleBoat(now / 1000);
+      node.setAttribute(
+        "transform",
+        `translate(${1272 + pose.drift} ${706 + pose.dy}) rotate(${((pose.pitch * 180) / Math.PI).toFixed(2)}) scale(1.6)`,
+      );
+      raf = requestAnimationFrame(tick);
+    };
+    const restart = () => {
+      cancelAnimationFrame(raf);
+      if (reduce.matches) node.setAttribute("transform", base);
+      else raf = requestAnimationFrame(tick);
+    };
+    restart();
+    reduce.addEventListener("change", restart);
+    return () => {
+      cancelAnimationFrame(raf);
+      reduce.removeEventListener("change", restart);
+    };
+  }, [renderMode]);
+
   /**
    * 涟漪的排布。为什么放在 effect 里而不是渲染时算：
    * 入水时刻取决于水线，水线随视口宽高比变化（16:9 ≈ 66.6%、超宽屏 ≈ 62.9%、4:3 ≈ 72.2%、
@@ -755,7 +790,7 @@ export function FujiScene({ period }: { period: Period }) {
         {/* 湖面小舟与渔火：水线以下唯一的一点暖黄，给整片冷蓝一个温度锚点。
             船身只留一条细长剪影，重量全交给光晕与水面倒影，不画细节。
             位置偏画面右侧的空白水域（x≈1272），与左侧的页脚文字、居中的 01/02/03 互不打扰 */}
-        <g className="wb-scene__boat" transform="translate(1272 706) scale(2)">
+        <g className="wb-scene__boat" ref={boatRef} transform="translate(1272 706) scale(1.6)">
           {/* 船底投影：贴着水面的窄椭圆，让船"压"在水上而不是浮着 */}
           <ellipse className="wb-scene__boat-shadow" cx="0" cy="7.5" rx="29" ry="3.2" />
           <path className="wb-scene__boat-hull" d="M-27 0 Q-21 8 0 8 Q21 8 27 0 Q21 3.2 0 3.2 Q-21 3.2 -27 0 Z" />

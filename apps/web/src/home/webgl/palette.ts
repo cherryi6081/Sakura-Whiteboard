@@ -41,6 +41,10 @@ export type Palette = {
   petalLight: THREE.Color;
   petalDeep: THREE.Color;
   mist: THREE.Color;
+  /** 小舟：船身墨色与渔火暖黄，对应 --crane-ink / --lamp-300 / --lamp-100 */
+  ink: THREE.Color;
+  lamp: THREE.Color;
+  lampHot: THREE.Color;
 };
 
 export function readPalette(): Palette {
@@ -71,6 +75,9 @@ export function readPalette(): Palette {
     petalLight: cssColor("--rose-100", "#f4e3e9"),
     petalDeep: cssColor("--rose-400", "#cc8aa5"),
     mist: mixSrgb(snow, horizon, 0.45),
+    ink: cssColor("--crane-ink", "#3c3a42"),
+    lamp: cssColor("--lamp-300", "#f6c67f"),
+    lampHot: cssColor("--lamp-100", "#ffe9c4"),
   };
 }
 

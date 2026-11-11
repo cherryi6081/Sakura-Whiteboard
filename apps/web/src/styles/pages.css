@@ -2656,14 +2656,15 @@ body:has(.wb-home) {
   opacity: 1;
 }
 
-/* WebGL 接管水面、雾、山体、雪盖与花瓣后，把这些重复的 SVG 层隐掉；
-   樱花枝、鹤、小舟、雁群仍作为前景覆盖层留在 SVG 里。
+/* WebGL 接管水面、雾、山体、雪盖、花瓣与小舟后，把这些重复的 SVG 层隐掉；
+   樱花枝、鹤、雁群仍作为前景覆盖层留在 SVG 里。
    例外是 .wb-scene__water：首帧画完之前它是静态湖色衬底，先在（见下一条），
    避免 three 还在下载时水线以下露出天空色。 */
 .wb-home__scene[data-render="webgl"] .wb-scene__lake,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-fade,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-line,
 .wb-home__scene[data-render="webgl"] .wb-scene__lake-horizon,
+.wb-home__scene[data-render="webgl"] .wb-scene__boat,
 .wb-home__scene[data-render="webgl"] .wb-scene__reflection,
 .wb-home__scene[data-render="webgl"] .wb-scene__far-ridge,
 .wb-home__scene[data-render="webgl"] .wb-scene__cloud,
