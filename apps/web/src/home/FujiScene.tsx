@@ -756,20 +756,36 @@ export function FujiScene({ period }: { period: Period }) {
             船身只留一条细长剪影，重量全交给光晕与水面倒影，不画细节。
             位置偏画面右侧的空白水域（x≈1272），与左侧的页脚文字、居中的 01/02/03 互不打扰 */}
         <g className="wb-scene__boat" transform="translate(1272 706) scale(2)">
-          {/* 船底投影：贴着水面的窄椭圆，让船"压"在水上而不是浮着 */}
-          <ellipse className="wb-scene__boat-shadow" cx="0" cy="7.5" rx="29" ry="3.2" />
-          <path className="wb-scene__boat-hull" d="M-27 0 Q-21 8 0 8 Q21 8 27 0 Q21 3.2 0 3.2 Q-21 3.2 -27 0 Z" />
-          {/* 船篷：船身中段的小半圆，交代"有人" */}
-          <path className="wb-scene__boat-awning" d="M-9 1.5 Q-5 -7 3 -7 Q11 -7 13 1.5 Z" />
-          {/* 船头挑出一根短杆，灯挂在杆端 */}
-          <path className="wb-scene__boat-pole" d="M19 0 L21 -11" />
-          <circle className="wb-scene__boat-glow" cx="21" cy="-8" r="34" fill="url(#wb-boat-glow)" />
-          <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="2.1" />
-          {/* 水面倒影：三段由宽到窄的暖色短线，越往下越淡 */}
-          <g className="wb-scene__boat-shimmer">
-            <rect x="12" y="12" width="19" height="2" rx="1" />
-            <rect x="15" y="20" width="13" height="1.7" rx=".85" />
-            <rect x="11" y="28" width="9" height="1.4" rx=".7" />
+          {/* 三层分工，避免两条曲线在同一个 transform 里互相抵消：
+              drift 只横向漂移（41.3s）；heave + swell 两级不同周期的升沉（17.9s / 11.7s）；
+              tilt 只做俯仰与极轻横摇（17.9s，相位比升沉提前 90°，船头先起）。 */}
+          <g className="wb-scene__boat-drift">
+            <g className="wb-scene__boat-heave">
+              <g className="wb-scene__boat-swell">
+                {/* 船底投影：贴着水面的窄椭圆，让船"压"在水上而不是浮着。
+                    不进 tilt 层：影子落在水面上，不跟着船体俯仰转 */}
+                <ellipse className="wb-scene__boat-shadow" cx="0" cy="7.5" rx="29" ry="3.2" />
+                <g className="wb-scene__boat-tilt">
+                  <path className="wb-scene__boat-hull" d="M-27 0 Q-21 8 0 8 Q21 8 27 0 Q21 3.2 0 3.2 Q-21 3.2 -27 0 Z" />
+                  {/* 船篷：船身中段的小半圆，交代"有人" */}
+                  <path className="wb-scene__boat-awning" d="M-9 1.5 Q-5 -7 3 -7 Q11 -7 13 1.5 Z" />
+                  {/* 船头挑出一根短杆，灯挂在杆端 */}
+                  <path className="wb-scene__boat-pole" d="M19 0 L21 -11" />
+                  <circle className="wb-scene__boat-glow" cx="21" cy="-8" r="34" fill="url(#wb-boat-glow)" />
+                  <circle className="wb-scene__boat-lamp" cx="21" cy="-8" r="2.1" />
+                </g>
+              </g>
+            </g>
+            {/* 水面倒影：只跟横向漂移，不跟着升沉上下跳；
+                船升高时压暗、落下时提亮，读成"灯影被船压住又松开" */}
+            <g className="wb-scene__boat-reflection">
+              {/* 三段由宽到窄的暖色短线，越往下越淡 */}
+              <g className="wb-scene__boat-shimmer">
+                <rect x="12" y="12" width="19" height="2" rx="1" />
+                <rect x="15" y="20" width="13" height="1.7" rx=".85" />
+                <rect x="11" y="28" width="9" height="1.4" rx=".7" />
+              </g>
+            </g>
           </g>
         </g>
 
