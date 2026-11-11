@@ -757,8 +757,11 @@ export function FujiScene({ period }: { period: Period }) {
             灯是整条船唯一的暖色（也是全图唯一的渐变）。
             位置偏画面右侧的空白水域（x≈1272），与左侧的页脚文字、居中的 01/02/03 互不打扰。
             新画把局部 y=0 定义为吃水线（旧版 y=0 在船身上沿、水线约在 y≈8），
-            所以锚点从 706 下移到 722，船在画面里的位置与旧版一致。 */}
-        <g className="wb-scene__boat" transform="translate(1272 722) scale(2)">
+            所以锚点从 706 下移到 722，船在画面里的位置与旧版一致。
+            scale 4：局部 1 单位 = 4 舞台单位，整船（含橹）≈ 176 舞台单位 ≈ 158px @1440。
+            动画关键帧写在船的局部坐标里（translateX/translateY 的 px 是局部单位），
+            所以缩放会带着漂移与升沉一起等比放大，视觉占比不变。 */}
+        <g className="wb-scene__boat" transform="translate(1272 722) scale(4)">
           {/* 五层分工，避免多条曲线在同一个 transform 里互相抵消：
               drift 只横向漂移（41.3s）；heave + swell 两级不同周期的升沉（17.9s / 11.7s）；
               tilt 只做俯仰与极轻横摇（17.9s，相位比升沉提前 90°，船头先起）；
