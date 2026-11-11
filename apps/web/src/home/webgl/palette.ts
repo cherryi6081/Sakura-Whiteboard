@@ -111,10 +111,16 @@ export const PERIOD_SUN: Record<Period, SunState> = {
     dir: new THREE.Vector3(-0.45, 0.72, 0.58).normalize(),
   },
   dusk: {
-    color: new THREE.Color("#ffd9bd"),
-    intensity: 2.2,
-    sky: new THREE.Color("#dcd0ea"),
-    ground: new THREE.Color("#a08a90"),
+    // 黄昏只保留“低角度暖光”的方向感，不再把整座山染成粉褐：
+    // 主光 #ffd9bd → #fff4e8（通道差 26% → 9%，强度 2.2 → 2.1），
+    // 半球天光 #dcd0ea → #e6eef9（紫调薰衣草 → 冷蓝白），
+    // 地面反光 #a08a90 → #a8b7c5（偏紫褐 → 蓝灰）。
+    // 这不等于把黄昏做成白天：斜射主光仍只有 2.1，山体整体比 day 低约 0.06 相对亮度，
+    // 暖调交给 CSS 的黄昏叠色与天空暖光晕，山体只负责守住自己的蓝灰固有色。
+    color: new THREE.Color("#fff4e8"),
+    intensity: 2.1,
+    sky: new THREE.Color("#e6eef9"),
+    ground: new THREE.Color("#a8b7c5"),
     hemiIntensity: 0.9,
     dir: new THREE.Vector3(0.68, 0.34, 0.52).normalize(),
   },

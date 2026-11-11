@@ -109,18 +109,20 @@
   /* 天空是唯一的天空来源：WebGL canvas 透明、SVG 分支也不画天空矩形，
      两种模式看到的是同一层 CSS 像素，所以同点色差天然为 0。
      八个色标按舞台坐标定位（0 = 舞台顶，1 = 水线 y=566/900）：
-     f = 0 / .18 / .38 / .56 / .71 / .84 / .93 / 1，对应下面 0.1132…0.6289 × --stage-h。
+     f = 0 / .22 / .48 / .75 / .87 / .93 / .97 / 1，对应下面 0.14…0.6289 × --stage-h。
+     冷段（天顶→薰衣草）拉到舞台 30%，把暖段整体压到水线附近的最后 18%，
+     这样山体两侧的读数是“冷天空”，暖光晕只留在湖面正上方。
      舞台顶以上（4:3、竖屏时视口顶部那段余量）由第一档平铺，导航正好压在这段上；
      水线以下被湖面与倒影盖住，最后 100% 那档只是兜底。 */
   background: linear-gradient(
     180deg,
     var(--sky-zenith) var(--stage-top),
-    var(--sky-high) calc(var(--stage-top) + var(--stage-h) * 0.1132),
-    var(--sky-mid) calc(var(--stage-top) + var(--stage-h) * 0.2390),
-    var(--sky-rose) calc(var(--stage-top) + var(--stage-h) * 0.3522),
-    var(--sky-peach) calc(var(--stage-top) + var(--stage-h) * 0.4465),
-    var(--sky-glow) calc(var(--stage-top) + var(--stage-h) * 0.5283),
-    var(--sky-haze) calc(var(--stage-top) + var(--stage-h) * 0.5849),
+    var(--sky-high) calc(var(--stage-top) + var(--stage-h) * 0.1400),
+    var(--sky-mid) calc(var(--stage-top) + var(--stage-h) * 0.3000),
+    var(--sky-rose) calc(var(--stage-top) + var(--stage-h) * 0.4700),
+    var(--sky-peach) calc(var(--stage-top) + var(--stage-h) * 0.5450),
+    var(--sky-glow) calc(var(--stage-top) + var(--stage-h) * 0.5850),
+    var(--sky-haze) calc(var(--stage-top) + var(--stage-h) * 0.6120),
     var(--sky-horizon) calc(var(--stage-top) + var(--stage-h) * 0.6289),
     var(--sky-horizon) 100%
   );
