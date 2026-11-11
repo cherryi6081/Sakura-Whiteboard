@@ -50,7 +50,7 @@ export function readPalette(): Palette {
   const fuji600 = cssColor("--fuji-600", "#6b87a4");
   const snow = cssColor("--fuji-snow", "#f7fbfe");
   const snowShade = cssColor("--fuji-snow-shade", "#dce9f6");
-  const horizon = cssColor("--sky-blue-horizon", "#f5fbff");
+  const horizon = cssColor("--sky-horizon", "#f0f6fb");
 
   return {
     rock: fuji300,

@@ -89,48 +89,37 @@
   --sakura-glow: color-mix(in srgb, var(--sakura-200) 32%, transparent);
 
   /* ---------- 首页背景天空（只负责天空/地平线） ---------- */
-  /* 顶部深蓝：与下面四档浅蓝同一色相族（H≈209°），只在顶部约 1/4 视高出现，
-     用多 stop 过渡回 --sky-blue-top，不引入紫调 */
-  --sky-blue-deep: #2e4b68;
-  /* 浅蓝渐变：色相统一在蓝里（H≈203°–208°），只用明度做天顶→地平线过渡：
-     天顶 #cfe5f6(L≈89%) → #ddedfa(92%) → #eaf5fd(95%) → 地平线 #f5fbff(98%)。
-     山体 --fuji-300 明度约 80%，低于天顶 9 个百分点，靠这段明度差让山“浮”在天空里 */
-  --sky-blue-top: #cfe5f6;
-  --sky-blue-mid: #ddedfa;
-  --sky-blue-low: #eaf5fd;
-  --sky-blue-horizon: #f5fbff;
-  /* 0%–16% 为深蓝实色，16%–36% 用六档中间色平滑过渡回浅蓝（约 180–320px 过渡区，无可见色带），
-     36% 以下原样交给四档浅蓝：文案区（约 32% 起）与山体峰顶（约 31%）都落在浅蓝上，
-     湛蓝只压在最上 1/4，山体与湖面的配色关系不变 */
-  --home-scene-sky: linear-gradient(
-    180deg,
-    var(--sky-blue-deep) 0%,
-    var(--sky-blue-deep) 16%,
-    color-mix(in srgb, var(--sky-blue-deep) 88%, var(--sky-blue-top)) 19%,
-    color-mix(in srgb, var(--sky-blue-deep) 74%, var(--sky-blue-top)) 22%,
-    color-mix(in srgb, var(--sky-blue-deep) 58%, var(--sky-blue-top)) 25%,
-    color-mix(in srgb, var(--sky-blue-deep) 40%, var(--sky-blue-top)) 28%,
-    color-mix(in srgb, var(--sky-blue-deep) 22%, var(--sky-blue-top)) 31%,
-    color-mix(in srgb, var(--sky-blue-deep) 8%, var(--sky-blue-top)) 34%,
-    var(--sky-blue-top) 37%,
-    var(--sky-blue-mid) 58%,
-    var(--sky-blue-low) 78%,
-    var(--sky-blue-horizon) 100%
-  );
+  /* 「黎明前的富士」八色标：色相角沿天顶→地平线连续右移
+     215° → 221° → 256° → 326° → 0° → 21° → 10° → 207°，
+     暖段只用低饱和玫瑰 / 桃色（通道差 8–10%，与 --sakura-* 同族但更淡），
+     最后两档收回近中性的冷白，落水线时不与冷色湖面打架。
+     天顶 #bdd0ea（L 83%）比旧版浅蓝深一档：雪顶 #f7fbfe 压在上面才分得开，
+     导航黑字（含 80% 不透明链接）实测对比度 ≥9。 */
+  --sky-zenith: #bdd0ea;
+  --sky-high: #c6d2ec;
+  --sky-mid: #d9d3ea;
+  --sky-rose: #eed9e5;
+  --sky-peach: #f8e3e3;
+  --sky-glow: #fcebe2;
+  --sky-haze: #f8f3f2;
+  --sky-horizon: #f0f6fb;
+  /* 渐变本体在 pages.css 的 .wb-home__scene 里拼：色标位置要按舞台坐标
+     （0 = 舞台顶、1 = 水线 y=566/900）算，而 --stage-top / --stage-h 是在
+     使用元素上才解析的，写进 :root 的自定义属性会变成无效值。 */
 
   /* ---------- 湖面 / 倒影（由山体与天空 token 派生，不写死色值） ---------- */
   /* 水面仍比天空深一档，且是纯蓝灰、无粉色混入，所以不会发紫；
      近岸最浅、湖底最深，倒影由山体色叠在水面上，读起来是“淡镜子”而不是另一座山 */
-  --lake-100: color-mix(in srgb, var(--fuji-400) 55%, var(--sky-blue-horizon));
-  --lake-300: color-mix(in srgb, var(--fuji-500) 60%, var(--sky-blue-horizon));
-  --lake-500: color-mix(in srgb, var(--fuji-500) 70%, var(--sky-blue-horizon));
-  --lake-700: color-mix(in srgb, var(--fuji-600) 50%, var(--sky-blue-horizon));
+  --lake-100: color-mix(in srgb, var(--fuji-400) 55%, var(--sky-horizon));
+  --lake-300: color-mix(in srgb, var(--fuji-500) 60%, var(--sky-horizon));
+  --lake-500: color-mix(in srgb, var(--fuji-500) 70%, var(--sky-horizon));
+  --lake-700: color-mix(in srgb, var(--fuji-600) 50%, var(--sky-horizon));
   /* 水面反光与波纹是白色高光，用 --paper 半透明派生 */
   --lake-horizon: color-mix(in srgb, var(--paper) 88%, transparent);
   --lake-ripple: color-mix(in srgb, var(--paper) 74%, transparent);
   /* 入水涟漪用的高光档：不透明、带一点点湖面蓝，比 --lake-ripple 更亮，
      放大到 2px 描边后仍与湖面静态水纹同色系，不会变成纯白硬边 */
-  --lake-ripple-hi: color-mix(in srgb, var(--paper) 92%, var(--sky-blue-horizon));
+  --lake-ripple-hi: color-mix(in srgb, var(--paper) 92%, var(--sky-horizon));
 
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
