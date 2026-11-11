@@ -26,6 +26,7 @@ import {
 import {
   CRANE_VISUAL_TO_STAGE,
   FLOATING_PETALS,
+  PETAL_CLIP_PATH,
   fallingRatioBySize,
   floatingRatioBySize,
   petalEdgePx,
@@ -150,6 +151,9 @@ export const LEFT_PETALS: Petal[] = [
   { left: 41, top: 24, size: 10, dur: 28, delay: -7.5, spin: 1.3, opacity: 0.36, tone: "light", path: "d" },
 ];
 
+
+/** 花瓣轮廓：与 WebGL 粒子同源（floatingPetals.ts 的 PETAL_OUTLINE），这里只负责裁元素 */
+const PETAL_CLIP: CSSProperties = { clipPath: PETAL_CLIP_PATH };
 
 /** 水线：山脚与湖面的分界，倒影以它为镜像轴 */
 const WATERLINE = 566;
@@ -936,7 +940,7 @@ export function FujiScene({ period }: { period: Period }) {
             <span className="wb-scene__float-drift">
               <i className="wb-scene__float-ring" />
               <span className="wb-scene__float-body">
-                <span className="wb-scene__float-shape" />
+                <span className="wb-scene__float-shape" style={PETAL_CLIP} />
               </span>
             </span>
           </span>
@@ -959,7 +963,7 @@ export function FujiScene({ period }: { period: Period }) {
             key={index}
             style={petalStyle(petal)}
           >
-            <span className="wb-scene__petal-inner" />
+            <span className="wb-scene__petal-inner" style={PETAL_CLIP} />
           </span>
         ))}
       </div>
@@ -974,7 +978,7 @@ export function FujiScene({ period }: { period: Period }) {
             key={index}
             style={petalStyle(petal)}
           >
-            <span className="wb-scene__petal-inner" />
+            <span className="wb-scene__petal-inner" style={PETAL_CLIP} />
           </span>
         ))}
       </div>

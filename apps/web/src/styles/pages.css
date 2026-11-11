@@ -976,23 +976,12 @@
   transform: rotate(calc(var(--f-rot) + var(--f-tilt)));
 }
 
-/* 与飘落花瓣同一条轮廓，直接用樱花的浅中两档，压在水上比空中略淡 */
+/* 轮廓不写在这里：由 FujiScene 用 floatingPetals.ts 的 PETAL_CLIP_PATH 内联裁出，
+   与 WebGL 粒子共用同一份 38 点轮廓（基部收窄 / 中段最宽 / 末端 V 缺刻） */
 .wb-scene__float-shape {
   display: block;
   width: 100%;
   height: 100%;
-  clip-path: polygon(
-    50% 0%,
-    84% 13%,
-    100% 40%,
-    91% 74%,
-    70% 100%,
-    50% 84%,
-    30% 100%,
-    9% 74%,
-    0% 40%,
-    16% 13%
-  );
   background: linear-gradient(150deg, var(--sakura-200), var(--sakura-300));
   opacity: 0.92;
 }
@@ -1405,7 +1394,9 @@
   top: var(--p-top);
   left: var(--p-left);
   width: var(--p-size);
-  height: calc(var(--p-size) * 0.94);
+  /* 与 floatingPetals.ts 的 PETAL_BOX_ASPECT（1.33）一致：轮廓归一化在 [-1,1]²，
+     盒子按 1:1.33 铺，剪影才是花瓣；方盒子会把基部收窄 + 末端缺刻读成心形 */
+  height: calc(var(--p-size) * 1.33);
   margin-left: calc(var(--p-size) / -2);
   /* 静态极轻光晕，让亮粉在深底上更跳；不是 filter blur，也不参与动画 */
   border-radius: 50%;
@@ -1438,19 +1429,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  /* 樱花花瓣轮廓：上端收圆、下端带一个缺口，避免远看像圆点 */
-  clip-path: polygon(
-    50% 0%,
-    84% 13%,
-    100% 40%,
-    91% 74%,
-    70% 100%,
-    50% 84%,
-    30% 100%,
-    9% 74%,
-    0% 40%,
-    16% 13%
-  );
+  /* 轮廓由 FujiScene 内联 clip-path 注入（与 WebGL 粒子同源），这里只管底色 */
 }
 
 /* 花瓣恢复原先的樱花色阶；光晕是纯背景装饰，保留 */

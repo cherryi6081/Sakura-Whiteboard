@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Palette } from "./palette";
+import { PETAL_BOX_ASPECT, PETAL_OUTLINE } from "../floatingPetals";
 
 /**
  * 花瓣粒子：一次 draw call 上万片。
@@ -14,12 +15,20 @@ import type { Palette } from "./palette";
  * 2. 运动去同步 —— 每片有自己的落程、摆幅、摆频、自转方向与侧翻相位，
  *    避免整片花雨像一块布一起移动；
  * 3. 侧翻 —— 绕自身短轴来回翻，边缘时刻只剩一条线，中景花瓣的翻面最明显。
+ *
+ * 形状：四边形只是"画布"，真正的樱花瓣轮廓来自 floatingPetals.ts 的 PETAL_OUTLINE
+ * （与移动端 SVG 的 clip-path 同一份 32 点：基部收窄、中段最宽、末端 V 缺刻），
+ * 启动时烘成一张 96×96 的有向距离图，片元只做一次纹理采样 + fwidth 的 1px 过渡。
+ * 这样不管花瓣多大、翻到多斜，边缘都是干净的抗锯齿；每个实例仍然只有一个四边形，
+ * 整帧 draw call 不变，片元成本与旧的纯色填充几乎相同。
  */
 
 const COUNT = 12000;
 /** 花瓣深度分层范围：负值落在山体之后，正值压在近景 */
 const Z_FAR = -240;
 const Z_NEAR = 240;
+/** 四边形画布与距离图覆盖的形状空间半径：比轮廓大 12%，给边缘抗锯齿留一圈余量 */
+const QUAD_HALF = 1.12;
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
@@ -29,6 +38,7 @@ const vertexShader = /* glsl */ `
   attribute vec4 aSeed;    // (相位, 色偏, 自转方向, 侧翻相位)
   attribute vec4 aParam;   // (起点 x, 深度 z, 尺寸, 下落速度)
   attribute vec4 aMotion;  // (起点 y, 落程, 摆幅, 摆频)
+  varying vec2 vLocal;
   varying vec3 vColor;
   varying float vAlpha;
 
@@ -55,7 +65,9 @@ const vertexShader = /* glsl */ `
     // 侧翻：绕自身短轴来回翻，翻到边缘时几乎只剩一条线
     float flip = 0.15 + 0.85 * abs(sin(uTime * (0.5 + aSeed.y * 0.9) + aSeed.w * 9.0));
 
-    vec2 local = position.xy * aParam.z * k;
+    // 轮廓坐标归一化在 [-1,1]²：0.5 让“尺寸”等于花瓣宽度，纵向按盒子比例拉到 1.33
+    vLocal = position.xy;
+    vec2 local = vec2(position.x, position.y * ${PETAL_BOX_ASPECT.toFixed(2)}) * aParam.z * 0.5 * k;
     local.x *= flip;
 
     vec3 pos = center + vec3(
@@ -80,14 +92,64 @@ const vertexShader = /* glsl */ `
 `;
 
 const fragmentShader = /* glsl */ `
+  uniform sampler2D uMask;
+
+  varying vec2 vLocal;
   varying vec3 vColor;
   varying float vAlpha;
 
   void main() {
-    gl_FragColor = vec4(vColor, vAlpha);
+    // 距离图里 0.5 是轮廓线：大于 0.5 在外、小于 0.5 在内。
+    // 图覆盖的形状空间是 ±QUAD_HALF，所以先把局部坐标折算成图的 [0,1]
+    float d = texture2D(uMask, vLocal * ${(0.5 / QUAD_HALF).toFixed(4)} + 0.5).r * 2.0 - 1.0;
+    // fwidth 把形状单位换算成屏幕像素，边缘过渡恒定约 1px，远近大小都不出锯齿
+    float aa = max(fwidth(d), 0.004);
+    float cover = 1.0 - smoothstep(-aa, aa, d);
+    if (cover < 0.004) discard;
+    gl_FragColor = vec4(vColor, vAlpha * cover);
     #include <colorspace_fragment>
   }
 `;
+
+/**
+ * 把轮廓烘成有向距离图：每像素存 0.5 + d/2（d 是到轮廓的距离，形状单位，内部为负）。
+ * 覆盖 ±QUAD_HALF 的整块画布，轮廓四周因此各留 6 个纹素，缺口尖角不会被采样边界糊掉；
+ * 96×96 在 12px 的花瓣上相当于 8 倍超采样。
+ */
+function buildPetalMask(size = 96): THREE.DataTexture {
+  const data = new Uint8Array(size * size);
+  const n = PETAL_OUTLINE.length;
+  for (let gy = 0; gy < size; gy += 1) {
+    const py = QUAD_HALF - ((gy + 0.5) / size) * 2 * QUAD_HALF;
+    for (let gx = 0; gx < size; gx += 1) {
+      const px = ((gx + 0.5) / size) * 2 * QUAD_HALF - QUAD_HALF;
+      let best = Infinity;
+      let inside = false;
+      for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
+        const [xi, yi] = PETAL_OUTLINE[i];
+        const [xj, yj] = PETAL_OUTLINE[j];
+        const ex = xj - xi;
+        const ey = yj - yi;
+        const wx = px - xi;
+        const wy = py - yi;
+        const t = Math.min(1, Math.max(0, (wx * ex + wy * ey) / (ex * ex + ey * ey)));
+        const dx = wx - ex * t;
+        const dy = wy - ey * t;
+        best = Math.min(best, dx * dx + dy * dy);
+        if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      const d = Math.sqrt(best) * (inside ? -1 : 1);
+      data[gy * size + gx] = Math.round(Math.min(1, Math.max(0, 0.5 + d * 0.5)) * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RedFormat);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+}
 
 export type PetalsBuild = {
   mesh: THREE.Mesh;
@@ -96,12 +158,12 @@ export type PetalsBuild = {
 };
 
 export function createPetals(palette: Palette): PetalsBuild {
+  // 四边形只是承托距离图的画布：与距离图同样覆盖 ±QUAD_HALF，轮廓外留一圈抗锯齿余量
   const shape = new Float32Array([
-    // 尖头朝上的花瓣：四顶点两三角（z 恒为 0，形状在顶点着色器里旋转）
-    0, 0.55, 0,
-    -0.36, 0.08, 0,
-    0, -0.55, 0,
-    0.36, 0.08, 0,
+    -QUAD_HALF, -QUAD_HALF, 0,
+    QUAD_HALF, -QUAD_HALF, 0,
+    QUAD_HALF, QUAD_HALF, 0,
+    -QUAD_HALF, QUAD_HALF, 0,
   ]);
 
   const geometry = new THREE.InstancedBufferGeometry();
@@ -150,11 +212,14 @@ export function createPetals(palette: Palette): PetalsBuild {
   geometry.setAttribute("aParam", new THREE.InstancedBufferAttribute(params, 4));
   geometry.setAttribute("aMotion", new THREE.InstancedBufferAttribute(motion, 4));
 
+  const mask = buildPetalMask();
+
   const uniforms = {
     uTime: { value: 0 },
     uCamDist: { value: 1000 },
     uColorA: { value: palette.petalLight },
     uColorB: { value: palette.petalDeep },
+    uMask: { value: mask },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -179,6 +244,7 @@ export function createPetals(palette: Palette): PetalsBuild {
     dispose() {
       geometry.dispose();
       material.dispose();
+      mask.dispose();
     },
   };
 }

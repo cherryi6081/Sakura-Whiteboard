@@ -34,16 +34,16 @@ function wingBounds(width: number, height: number) {
 }
 
 describe("漂浮花瓣数量", () => {
-  it("桌面 18 片、移动端 10 片，分别落在 14–20 / 8–12 的目标区间", () => {
-    expect(floatingCount(false)).toBe(18);
-    expect(floatingCount(true)).toBe(10);
-    expect(floatingCount(false)).toBeGreaterThanOrEqual(14);
-    expect(floatingCount(false)).toBeLessThanOrEqual(20);
-    expect(floatingCount(true)).toBeGreaterThanOrEqual(8);
-    expect(floatingCount(true)).toBeLessThanOrEqual(12);
+  it("桌面 34 片、移动端 23 片，分别落在 30–38 / 20–26 的目标区间", () => {
+    expect(floatingCount(false)).toBe(34);
+    expect(floatingCount(true)).toBe(23);
+    expect(floatingCount(false)).toBeGreaterThanOrEqual(30);
+    expect(floatingCount(false)).toBeLessThanOrEqual(38);
+    expect(floatingCount(true)).toBeGreaterThanOrEqual(20);
+    expect(floatingCount(true)).toBeLessThanOrEqual(26);
   });
 
-  it("近处最多最大、远处最少最小（桌面 8/6/4，移动端 5/3/2）", () => {
+  it("近处最多最大、远处最少最小（桌面 16/8/10，移动端 10/6/7）", () => {
     const count = (mobile: boolean) => {
       const bands: Record<string, number> = { far: 0, mid: 0, near: 0 };
       for (const petal of FLOATING_PETALS) {
@@ -52,8 +52,17 @@ describe("漂浮花瓣数量", () => {
       }
       return bands;
     };
-    expect(count(false)).toEqual({ far: 4, mid: 6, near: 8 });
-    expect(count(true)).toEqual({ far: 2, mid: 3, near: 5 });
+    expect(count(false)).toEqual({ far: 10, mid: 8, near: 16 });
+    expect(count(true)).toEqual({ far: 7, mid: 6, near: 10 });
+  });
+
+  it("四堆的大小：c1 4 片 / c2 3 片 / c3 3 片 / c4 4 片", () => {
+    const size = (cluster: string) =>
+      FLOATING_PETALS.filter((petal) => petal.cluster === cluster).length;
+    expect(size("c1")).toBe(4);
+    expect(size("c2")).toBe(3);
+    expect(size("c3")).toBe(3);
+    expect(size("c4")).toBe(4);
   });
 });
 
