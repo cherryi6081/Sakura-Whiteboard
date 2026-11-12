@@ -4522,4 +4522,470 @@ body:has(.wb-home) {
   }
 }
 
+/* ============================================================
+   第 3 步：批量选择（设计稿 boards-bulk-select）
+   ============================================================ */
+
+.wb-boards__head {
+  min-height: 56px;
+}
+
+.wb-boards__head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+/* ---------- 勾选控件：32 命中 / 18 视觉，触屏 40 / 20 ---------- */
+.wb-checkhit {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  flex: none;
+}
+
+.wb-checkhit:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.wb-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--control-border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: var(--shadow-1);
+  color: var(--paper);
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-checkhit:hover .wb-check {
+  border-color: var(--rose-600);
+}
+
+.wb-check.is-checked,
+.wb-check.is-mixed {
+  border-color: var(--rose-600);
+  background: var(--rose-600);
+}
+
+.wb-check.is-mixed::after {
+  content: "";
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--paper);
+}
+
+/* 卡片右上角：悬停 / 聚焦时露出；选择态常驻 */
+.wb-board-card__check,
+.wb-board-card__check-hint {
+  position: absolute;
+  top: calc(var(--space-6) + 4px);
+  right: calc(var(--space-6) + 4px);
+  z-index: 2;
+}
+
+.wb-board-card__check-hint {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wb-board-card:hover .wb-board-card__check-hint,
+  .wb-board-card:focus-within .wb-board-card__check-hint {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 选中环：不改变盒尺寸，hover 也保持 */
+.wb-board-card.is-selected,
+.wb-board-card.is-selected:hover {
+  border-color: var(--rose-600);
+  box-shadow: 0 0 0 2px var(--rose-600);
+}
+
+.wb-board-card.is-selecting {
+  cursor: pointer;
+}
+
+/* ---------- ≥701：56px 工具条 ---------- */
+.wb-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.wb-selection-bar__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-selection-bar__ctx {
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  white-space: nowrap;
+}
+
+.wb-selection-bar__div {
+  width: 1px;
+  height: 20px;
+  background: var(--neutral-200);
+  flex: none;
+}
+
+.wb-selection-bar__count {
+  color: var(--neutral-800);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+
+.wb-selection-bar__count b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.wb-selection-bar__scope {
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--neutral-100);
+  color: var(--neutral-800);
+  font-size: var(--text-micro);
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.wb-selection-bar__scope.is-all {
+  background: var(--rose-100);
+  color: var(--rose-800);
+}
+
+.wb-selection-bar__link {
+  height: 32px;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--rose-700);
+  font: inherit;
+  font-size: var(--text-micro);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.wb-selection-bar__link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+.wb-selection-bar__hint {
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  white-space: nowrap;
+}
+
+.wb-selection-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.wb-selbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-caption);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wb-selbtn:hover:not(:disabled) {
+  background: var(--neutral-100);
+}
+
+.wb-selbtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.wb-selbtn:disabled {
+  background: var(--paper);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.wb-selbtn--danger {
+  border-color: color-mix(in srgb, var(--danger-text) 35%, var(--neutral-200));
+  color: var(--danger-text);
+}
+
+.wb-selbtn--danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.wb-selbtn--danger:disabled {
+  border-color: var(--neutral-200);
+  color: var(--text-disabled);
+}
+
+.wb-selbtn--done {
+  border-color: var(--rose-300);
+  color: var(--rose-800);
+}
+
+.wb-selbtn--done:hover:not(:disabled) {
+  background: var(--rose-50);
+}
+
+.wb-selbar__label-short {
+  display: none;
+}
+
+.wb-selbtn .wb-icon {
+  flex: none;
+}
+
+/* 1024–1199：移动进「更多」；701–1023：置顶只留图标 */
+@media (max-width: 1199px) {
+  .wb-selbar__move {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .wb-selection-bar__ctx,
+  .wb-selection-bar__scope,
+  .wb-selection-bar__link {
+    display: none;
+  }
+
+  .wb-selbar__pin .wb-selbar__label {
+    display: none;
+  }
+
+  .wb-selbar__label-long {
+    display: none;
+  }
+
+  .wb-selbar__label-short {
+    display: inline;
+  }
+}
+
+/* ---------- ≤700：标题行 + 贴底操作条 ---------- */
+.wb-selection-mobile,
+.wb-selection-mobile-head {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .wb-selection-bar {
+    display: none;
+  }
+
+  .wb-selection-mobile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: 56px;
+  }
+
+  .wb-selection-mobile {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 0 var(--space-4) env(safe-area-inset-bottom);
+    border-top: 1px solid var(--neutral-200);
+    background: var(--paper);
+    box-shadow: var(--shadow-2);
+  }
+
+  .wb-selection-mobile .wb-checkhit {
+    width: 40px;
+    height: 40px;
+  }
+
+  .wb-selection-mobile .wb-check,
+  .wb-board-card__check-hint .wb-check {
+    width: 20px;
+    height: 20px;
+  }
+
+  .wb-selection-mobile__count {
+    margin-right: auto;
+    color: var(--neutral-800);
+    font-size: var(--text-caption);
+    white-space: nowrap;
+  }
+
+  .wb-selection-mobile__count b {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .wb-board-card__check,
+  .wb-board-card__check-hint {
+    top: calc(var(--space-6) + 2px);
+    right: calc(var(--space-6) + 2px);
+    width: 40px;
+    height: 40px;
+  }
+
+  .wb-page--selecting .wb-container--boards {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .wb-page--selecting .wb-toast {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- 批量「更多」：桌面浮层 / 触屏底部弹层 ---------- */
+.wb-batch-menu {
+  position: fixed;
+  z-index: 48;
+  width: 248px;
+  overflow: auto;
+}
+
+.wb-batch-menu .wb-board-menu__item {
+  gap: var(--space-2);
+}
+
+.wb-batch-menu .wb-board-menu__label {
+  flex: 1;
+  text-align: left;
+}
+
+.wb-batch-sheet {
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+}
+
+.wb-batch-sheet .wb-board-sheet__head {
+  padding-top: 0;
+}
+
+.wb-batch-sheet .wb-board-menu__label {
+  flex: 1;
+  text-align: left;
+}
+
+/* ---------- 批量删除确认 ---------- */
+.wb-batch-dialog {
+  width: 420px;
+}
+
+.wb-batch-dialog .wb-dialog__actions {
+  justify-content: flex-end;
+}
+
+.wb-batch-dialog__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.wb-batch-dialog__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--neutral-200);
+  color: var(--text-primary);
+  font-size: var(--text-caption);
+}
+
+.wb-batch-dialog__list li:first-child {
+  border-top: 0;
+}
+
+.wb-batch-dialog__list li.is-skipped {
+  background: var(--neutral-100);
+  color: var(--text-secondary);
+}
+
+.wb-batch-dialog__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-batch-dialog__tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  white-space: nowrap;
+}
+
+.wb-batch-dialog__more {
+  color: var(--text-secondary);
+}
+
+.wb-batch-dialog__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+}
+
+.wb-batch-dialog__note .wb-icon,
+.wb-batch-dialog__tail .wb-icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+
 

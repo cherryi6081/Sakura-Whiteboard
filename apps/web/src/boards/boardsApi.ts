@@ -40,6 +40,45 @@ export function setBoardPinned(
   });
 }
 
+export type BatchItemResult = {
+  id: string;
+  ok: boolean;
+  reason?: string;
+  role?: string;
+  pinnedAt?: string | null;
+  deletedAt?: string;
+  purgeAt?: string;
+};
+
+export type BatchPinResult = {
+  pinned: boolean;
+  items: BatchItemResult[];
+  okCount: number;
+  skippedCount: number;
+};
+
+/** 批量置顶 / 取消置顶（owner / editor）。 */
+export function batchPinBoards(boardIds: string[], pinned: boolean): Promise<ApiResult<BatchPinResult>> {
+  return request<BatchPinResult>("/api/boards/batch/pin", {
+    method: "POST",
+    body: JSON.stringify({ ids: boardIds, pinned }),
+  });
+}
+
+export type BatchTrashResult = {
+  items: BatchItemResult[];
+  okCount: number;
+  skippedCount: number;
+};
+
+/** 批量移入回收站（仅 owner）；逐项返回，失败项由调用方提示。 */
+export function batchTrashBoards(boardIds: string[]): Promise<ApiResult<BatchTrashResult>> {
+  return request<BatchTrashResult>("/api/boards/batch/trash", {
+    method: "POST",
+    body: JSON.stringify({ ids: boardIds }),
+  });
+}
+
 export function createBoard(title?: string): Promise<ApiResult<CreatedBoard>> {
   return request<CreatedBoard>("/api/boards", {
     method: "POST",

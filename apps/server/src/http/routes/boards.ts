@@ -9,6 +9,7 @@ import { boardIdSchema, needsResync, opsQuerySchema, paginatePage } from '../../
 import { identityOf } from '../../auth/identity.js';
 import { issueGuestCookie } from '../../auth/guestCookie.js';
 import { resolveBoardAccess } from '../../domain/access.js';
+import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -222,6 +223,108 @@ boardsRouter.patch(
     );
 
     res.json({ id: boardId, pinnedAt: rows[0]?.pinned_at?.toISOString() ?? null });
+  }),
+);
+
+/**
+ * 批量操作（设计稿 boards-bulk-select §08.4）：
+ * - 一次查出角色，避免 30 张卡发 30 次 resolveBoardAccess；
+ * - 返回逐项结果，前端据此保留成功项、只对失败项提示；
+ * - 置顶按传入顺序写入递减 1ms 的 pinned_at，保证列表顺序与视觉顺序一致。
+ */
+const batchIdsSchema = z.object({
+  ids: z.array(boardIdSchema).min(1).max(50),
+});
+
+const batchPinSchema = batchIdsSchema.extend({ pinned: z.boolean() });
+
+async function batchRoles(ids: string[], userId: string): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const { rows } = await pool.query<{ id: string; role: string | null }>(
+    `select b.id,
+            case when b.owner_id = $2 then 'owner' else m.role end as role
+       from boards b
+       left join board_members m on m.board_id = b.id and m.user_id = $2
+      where b.id = any($1::text[]) and b.deleted_at is null and b.archived_at is null`,
+    [ids, userId],
+  );
+  const map = new Map<string, string>();
+  for (const row of rows) if (row.role) map.set(row.id, row.role);
+  return map;
+}
+
+/** `POST /api/boards/batch/pin` —— 批量置顶 / 取消置顶（owner/editor）。 */
+boardsRouter.post(
+  '/boards/batch/pin',
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHORIZED', 'login required');
+    const { ids: rawIds, pinned } = batchPinSchema.parse(req.body ?? {});
+    const ids = [...new Set(rawIds)];
+    const roles = await batchRoles(ids, identity.userId);
+    const allowed = ids.filter((id) => {
+      const role = roles.get(id);
+      return role === 'owner' || role === 'editor';
+    });
+
+    const pinnedAt = new Map<string, string | null>();
+    if (allowed.length > 0) {
+      const { rows } = await pool.query<{ id: string; pinned_at: Date | null }>(
+        `update boards b
+            set pinned_at = case
+                  when $2 then now() - ((u.ord - 1)::int * interval '1 millisecond')
+                  else null
+                end
+           from unnest($1::text[]) with ordinality as u(id, ord)
+          where b.id = u.id
+          returning b.id, b.pinned_at`,
+        [allowed, pinned],
+      );
+      for (const row of rows) pinnedAt.set(row.id, row.pinned_at?.toISOString() ?? null);
+    }
+
+    const items = ids.map((id) => {
+      const role = roles.get(id);
+      if (!role) return { id, ok: false, reason: 'not_found' as const };
+      if (!allowed.includes(id)) return { id, ok: false, reason: 'forbidden' as const, role };
+      return { id, ok: true, role, pinnedAt: pinnedAt.get(id) ?? null };
+    });
+
+    res.json({ pinned, items, okCount: allowed.length, skippedCount: ids.length - allowed.length });
+  }),
+);
+
+/** `POST /api/boards/batch/trash` —— 批量移入回收站（仅 owner）。 */
+boardsRouter.post(
+  '/boards/batch/trash',
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHORIZED', 'login required');
+    const { ids: rawIds } = batchIdsSchema.parse(req.body ?? {});
+    const ids = [...new Set(rawIds)];
+
+    const { rows } = await pool.query<{ id: string; deleted_at: Date; purge_at: Date }>(
+      `update boards
+          set deleted_at = now()
+        where id = any($1::text[]) and owner_id = $2
+          and deleted_at is null and archived_at is null
+        returning id, deleted_at,
+                  deleted_at + make_interval(days => $3::int) as purge_at`,
+      [ids, identity.userId, TRASH_RETENTION_DAYS],
+    );
+    const moved = new Map(rows.map((row) => [row.id, row]));
+    const items = ids.map((id) => {
+      const row = moved.get(id);
+      if (!row) return { id, ok: false, reason: 'forbidden' as const };
+      return {
+        id,
+        ok: true,
+        deletedAt: row.deleted_at.toISOString(),
+        purgeAt: row.purge_at.toISOString(),
+      };
+    });
+
+    res.json({ items, okCount: rows.length, skippedCount: ids.length - rows.length });
   }),
 );
 
