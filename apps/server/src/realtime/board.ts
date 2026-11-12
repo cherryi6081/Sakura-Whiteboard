@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { logger } from '../infra/logger.js';
 import { pool } from '../infra/db.js';
 import { persistOp } from './opStore.js';
+import { markBoardEdited } from '../jobs/lastEditedFlush.js';
 import { allocateSeq, claimOpIdem, markOpIdemDone, releaseOpIdem } from './seq.js';
 import { resolveBoardAccess, type AccessRole } from '../domain/access.js';
 import { resolveIdentityFromCookieHeader, type Identity } from '../auth/identity.js';
@@ -188,6 +189,7 @@ export function attachRealtime(httpServer: HttpServer) {
       }
 
       let seed = 0;
+      let edited = false;
       try {
         const { rows } = await pool.query<{ last_seq: string }>('select last_seq from boards where id = $1', [state.boardId]);
         seed = Number(rows[0]?.last_seq ?? 0);
@@ -225,6 +227,9 @@ export function attachRealtime(httpServer: HttpServer) {
             throw err;
           }
 
+          // 只有真正改动了元素才刷新「最近编辑」；LWW 落败的 op 不算编辑
+          if (result.applied) edited = true;
+
           await markOpIdemDone(state.boardId, op.opId, seq);
 
           socket.emit('op:ack', {
@@ -254,6 +259,9 @@ export function attachRealtime(httpServer: HttpServer) {
           socket.emit('op:rejected', { opId: op.opId, reason: 'INTERNAL' });
         }
       }
+
+      // 一批 op 只标记一次，具体写库由 5s 合并器统一完成
+      if (edited) await markBoardEdited(state.boardId);
     });
 
     /**
