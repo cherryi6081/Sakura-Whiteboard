@@ -4135,3 +4135,391 @@ body:has(.wb-home) {
   display: none;
 }
 
+/* ============================================================
+   卡片右键菜单（设计稿 v1）：232px / 行高 36 / 7 项 3 组
+   ============================================================ */
+
+/* 页面直接把浮层挂在根下，必须显式压过 `.wb-page--boards > *` 的 relative/z-index */
+.wb-page--boards > .wb-board-menu,
+.wb-page--boards > .wb-sheet-layer {
+  position: fixed;
+}
+
+.wb-page--boards > .wb-board-menu {
+  z-index: 48;
+}
+
+.wb-page--boards > .wb-sheet-layer {
+  z-index: 55;
+}
+
+.wb-page--boards > .wb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.wb-page--boards > .wb-toast {
+  position: fixed;
+  z-index: 60;
+}
+
+.wb-board-menu {
+  width: 232px;
+  padding: 6px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wb-board-menu__head {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 10px;
+  background: var(--paper);
+}
+
+.wb-board-menu__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  color: var(--text-primary);
+}
+
+.wb-board-menu__role {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--rose-50);
+  color: var(--rose-700);
+  font-size: var(--text-micro);
+  line-height: 20px;
+}
+
+.wb-board-menu__group {
+  position: relative;
+}
+
+.wb-board-menu__slot {
+  position: relative;
+}
+
+.wb-board-menu__item,
+.wb-sheet__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-board-menu__item {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+.wb-board-menu__item .wb-icon {
+  flex: none;
+  color: var(--neutral-600);
+}
+
+.wb-board-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-board-menu__tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+  color: var(--neutral-600);
+  font-family: var(--font-mono);
+  font-size: var(--text-footer);
+  line-height: var(--lh-footer);
+}
+
+.wb-board-menu__tail.is-reason {
+  font-family: var(--font-sans);
+}
+
+@media (hover: hover) {
+  .wb-board-menu__item:not(.is-disabled):hover,
+  .wb-board-menu__item:not(.is-disabled):focus-visible {
+    background: var(--neutral-100);
+  }
+
+  .wb-board-menu__item:not(.is-disabled):hover .wb-icon,
+  .wb-board-menu__item:not(.is-disabled):focus-visible .wb-icon {
+    color: var(--neutral-800);
+  }
+}
+
+.wb-board-menu__item:not(.is-disabled):focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--rose-600);
+}
+
+.wb-board-menu__item:not(.is-disabled):active {
+  background: var(--neutral-200);
+}
+
+.wb-board-menu__item.is-disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.wb-board-menu__item.is-disabled .wb-icon {
+  color: var(--text-disabled);
+}
+
+.wb-board-menu__item.is-disabled .wb-board-menu__tail {
+  color: var(--text-disabled);
+}
+
+.wb-board-menu__item--danger {
+  color: var(--danger-text);
+}
+
+.wb-board-menu__item--danger .wb-icon {
+  color: var(--danger-text);
+}
+
+@media (hover: hover) {
+  .wb-board-menu__item--danger:not(.is-disabled):hover,
+  .wb-board-menu__item--danger:not(.is-disabled):focus-visible {
+    background: var(--danger-bg);
+  }
+
+  .wb-board-menu__item--danger:not(.is-disabled):hover .wb-icon,
+  .wb-board-menu__item--danger:not(.is-disabled):focus-visible .wb-icon {
+    color: var(--danger-text);
+  }
+}
+
+.wb-board-menu__item--danger:not(.is-disabled):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--danger-text);
+}
+
+.wb-board-menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--neutral-200);
+}
+
+.wb-board-menu__sep--danger {
+  margin: 5px 6px 4px;
+}
+
+.wb-board-menu--sub {
+  position: fixed;
+  z-index: 49;
+  width: 208px;
+  margin: 0;
+  overflow: visible;
+}
+
+/* 卡片上的「更多」：视觉 24，命中区 40 */
+.wb-board-card__more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--neutral-600);
+  cursor: pointer;
+}
+
+.wb-board-card__more::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+@media (hover: hover) {
+  .wb-board-card__more:hover {
+    background: var(--neutral-100);
+    color: var(--neutral-900);
+  }
+}
+
+.wb-board-card__more:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.wb-board-card__more[aria-expanded="true"] {
+  background: var(--neutral-200);
+  color: var(--neutral-900);
+}
+
+/* 重命名弹窗 */
+.wb-rename {
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-3);
+}
+
+.wb-rename .wb-field {
+  margin-top: var(--space-4);
+}
+
+.wb-rename .wb-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.wb-rename__error {
+  margin: var(--space-2) 0 0;
+  color: var(--danger-text);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+/* 撤销 toast：与普通 toast 同底，右侧多一个动作 */
+.wb-toast--action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wb-toast__action {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--sakura-200);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wb-toast__action:hover {
+  text-decoration: underline;
+}
+
+.wb-toast__action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--sakura-200);
+}
+
+/* 底部弹层：菜单项 52 高，危险项只换字色不换底色 */
+.wb-board-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.wb-board-sheet__head .wb-board-menu__title {
+  font-size: var(--text-subtitle);
+  line-height: var(--lh-subtitle);
+}
+
+.wb-board-sheet .wb-sheet__item {
+  height: 52px;
+  padding: 0 var(--space-4);
+  font-size: 15px;
+}
+
+.wb-board-sheet .wb-sheet__item .wb-icon {
+  flex: none;
+  color: var(--neutral-600);
+}
+
+.wb-board-sheet .wb-sheet__item--danger {
+  color: var(--danger-text);
+}
+
+.wb-board-sheet .wb-sheet__item--danger .wb-icon {
+  color: var(--danger-text);
+}
+
+.wb-board-sheet .wb-sheet__item.is-disabled {
+  color: var(--text-disabled);
+}
+
+.wb-board-sheet .wb-sheet__item.is-disabled .wb-icon,
+.wb-board-sheet .wb-sheet__item.is-disabled .wb-board-menu__tail {
+  color: var(--text-disabled);
+}
+
+.wb-board-sheet .wb-sheet__item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--rose-600);
+}
+
+.wb-board-sheet__group > .wb-board-menu__sep {
+  margin: 4px var(--space-4);
+}
+
+@media (max-width: 639px) {
+  .wb-board-menu {
+    width: auto;
+  }
+
+  .wb-board-sheet .wb-sheet__item {
+    padding-right: var(--space-4);
+  }
+
+  /* 移动端软键盘弹出时，居中的弹窗容易被顶到可视区外：改成贴上部，并把输入框字号提到 16px 防 iOS 缩放 */
+  .wb-page--boards > .wb-overlay {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: max(16px, 8vh) 16px 16px;
+  }
+
+  .wb-rename {
+    width: 100%;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    padding: var(--space-4);
+  }
+
+  .wb-rename .wb-input {
+    font-size: 16px;
+  }
+}
+
+/* 触屏平板：浮动菜单行高提到 44，更好点按 */
+@media (min-width: 640px) and (pointer: coarse) {
+  .wb-board-menu__item {
+    height: 44px;
+  }
+}
+
+

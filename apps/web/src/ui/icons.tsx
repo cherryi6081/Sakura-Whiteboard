@@ -113,6 +113,25 @@ export function IconPin({ size = 14 }: IconProps) {
   );
 }
 
+export function IconPinOff({ size = 14 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M9.5 3h5l-.9 4.6 3 3.2H7.4l3-3.2L9.5 3z" />
+      <path d="M12 10.8V21" />
+      <path d="M4 4l16 16" />
+    </svg>
+  );
+}
+
+export function IconRename({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M4 20h4.5L20 8.5a2.1 2.1 0 0 0-3-3L5.5 17v3z" />
+      <path d="M14.5 6.5l3 3" />
+    </svg>
+  );
+}
+
 /** 花形标记：用在「置顶」胶囊上，和首页樱花同属一个造型语言 */
 export function IconFlower({ size = 12 }: IconProps) {
   return (

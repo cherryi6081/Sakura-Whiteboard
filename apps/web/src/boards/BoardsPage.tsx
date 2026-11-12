@@ -1,15 +1,28 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { fetchClaimPreview, fetchMe, type ClaimPreview } from "../auth/authApi";
 import { ClaimDialog, claimSnoozed } from "../auth/ClaimDialog";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
-import { fetchBoards, fetchTrashCount, ROLE_LABEL, setBoardPinned, type BoardListItem } from "./boardsApi";
+import {
+  createShareLink,
+  fetchBoards,
+  fetchTrashCount,
+  renameBoard,
+  restoreBoard,
+  ROLE_LABEL,
+  setBoardPinned,
+  type BoardListItem,
+} from "./boardsApi";
+import { moveBoardToTrash } from "./boardActions";
+import { BoardCardMenu, type BoardMenuTarget } from "./BoardCardMenu";
+import type { MenuAnchor } from "./boardMenu";
 import { hasMoreBoards, isPinned, sortBoards, visibleBoards } from "./boardList";
 import { loadThumbUrls } from "./boardThumb";
 import { listRecentBoards, setRecentPinned, type RecentBoard } from "./recentBoards";
 import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
-import { IconAlert, IconBoard, IconFlower, IconPin, IconPlus, IconTrash } from "../ui/icons";
+import { IconAlert, IconBoard, IconFlower, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
 
 /**
  * 我的白板列表（视觉方案 §4.2）。
@@ -35,6 +48,8 @@ type CardModel = {
   pinned: boolean;
   badge: string;
   badgeTone: "role" | "readonly" | "guest";
+  role: string;
+  guest?: boolean;
 };
 
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
@@ -61,6 +76,13 @@ export function BoardsPage() {
   const [thumbsReady, setThumbsReady] = useState(false);
   const [pinBusyId, setPinBusyId] = useState<string | null>(null);
   const [trashCount, setTrashCount] = useState(0);
+  // 右键菜单只允许一个实例：右键 / 长按 / 「更多」都写同一份 state
+  const [menu, setMenu] = useState<{ board: CardModel; anchor: MenuAnchor; trigger: HTMLElement | null } | null>(null);
+  const [rename, setRename] = useState<{ board: CardModel; trigger: HTMLElement | null } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [undoToast, setUndoToast] = useState<{ id: string; title: string } | null>(null);
   // 建板逻辑（含配额/离线/慢请求处理）统一走 useCreateBoard，与旧首页入口同一份实现
   const { busy, slow, error: createError, start } = useCreateBoard({ messageFor: boardsMessageFor });
 
@@ -135,6 +157,13 @@ export function BoardsPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  // 回收站 toast 的 5 秒撤销期
+  useEffect(() => {
+    if (!undoToast) return;
+    const timer = window.setTimeout(() => setUndoToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [undoToast]);
+
   const dismissClaimBar = () => {
     setClaimBarVisible(false);
     writeFlag(CLAIM_DISMISSED_KEY);
@@ -185,6 +214,7 @@ export function BoardsPage() {
           pinned: isPinned(item),
           badge: ROLE_LABEL[item.role] ?? item.role,
           badgeTone: item.role === "viewer" ? "readonly" : "role",
+          role: item.role,
         }))
       : sortBoards(view.items).map((item) => ({
           id: item.id,
@@ -193,6 +223,8 @@ export function BoardsPage() {
           pinned: isPinned(item),
           badge: "临时板",
           badgeTone: "guest",
+          role: "owner",
+          guest: true,
         }));
 
   const cardsReady = listReady && thumbsReady;
@@ -202,6 +234,151 @@ export function BoardsPage() {
 
   const visible = visibleBoards(cards, page);
   const more = hasMoreBoards(cards.length, page);
+
+  const closeMenu = (restoreFocus = false) => {
+    const trigger = menu?.trigger ?? null;
+    setMenu(null);
+    if (restoreFocus && trigger) {
+      window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+    }
+  };
+
+  const openMenu = (board: CardModel, anchor: MenuAnchor, trigger: HTMLElement | null) => {
+    setMenu({ board, anchor, trigger });
+  };
+
+  const refreshList = useCallback(async () => {
+    const list = await fetchBoards(FETCH_LIMIT);
+    if (!list.ok) return;
+    setView((current) =>
+      current.kind === "user" ? { ...current, items: sortBoards(list.data.boards) } : current,
+    );
+  }, []);
+
+  const trashBoard = async (board: CardModel) => {
+    const index = cards.findIndex((item) => item.id === board.id);
+    const result = await moveBoardToTrash(board.id);
+    if (!result) {
+      setToast("没删成功，再试一次。");
+      return;
+    }
+    setView((current) =>
+      current.kind === "user"
+        ? { ...current, items: current.items.filter((item) => item.id !== board.id) }
+        : current,
+    );
+    setTrashCount((count) => count + 1);
+    setUndoToast({ id: board.id, title: board.title });
+    // 焦点落到原位置的下一条卡片，避免删除后焦点丢回 body
+    window.requestAnimationFrame(() => {
+      const links = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="board-card"] .wb-board-card__link'),
+      );
+      links[Math.min(index, links.length - 1)]?.focus({ preventScroll: true });
+    });
+  };
+
+  const undoTrash = async () => {
+    const target = undoToast;
+    if (!target) return;
+    setUndoToast(null);
+    const result = await restoreBoard(target.id);
+    if (!result.ok) {
+      setToast("恢复没成功，请到回收站里恢复。");
+      return;
+    }
+    setTrashCount((count) => Math.max(0, count - 1));
+    await refreshList();
+    setToast(
+      result.data.renamed ? `已恢复，并重命名为「${result.data.title}」` : `已恢复「${result.data.title}」`,
+    );
+  };
+
+  const copyBoardLink = async (board: CardModel) => {
+    const ok = await copyText(`${window.location.origin}/board/${board.id}`);
+    setToast(ok ? "链接已复制" : "复制失败，请手动复制地址栏链接。");
+  };
+
+  const inviteCollaborator = async (board: CardModel) => {
+    const result = await createShareLink(board.id, "read");
+    if (!result.ok) {
+      setToast("邀请链接没生成成功，再试一次。");
+      return;
+    }
+    const ok = await copyText(new URL(result.data.url, window.location.origin).toString());
+    setToast(ok ? "邀请链接已复制" : "邀请链接已生成，但复制失败，请到分享面板查看。");
+  };
+
+  const closeRename = () => {
+    const trigger = rename?.trigger ?? null;
+    setRename(null);
+    setRenameError(null);
+    if (trigger) window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+  };
+
+  const submitRename = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!rename) return;
+    const title = renameValue.trim();
+    if (!title) {
+      setRenameError("标题不能为空");
+      return;
+    }
+    setRenameBusy(true);
+    const result = await renameBoard(rename.board.id, title);
+    setRenameBusy(false);
+    if (!result.ok) {
+      setRenameError("改名没成功，再试一次。");
+      return;
+    }
+    const nextTitle = result.data.title;
+    setView((current) =>
+      current.kind === "user"
+        ? {
+            ...current,
+            items: current.items.map((item) => (item.id === rename.board.id ? { ...item, title: nextTitle } : item)),
+          }
+        : current,
+    );
+    const trigger = rename.trigger;
+    setRename(null);
+    setRenameError(null);
+    setToast("已重命名");
+    if (trigger) window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+  };
+
+  const handleMenuAction = (key: string) => {
+    const target = menu;
+    if (!target) return;
+    const board = target.board;
+    const trigger = target.trigger;
+    setMenu(null);
+
+    switch (key) {
+      case "open":
+        window.location.href = `/board/${board.id}`;
+        return;
+      case "rename":
+        setRename({ board, trigger });
+        setRenameValue(board.title);
+        setRenameError(null);
+        return;
+      case "pin":
+        void togglePin(board.id, !board.pinned);
+        return;
+      case "copy-link":
+        void copyBoardLink(board);
+        return;
+      case "invite":
+        void inviteCollaborator(board);
+        return;
+      case "trash":
+        void trashBoard(board);
+        return;
+      default:
+        return;
+    }
+  };
 
   return (
     <div className="wb-page wb-page--boards">
@@ -308,7 +485,10 @@ export function BoardsPage() {
                     board={board}
                     thumbUrl={thumbs[board.id]}
                     pinBusy={pinBusyId === board.id}
+                    menuOpen={menu?.board.id === board.id}
                     onTogglePin={togglePin}
+                    onOpenMenu={openMenu}
+                    onCloseMenu={() => closeMenu(true)}
                   />
                 ))}
               </div>
@@ -341,6 +521,86 @@ export function BoardsPage() {
 
       {toast ? <div className="wb-toast">{toast}</div> : null}
 
+      {undoToast ? (
+        <div className="wb-toast wb-toast--action" role="status" aria-live="polite">
+          <span>已移到回收站「{undoToast.title}」</span>
+          <button className="wb-toast__action" type="button" onClick={() => void undoTrash()}>
+            撤销
+          </button>
+        </div>
+      ) : null}
+
+      {menu ? (
+        <BoardCardMenu
+          target={{
+            boardId: menu.board.id,
+            title: menu.board.title,
+            role: menu.board.role,
+            pinned: menu.board.pinned,
+            guest: menu.board.guest,
+            anchor: menu.anchor,
+            trigger: menu.trigger,
+          }}
+          onAction={handleMenuAction}
+          onClose={closeMenu}
+        />
+      ) : null}
+
+      {rename ? (
+        <div
+          className="wb-overlay"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeRename();
+          }}
+        >
+          <form
+            className="wb-rename"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wb-rename-title"
+            onSubmit={(event) => void submitRename(event)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeRename();
+              }
+            }}
+          >
+            <h2 className="wb-dialog__title" id="wb-rename-title">
+              重命名白板
+            </h2>
+            <label className="wb-field">
+              <span className="wb-field__label">白板名称</span>
+              <input
+                className="wb-input"
+                value={renameValue}
+                maxLength={80}
+                autoFocus
+                aria-invalid={renameError ? "true" : undefined}
+                onChange={(event) => {
+                  setRenameValue(event.target.value);
+                  if (renameError) setRenameError(null);
+                }}
+                data-testid="rename-input"
+              />
+            </label>
+            {renameError ? (
+              <p className="wb-rename__error" role="alert">
+                {renameError}
+              </p>
+            ) : null}
+            <div className="wb-dialog__actions">
+              <button className="wb-btn wb-btn--ghost" type="button" onClick={closeRename}>
+                取消
+              </button>
+              <button className="wb-btn wb-btn--primary" type="submit" disabled={renameBusy}>
+                {renameBusy ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {dialogOpen && preview && preview.count > 0 ? (
         <ClaimDialog
           preview={preview}
@@ -364,15 +624,78 @@ function BoardCard({
   board,
   thumbUrl,
   pinBusy,
+  menuOpen,
   onTogglePin,
+  onOpenMenu,
+  onCloseMenu,
 }: {
   board: CardModel;
   thumbUrl?: string;
   pinBusy: boolean;
+  menuOpen: boolean;
   onTogglePin: (id: string, pinned: boolean) => void;
+  onOpenMenu: (board: CardModel, anchor: MenuAnchor, trigger: HTMLElement | null) => void;
+  onCloseMenu: () => void;
 }) {
+  // 触屏长按 400ms 打开同一实例；移动超过 8px 视为滚动/拖拽，取消长按
+  const holdTimer = useRef<number | null>(null);
+  const holdStart = useRef<{ x: number; y: number } | null>(null);
+
+  const clearHold = () => {
+    if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdStart.current = null;
+  };
+
+  useEffect(() => clearHold, []);
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === "mouse" || !event.isPrimary) return;
+    if ((event.target as HTMLElement).closest("button")) return;
+    const trigger = event.currentTarget;
+    holdStart.current = { x: event.clientX, y: event.clientY };
+    holdTimer.current = window.setTimeout(() => {
+      holdTimer.current = null;
+      const start = holdStart.current;
+      holdStart.current = null;
+      if (start) onOpenMenu(board, { type: "pointer", x: start.x, y: start.y }, trigger);
+    }, 400);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const start = holdStart.current;
+    if (!start) return;
+    if (Math.abs(event.clientX - start.x) > 8 || Math.abs(event.clientY - start.y) > 8) clearHold();
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      onOpenMenu(
+        board,
+        { type: "button", left: rect.left, right: rect.right, top: rect.top, bottom: rect.top + 4 },
+        event.currentTarget,
+      );
+    }
+  };
+
   return (
-    <article className="wb-card wb-board-card" data-testid="board-card" data-board-id={board.id}>
+    <article
+      className="wb-card wb-board-card"
+      data-testid="board-card"
+      data-board-id={board.id}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu(board, { type: "pointer", x: event.clientX, y: event.clientY }, event.currentTarget);
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={clearHold}
+      onPointerCancel={clearHold}
+      onPointerLeave={clearHold}
+      onKeyDown={onKeyDown}
+    >
       <a className="wb-board-card__link" href={`/board/${board.id}`}>
         <span className="wb-board-card__thumb">
           {thumbUrl ? (
@@ -417,6 +740,29 @@ function BoardCard({
             onClick={() => onTogglePin(board.id, !board.pinned)}
           >
             <IconPin size={14} />
+          </button>
+          <button
+            className="wb-board-card__more"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={`${board.title} 的更多操作`}
+            title="更多操作"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (menuOpen) {
+                onCloseMenu();
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              onOpenMenu(
+                board,
+                { type: "button", left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+                event.currentTarget,
+              );
+            }}
+          >
+            <IconMore size={16} />
           </button>
         </span>
       </div>
@@ -482,8 +828,30 @@ function formatRelative(iso: string): string {
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function readFlag(key: string): boolean {
+/** 剪贴板在非安全上下文没有 `navigator.clipboard`，退回隐藏 textarea + execCommand。 */
+async function copyText(text: string): Promise<boolean> {
   try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function readFlag(key: string): boolean {  try {
     return sessionStorage.getItem(key) === "1";
   } catch {
     return false;

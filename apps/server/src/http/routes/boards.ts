@@ -50,6 +50,10 @@ type BoardMetaRow = {
 
 const pinSchema = z.object({ pinned: z.boolean() });
 
+const renameSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+});
+
 async function enforceGuestQuota(guestId: string): Promise<void> {
   const { rows } = await pool.query<{ unarchived: number }>(
     `select count(*)::int as unarchived from boards
@@ -170,10 +174,35 @@ boardsRouter.get(
 );
 
 /**
+ * `PATCH /api/boards/:id` —— 重命名。
+ *
+ * owner / editor 可改，viewer 只读不能改。**不动 `last_edited_at`**：
+ * 改名是列表层的整理动作，不应把白板顶到「最近编辑」的第一位。
+ */
+boardsRouter.patch(
+  '/boards/:id',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const { title } = renameSchema.parse(req.body ?? {});
+    const access = await resolveBoardAccess(boardId, identityOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    if (access.role === 'viewer') throw new AppError(403, 'FORBIDDEN', '只读成员不能重命名');
+
+    const { rows } = await pool.query<{ id: string; title: string }>(
+      `update boards set title = $2 where id = $1 returning id, title`,
+      [boardId, title],
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    res.json({ id: row.id, title: row.title });
+  }),
+);
+
+/**
  * `PATCH /api/boards/:id/pin` —— 置顶 / 取消置顶。
  *
- * 只有创建者（登录 owner，或持游客 cookie 的 owner）能改；协作者即使可编辑也不改别人的置顶。
- * 置顶只是列表排序偏好：只写 `pinned_at`，不改 `last_edited_at`，避免改变「最近打开」的语义。
+ * 置顶是**空间共享**的列表偏好（复用 `pinned_at`），owner/editor 都能改；viewer 只读不可改。
+ * 只写 `pinned_at`，不改 `last_edited_at`，避免改变「最近打开」的语义。
  */
 boardsRouter.patch(
   '/boards/:id/pin',
@@ -182,7 +211,7 @@ boardsRouter.patch(
     const { pinned } = pinSchema.parse(req.body ?? {});
     const access = await resolveBoardAccess(boardId, identityOf(req));
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
-    if (access.role !== 'owner') throw new AppError(403, 'FORBIDDEN', '只有创建者可以置顶');
+    if (access.role === 'viewer') throw new AppError(403, 'FORBIDDEN', '只读成员不能置顶');
 
     const { rows } = await pool.query<{ pinned_at: Date | null }>(
       `update boards

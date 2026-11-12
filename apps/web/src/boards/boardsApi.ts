@@ -47,6 +47,35 @@ export function createBoard(title?: string): Promise<ApiResult<CreatedBoard>> {
   });
 }
 
+/** 重命名（owner / editor）；服务端不改 `last_edited_at`。 */
+export function renameBoard(boardId: string, title: string): Promise<ApiResult<{ id: string; title: string }>> {
+  return request<{ id: string; title: string }>(`/api/boards/${encodeURIComponent(boardId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
+export type CreatedShareLink = {
+  id: string;
+  boardId: string;
+  permission: "read" | "edit";
+  token: string;
+  url: string;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
+/** 生成分享链接（owner）；列表页「邀请协作者」用它复制只读链接。 */
+export function createShareLink(
+  boardId: string,
+  permission: "read" | "edit" = "read",
+): Promise<ApiResult<CreatedShareLink>> {
+  return request<CreatedShareLink>(`/api/boards/${encodeURIComponent(boardId)}/share-links`, {
+    method: "POST",
+    body: JSON.stringify({ permission }),
+  });
+}
+
 export const ROLE_LABEL: Record<string, string> = {
   owner: "我创建的",
   editor: "可编辑",
