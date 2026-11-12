@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export * from './password.js';
+export * from './spaces.js';
 
 export const BOARD_ROLES = ['owner', 'editor', 'viewer'] as const;
 export type BoardRole = (typeof BOARD_ROLES)[number];

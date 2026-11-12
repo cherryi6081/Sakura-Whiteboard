@@ -39,6 +39,7 @@ const trashQuerySchema = z.object({
 type TrashRow = {
   id: string;
   title: string;
+  space_name: string | null;
   deleted_at: Date;
   purge_at: Date;
 };
@@ -47,12 +48,21 @@ function toTrashItem(row: TrashRow) {
   return {
     id: row.id,
     title: row.title,
-    // 空间功能落地前统一归入个人空间；第 5 步改为真实 space 名
-    spaceName: null,
+    spaceName: row.space_name,
     deletedAt: row.deleted_at.toISOString(),
     purgeAt: row.purge_at.toISOString(),
   };
 }
+
+/**
+ * 回收站可见范围：自己创建的板 + 自己作为所有者所在空间里的板。
+ * 空间所有者可以删别人的板（设计稿 §05），删完必须能在回收站里看到并恢复。
+ */
+const TRASH_VISIBLE = `(b.owner_id = $1 or exists (
+  select 1 from spaces s
+   join space_members m on m.space_id = s.id and m.user_id = $1
+  where s.id = b.space_id and m.role = 'owner'
+))`;
 
 /** `GET /api/boards/trash` —— 个人回收站，按删除时间倒序，12 行一页。 */
 trashRouter.get(
@@ -63,12 +73,13 @@ trashRouter.get(
     const { limit, offset, filter } = trashQuerySchema.parse(req.query);
 
     const { rows } = await pool.query<TrashRow>(
-      `select id, title, deleted_at,
-              deleted_at + make_interval(days => $3::int) as purge_at
-         from boards
-        where owner_id = $1 and deleted_at is not null
-          and ($5 = 'all' or deleted_at <= now() - make_interval(days => $3::int - 7))
-        order by deleted_at desc, id desc
+      `select b.id, b.title, s.name as space_name, b.deleted_at,
+              b.deleted_at + make_interval(days => $3::int) as purge_at
+         from boards b
+         left join spaces s on s.id = b.space_id
+        where ${TRASH_VISIBLE} and b.deleted_at is not null
+          and ($5 = 'all' or b.deleted_at <= now() - make_interval(days => $3::int - 7))
+        order by b.deleted_at desc, b.id desc
         limit $2 offset $4`,
       [identity.userId, limit + 1, TRASH_RETENTION_DAYS, offset, filter],
     );
@@ -76,10 +87,10 @@ trashRouter.get(
     const pageRows = rows.slice(0, limit);
     const { rows: countRows } = await pool.query<{ all_total: number; expiring_soon: number; filtered: number }>(
       `select count(*)::int as all_total,
-              count(*) filter (where deleted_at <= now() - make_interval(days => $2::int - 7))::int as expiring_soon,
-              count(*) filter (where $3 = 'all' or deleted_at <= now() - make_interval(days => $2::int - 7))::int as filtered
-         from boards
-        where owner_id = $1 and deleted_at is not null`,
+              count(*) filter (where b.deleted_at <= now() - make_interval(days => $2::int - 7))::int as expiring_soon,
+              count(*) filter (where $3 = 'all' or b.deleted_at <= now() - make_interval(days => $2::int - 7))::int as filtered
+         from boards b
+        where ${TRASH_VISIBLE} and b.deleted_at is not null`,
       [identity.userId, TRASH_RETENTION_DAYS, filter],
     );
 
@@ -100,7 +111,7 @@ trashRouter.get(
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
     const { rows } = await pool.query<{ total: number }>(
-      'select count(*)::int as total from boards where owner_id = $1 and deleted_at is not null',
+      `select count(*)::int as total from boards b where ${TRASH_VISIBLE} and b.deleted_at is not null`,
       [identity.userId],
     );
     res.json({ count: rows[0]?.total ?? 0 });
@@ -114,7 +125,7 @@ trashRouter.delete(
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
     const { rowCount } = await pool.query(
-      'delete from boards where owner_id = $1 and deleted_at is not null',
+      `delete from boards b where ${TRASH_VISIBLE} and b.deleted_at is not null`,
       [identity.userId],
     );
     res.json({ purged: rowCount ?? 0 });
@@ -124,9 +135,9 @@ trashRouter.delete(
 /**
  * `DELETE /api/boards/:id` —— 删除。
  *
- * - 登录 owner：软删除，进个人回收站，30 天后由每日任务清理；
- * - 游客 owner：直接物理删除（临时板没有回收站）；
- * - 非 owner：403，协作者的「移出我的列表」在后续步骤落地。
+ * - 登录成员：软删除，进回收站，30 天后由每日任务清理；
+ *   空间所有者可删任意板，编辑者只能删自己创建的，只读成员 403；
+ * - 游客 owner：直接物理删除（临时板没有回收站）。
  */
 trashRouter.delete(
   '/boards/:id',
@@ -136,10 +147,15 @@ trashRouter.delete(
 
     if (identity.userId) {
       const { rows } = await pool.query<{ deleted_at: Date; purge_at: Date }>(
-        `update boards
+        `update boards b
             set deleted_at = now()
-          where id = $1 and owner_id = $2 and deleted_at is null
-          returning deleted_at, deleted_at + make_interval(days => $3::int) as purge_at`,
+          where b.id = $1 and b.deleted_at is null
+            and exists (
+              select 1 from space_members m
+               where m.space_id = b.space_id and m.user_id = $2
+                 and (m.role = 'owner' or (m.role = 'editor' and b.owner_id = $2))
+            )
+          returning b.deleted_at, b.deleted_at + make_interval(days => $3::int) as purge_at`,
         [boardId, identity.userId, TRASH_RETENTION_DAYS],
       );
       const row = rows[0];
@@ -171,26 +187,24 @@ trashRouter.post(
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
 
-    const { rows } = await pool.query<{ id: string; title: string }>(
-      'select id, title from boards where id = $1 and owner_id = $2 and deleted_at is not null',
+    const { rows } = await pool.query<{ id: string; title: string; space_id: string | null }>(
+      `select b.id, b.title, b.space_id from boards b
+        where b.id = $1 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
       [boardId, identity.userId],
     );
     const board = rows[0];
     if (!board) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
 
     const { rows: takenRows } = await pool.query<{ title: string }>(
-      'select title from boards where owner_id = $1 and deleted_at is null and id <> $2',
-      [identity.userId, boardId],
+      'select title from boards where space_id is not distinct from $1 and deleted_at is null and id <> $2',
+      [board.space_id, boardId],
     );
     const title = uniqueBoardTitle(
       board.title,
       takenRows.map((row) => row.title),
     );
 
-    await pool.query(
-      'update boards set deleted_at = null, title = $2 where id = $1 and owner_id = $3',
-      [boardId, title, identity.userId],
-    );
+    await pool.query('update boards set deleted_at = null, title = $2 where id = $1', [boardId, title]);
 
     res.json({ id: boardId, title, renamed: title !== board.title, deletedAt: null });
   }),
@@ -205,7 +219,8 @@ trashRouter.delete(
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
 
     const { rowCount } = await pool.query(
-      'delete from boards where id = $1 and owner_id = $2 and deleted_at is not null',
+      `delete from boards b
+        where b.id = $1 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
       [boardId, identity.userId],
     );
     if (!rowCount) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');

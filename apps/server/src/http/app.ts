@@ -10,6 +10,7 @@ import { guestRouter } from './routes/guest.js';
 import { sharesRouter } from './routes/shares.js';
 import { assetsRouter } from './routes/assets.js';
 import { trashRouter } from './routes/trash.js';
+import { spacesRouter } from './routes/spaces.js';
 import { attachIdentity } from '../auth/identity.js';
 import { errorHandler, notFound } from './middlewares/error.js';
 
@@ -52,6 +53,7 @@ export function createApp() {
   app.use('/api', assetsRouter);
   // 必须在 boardsRouter 之前：/boards/trash 不能被 /boards/:id 抢先解析
   app.use('/api', trashRouter);
+  app.use('/api', spacesRouter);
   app.use('/api', boardsRouter);
 
   mountWeb(app);

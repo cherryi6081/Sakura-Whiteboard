@@ -16,6 +16,9 @@ export type BoardListItem = {
   pinnedAt?: string | null;
   /** 手动顺序（仅 sortMode = manual 时有效）；null = 尚未排过 */
   rank?: number | null;
+  /** 团队空间卡片展示「谁创建」；个人空间不展示 */
+  ownerName?: string;
+  isOwn?: boolean;
 };
 
 export type BoardSortMode = "auto" | "manual";
@@ -24,10 +27,14 @@ export type BoardList = {
   boards: BoardListItem[];
   sortMode: BoardSortMode;
   nextOffset: number | null;
+  /** 实际查询的空间；缺省为个人空间 */
+  spaceId?: string;
+  spaceRole?: BoardRole | string;
 };
 
-export function fetchBoards(limit = 20, offset = 0): Promise<ApiResult<BoardList>> {
-  return request<BoardList>(`/api/boards?limit=${limit}&offset=${offset}`);
+export function fetchBoards(limit = 20, offset = 0, spaceId?: string): Promise<ApiResult<BoardList>> {
+  const space = spaceId ? `&space=${encodeURIComponent(spaceId)}` : "";
+  return request<BoardList>(`/api/boards?limit=${limit}&offset=${offset}${space}`);
 }
 
 /**
@@ -108,10 +115,13 @@ export function batchTrashBoards(boardIds: string[]): Promise<ApiResult<BatchTra
   });
 }
 
-export function createBoard(title?: string): Promise<ApiResult<CreatedBoard>> {
+export function createBoard(title?: string, spaceId?: string): Promise<ApiResult<CreatedBoard>> {
+  const body: { title?: string; spaceId?: string } = {};
+  if (title) body.title = title;
+  if (spaceId) body.spaceId = spaceId;
   return request<CreatedBoard>("/api/boards", {
     method: "POST",
-    body: JSON.stringify(title ? { title } : {}),
+    body: JSON.stringify(body),
   });
 }
 

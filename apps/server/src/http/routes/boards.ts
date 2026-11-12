@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
+import { can } from '@whiteboard/shared';
 import { pool } from '../../infra/db.js';
 import { ensureRedisConnected, redis } from '../../infra/redis.js';
 import { AppError } from '../middlewares/error.js';
@@ -11,6 +12,7 @@ import { issueGuestCookie } from '../../auth/guestCookie.js';
 import { resolveBoardAccess } from '../../domain/access.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
+import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -33,23 +35,30 @@ const handle =
 const GUEST_BOARDS_PER_24H = 3;
 const GUEST_UNARCHIVED_MAX = 6;
 
+const spaceIdSchema = z.string().regex(/^sp_[A-Za-z0-9_-]{10,32}$/);
+
 const createBoardSchema = z.object({
   title: z.string().trim().min(1).max(80).optional(),
+  /** 建到哪个空间；缺省为个人空间 */
+  spaceId: spaceIdSchema.optional(),
 });
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(20),
   /** 手动排序与时间解耦后游标不再可靠（会把已排到前面的板重复取回），统一用 offset 分页 */
   offset: z.coerce.number().int().min(0).default(0),
+  /** 空间 id；缺省为个人空间 */
+  space: spaceIdSchema.optional(),
 });
 
 type BoardMetaRow = {
   id: string;
   title: string;
-  role: string;
   last_edited_at: Date;
   pinned_at: Date | null;
   rank: string | null;
+  owner_name: string;
+  is_own: boolean;
 };
 
 const pinSchema = z.object({ pinned: z.boolean() });
@@ -101,15 +110,25 @@ async function enforceGuestQuota(guestId: string): Promise<void> {
 boardsRouter.post(
   '/boards',
   handle(async (req, res) => {
-    const { title } = createBoardSchema.parse(req.body ?? {});
+    const { title, spaceId } = createBoardSchema.parse(req.body ?? {});
     const identity = identityOf(req);
     const boardTitle = title ?? '未命名白板';
 
     let ownerId: string | null = null;
     let ownerGuestId: string | null = null;
+    let targetSpaceId: string | null = null;
 
     if (identity.userId) {
       ownerId = identity.userId;
+      // 团队空间建板：editor/owner 可建，viewer 403，非成员 404
+      if (spaceId) {
+        const role = await resolveSpaceRole(spaceId, identity.userId);
+        if (!role) throw new AppError(404, 'NOT_FOUND', 'space not found');
+        if (!can(role, 'createBoard')) throw new AppError(403, 'FORBIDDEN', '只读成员不能新建白板');
+        targetSpaceId = spaceId;
+      } else {
+        targetSpaceId = (await ensurePersonalSpace(identity.userId)).id;
+      }
     } else {
       let guestId = identity.guestId;
       if (!guestId) guestId = issueGuestCookie(res);
@@ -119,10 +138,10 @@ boardsRouter.post(
 
     const boardId = nanoid(12);
     const { rows } = await pool.query<{ id: string; title: string; created_at: Date }>(
-      `insert into boards (id, title, owner_id, owner_guest_id, share_mode)
-       values ($1, $2, $3, $4, 'private')
+      `insert into boards (id, title, owner_id, owner_guest_id, share_mode, space_id)
+       values ($1, $2, $3, $4, 'private', $5)
        returning id, title, created_at`,
-      [boardId, boardTitle, ownerId, ownerGuestId],
+      [boardId, boardTitle, ownerId, ownerGuestId, targetSpaceId],
     );
     const row = rows[0];
     if (!row) throw new AppError(500, 'INTERNAL', 'board insert returned no row');
@@ -152,7 +171,12 @@ boardsRouter.get(
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '游客没有服务端白板列表，请使用本机列表');
 
-    const { limit, offset } = listQuerySchema.parse(req.query);
+    const { limit, offset, space } = listQuerySchema.parse(req.query);
+    // 空间是列表的一级上下文：不传 = 个人空间；非成员统一 404，不泄露空间是否存在
+    const spaceId = space ?? (await ensurePersonalSpace(identity.userId)).id;
+    const role = await resolveSpaceRole(spaceId, identity.userId);
+    if (!role) throw new AppError(404, 'NOT_FOUND', 'space not found');
+
     const { rows: settingRows } = await pool.query<{ sort_mode: string }>(
       'select sort_mode from board_user_settings where user_id = $1',
       [identity.userId],
@@ -160,34 +184,33 @@ boardsRouter.get(
     const sortMode = settingRows[0]?.sort_mode === 'manual' ? 'manual' : 'auto';
 
     const { rows } = await pool.query<BoardMetaRow>(
-      `select t.id, t.title, t.role, t.last_edited_at, t.pinned_at, t.rank
-         from (
-           select b.id, b.title, 'owner' as role, b.last_edited_at, b.pinned_at, o.rank
-             from boards b
-             left join board_user_order o on o.board_id = b.id and o.user_id = $1
-            where b.owner_id = $1 and b.archived_at is null and b.deleted_at is null
-           union all
-           select b.id, b.title, m.role, b.last_edited_at, b.pinned_at, o.rank
-             from boards b
-             join board_members m on m.board_id = b.id and m.user_id = $1
-             left join board_user_order o on o.board_id = b.id and o.user_id = $1
-            where b.archived_at is null and b.deleted_at is null
-         ) t
-        order by (t.pinned_at is not null) desc,
-                 case when $4 = 'manual' then t.rank end asc nulls last,
-                 t.last_edited_at desc, t.id desc
+      `select b.id, b.title, b.last_edited_at, b.pinned_at, o.rank,
+              u.display_name as owner_name,
+              (b.owner_id = $1) as is_own
+         from boards b
+         left join board_user_order o on o.board_id = b.id and o.user_id = $1
+         left join users u on u.id = b.owner_id
+        where b.space_id = $5 and b.archived_at is null and b.deleted_at is null
+        order by (b.pinned_at is not null) desc,
+                 case when $4 = 'manual' then o.rank end asc nulls last,
+                 b.last_edited_at desc, b.id desc
         limit $2 offset $3`,
-      [identity.userId, limit, offset, sortMode],
+      [identity.userId, limit, offset, sortMode, spaceId],
     );
 
     res.json({
+      spaceId,
+      spaceRole: role,
       boards: rows.map((row) => ({
         id: row.id,
         title: row.title,
-        role: row.role,
+        // 空间是唯一权限来源：同一空间内所有人看到同一个角色
+        role,
         lastEditedAt: row.last_edited_at.toISOString(),
         pinnedAt: row.pinned_at ? row.pinned_at.toISOString() : null,
         rank: row.rank === null ? null : Number(row.rank),
+        ownerName: row.owner_name,
+        isOwn: row.is_own,
       })),
       sortMode,
       nextOffset: rows.length === limit ? offset + limit : null,
@@ -263,9 +286,9 @@ async function batchRoles(ids: string[], userId: string): Promise<Map<string, st
   if (ids.length === 0) return new Map();
   const { rows } = await pool.query<{ id: string; role: string | null }>(
     `select b.id,
-            case when b.owner_id = $2 then 'owner' else m.role end as role
+            (select m.role from space_members m
+              where m.space_id = b.space_id and m.user_id = $2) as role
        from boards b
-       left join board_members m on m.board_id = b.id and m.user_id = $2
       where b.id = any($1::text[]) and b.deleted_at is null and b.archived_at is null`,
     [ids, userId],
   );
@@ -315,7 +338,7 @@ boardsRouter.post(
   }),
 );
 
-/** `POST /api/boards/batch/trash` —— 批量移入回收站（仅 owner）。 */
+/** `POST /api/boards/batch/trash` —— 批量移入回收站（所有者任意；编辑者仅自己创建的）。 */
 boardsRouter.post(
   '/boards/batch/trash',
   handle(async (req, res) => {
@@ -325,12 +348,17 @@ boardsRouter.post(
     const ids = [...new Set(rawIds)];
 
     const { rows } = await pool.query<{ id: string; deleted_at: Date; purge_at: Date }>(
-      `update boards
+      `update boards b
           set deleted_at = now()
-        where id = any($1::text[]) and owner_id = $2
-          and deleted_at is null and archived_at is null
-        returning id, deleted_at,
-                  deleted_at + make_interval(days => $3::int) as purge_at`,
+        where b.id = any($1::text[])
+          and b.deleted_at is null and b.archived_at is null
+          and exists (
+            select 1 from space_members m
+             where m.space_id = b.space_id and m.user_id = $2
+               and (m.role = 'owner' or (m.role = 'editor' and b.owner_id = $2))
+          )
+        returning b.id, b.deleted_at,
+                  b.deleted_at + make_interval(days => $3::int) as purge_at`,
       [ids, identity.userId, TRASH_RETENTION_DAYS],
     );
     const moved = new Map(rows.map((row) => [row.id, row]));
@@ -366,25 +394,23 @@ const orderSchema = z.object({
 
 const sortModeSchema = z.object({ mode: z.enum(['auto', 'manual']) });
 
-/** 当前用户可见、且与目标同组的白板 id，按视觉顺序（置顶组按置顶时间，普通组按最近编辑）。 */
-async function groupBoardIds(userId: string, pinned: boolean): Promise<string[]> {
+/** 当前用户在**同一空间**内可见、且与目标同组的白板 id，按视觉顺序。 */
+async function groupBoardIds(userId: string, pinned: boolean, spaceId: string): Promise<string[]> {
   const { rows } = await pool.query<{ id: string }>(
     `select b.id
        from boards b
-      where b.archived_at is null and b.deleted_at is null
-        and (b.owner_id = $1
-             or exists (select 1 from board_members m where m.board_id = b.id and m.user_id = $1))
+      where b.space_id = $3 and b.archived_at is null and b.deleted_at is null
         and (($2::boolean and b.pinned_at is not null) or (not $2::boolean and b.pinned_at is null))
       order by case when $2::boolean then b.pinned_at end desc nulls last,
                b.last_edited_at desc, b.id desc`,
-    [userId, pinned],
+    [userId, pinned, spaceId],
   );
   return rows.map((row) => row.id);
 }
 
 /** 把某一组的当前顺序整体落成 rank = 1024, 2048…（首次拖动 / 间隙不足时调用）。 */
-async function materializeGroup(userId: string, pinned: boolean): Promise<void> {
-  const ranks = materializeRanks(await groupBoardIds(userId, pinned));
+async function materializeGroup(userId: string, pinned: boolean, spaceId: string): Promise<void> {
+  const ranks = materializeRanks(await groupBoardIds(userId, pinned, spaceId));
   if (ranks.size === 0) return;
   const ids = [...ranks.keys()];
   await pool.query(
@@ -419,16 +445,21 @@ boardsRouter.patch(
 
     const access = await resolveBoardAccess(boardId, identity);
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    // 只读成员不渲染把手，这里是服务端的第二道门
+    if (!can(access.role, 'reorderBoard')) throw new AppError(403, 'FORBIDDEN', '只读成员不能调整顺序');
 
-    const { rows: boardRows } = await pool.query<{ pinned_at: Date | null }>(
-      'select pinned_at from boards where id = $1',
+    const { rows: boardRows } = await pool.query<{ pinned_at: Date | null; space_id: string | null }>(
+      'select pinned_at, space_id from boards where id = $1',
       [boardId],
     );
     const pinned = Boolean(boardRows[0]?.pinned_at);
+    // 排序作用域是「本空间 + 本用户」，不能用跨空间的可见集合算邻居
+    const spaceId = boardRows[0]?.space_id ?? '';
+    if (!spaceId) throw new AppError(404, 'NOT_FOUND', 'board not found');
 
     // 邻居失效（被删 / 被置顶换了组）时返回 409：客户端重拉一次再算落点
     const neighbors = [beforeId, afterId].filter((id): id is string => Boolean(id));
-    const visibleIds = new Set(await groupBoardIds(identity.userId, pinned));
+    const visibleIds = new Set(await groupBoardIds(identity.userId, pinned, spaceId));
     if (neighbors.some((id) => !visibleIds.has(id))) {
       throw new AppError(409, 'STALE_NEIGHBOR', '落点附近的顺序已变化，请刷新后重试');
     }
@@ -439,7 +470,7 @@ boardsRouter.patch(
     );
     if (settingRows[0]?.sort_mode !== 'manual') {
       // 首次拖动：整组当前顺序先落成 rank，再算落点，避免只有被拖的那块有 rank
-      await materializeGroup(identity.userId, pinned);
+      await materializeGroup(identity.userId, pinned, spaceId);
       await pool.query(
         `insert into board_user_settings (user_id, sort_mode) values ($1, 'manual')
          on conflict (user_id) do update set sort_mode = 'manual', updated_at = now()`,
@@ -451,7 +482,7 @@ boardsRouter.patch(
     let rank = rankBetween(beforeId ? ranks.get(beforeId) ?? null : null, afterId ? ranks.get(afterId) ?? null : null);
     if (rank === null) {
       // 间隙不足或邻居没有 rank：整组重排后用新的 rank 再算一次
-      await materializeGroup(identity.userId, pinned);
+      await materializeGroup(identity.userId, pinned, spaceId);
       ranks = await ranksOf(identity.userId, neighbors);
       rank = rankBetween(beforeId ? ranks.get(beforeId) ?? null : null, afterId ? ranks.get(afterId) ?? null : null);
     }

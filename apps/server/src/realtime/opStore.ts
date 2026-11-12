@@ -107,6 +107,8 @@ export type BoardRow = {
   deleted_at: Date | null;
   owner_id: string | null;
   owner_guest_id: string | null;
+  /** 归属空间；游客板为 null */
+  space_id: string | null;
 };
 
 export async function getBoardForJoin(boardId: string): Promise<BoardRow | null> {
@@ -118,8 +120,9 @@ export async function getBoardForJoin(boardId: string): Promise<BoardRow | null>
     deleted_at: Date | null;
     owner_id: string | null;
     owner_guest_id: string | null;
+    space_id: string | null;
   }>(
-    'select id, share_mode, last_seq, archived_at, deleted_at, owner_id, owner_guest_id from boards where id = $1',
+    'select id, share_mode, last_seq, archived_at, deleted_at, owner_id, owner_guest_id, space_id from boards where id = $1',
     [boardId],
   );
 
