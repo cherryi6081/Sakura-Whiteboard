@@ -1,7 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../http/middlewares/error.js';
+import { pool } from '../infra/db.js';
+import { logger } from '../infra/logger.js';
 import { GUEST_COOKIE, maybeRenewGuestCookie, parseCookieHeader, verifyGuestCookieValue } from './guestCookie.js';
-import { SESSION_COOKIE, parseSessionCookieValue, readSession } from './session.js';
+import { SESSION_COOKIE, destroySession, parseSessionCookieValue, readSession } from './session.js';
 
 /**
  * 请求身份：**只从 cookie / Redis 会话推导**，不读取任何客户端自报字段。
@@ -33,11 +35,30 @@ export const anonymousIdentity = (): Identity => ({
   guestExp: null,
 });
 
+/**
+ * 会话有效性：`users.status` 非 `active`（软删/禁用）时不再认这张会话。
+ * 一次主键查询；数据库不可用时放行（fail-open），避免抖动把所有人踢下线。
+ */
+async function isSessionUserActive(userId: string): Promise<boolean> {
+  try {
+    const { rows } = await pool.query<{ status: string }>('select status from users where id = $1', [userId]);
+    return rows[0]?.status === 'active';
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err), userId }, 'check user status failed');
+    return true;
+  }
+}
+
 /** 从原始 Cookie 头解析身份；WS 握手也复用这一条。 */
 export async function resolveIdentityFromCookieHeader(cookieHeader: string | undefined): Promise<Identity> {
   const jar = parseCookieHeader(cookieHeader);
   const sid = parseSessionCookieValue(jar[SESSION_COOKIE]);
-  const session = sid ? await readSession(sid) : null;
+  let session = sid ? await readSession(sid) : null;
+  // 软删/禁用账号：销毁会话并按未登录处理；仍持有 wb_gid 时降级为游客
+  if (session && !(await isSessionUserActive(session.userId))) {
+    if (sid) await destroySession(sid);
+    session = null;
+  }
   const guest = verifyGuestCookieValue(jar[GUEST_COOKIE]);
 
   return {
