@@ -8,6 +8,8 @@
 - **冲突处理**：前端从 Excalidraw 全量数组 diff 出 op，50ms 批合并；冲突按 `version` + `versionNonce` 的 LWW 解决，本地不动远端正在编辑的可见结果。
 - **身份与权限**：邮箱密码（argon2id）+ Redis 会话（HttpOnly cookie）；游客用签名 `wb_gid` cookie，可建板、可分享；访问权统一由 `resolveBoardAccess` 推导（owner / editor / viewer / 有效分享 token），REST 与 WS 都只信 cookie，不信任客户端自报身份。
 - **分享链接**：只读 / 可编辑两种权限，可设过期时间、可吊销；吊销即时删除 `share:` 缓存。
+- **团队空间**：`owner / editor / viewer` 三级角色，创建空间、7 天邀请链接、加入空间；空间是白板权限的唯一来源。
+- **我的白板**：置顶、手动拖拽排序（按用户保存，可切回时间序）、右键菜单、批量选择、30 天回收站。
 - **游客认领**：注册后把本机游客板一次性迁到账号下，单事务全量提交、失败回滚，重复认领幂等。
 - **图片（v1.1）**：粘贴、拖入、工具栏选图三条入口；单张 ≤5MB、单板 ≤50MB、仅 `png/jpeg/webp/gif`（不收 SVG）；服务端按魔数解析真实宽高，不信任扩展名与 `Content-Type`；同板同 `sha256` 秒传；读取走短时签名 URL，op 里只带 `fileId`，不传 base64。
 - **资产 GC（dry-run）**：报告孤儿资产、失效引用（只被已删除元素引用）、待清理对象与完整性告警；`--apply` 明确拒绝，不动数据。
@@ -169,7 +171,7 @@ npm run dev:web        # 只起前端（vite）
 npm run typecheck      # shared 先构建，再对 server / web 做 tsc --noEmit
 npm test               # server + web 单测（vitest，固定 forks + 单 fork）
 npm run build          # shared → server（tsc）→ web（vite build）
-npm run migrate        # 执行 0001–0004 迁移（幂等）
+npm run migrate        # 执行 0001–0008 迁移（幂等）
 npm run asset:gc -w @whiteboard/server -- --grace-hours=24   # 资产回收 dry-run
 ```
 
@@ -179,17 +181,20 @@ CI（[ci.yml](.github/workflows/ci.yml)）触发于 push 到 `main` 与所有 PR
 
 - 资产接口验收 22 个用例全部通过：上传、秒传、超 5MB、超单板配额、非法类型、未登录/游客/非成员/只读分享/可编辑分享、签名 URL 与篡改拒绝、按板列表。
 - 浏览器端到端 8 个用例全部通过：三入口上传、对端（无 cookie 只读链接）同步到 3 个 image 元素并补齐字节、渲染无占位框。
-- `typecheck` 通过；server 49 个、web 31 个单测通过。
+- `typecheck` 通过；server **68** 个（11 个文件）、web **222** 个（17 个文件）单测通过，合计 **290** 个用例（2026-11-12 实测）。
 - 双实例跨实例广播、游客配额、分享吊销等链路的验证脚本在 `docs/` 与仓库外验收脚本中记录。
 
 ## 已知边界
 
 - **生产对象存储未联调**：当前只有本地磁盘驱动（`StorageDriver` 接口已抽象），换 S3/OSS 需要另做驱动与联调。
-- **GC 仅 dry-run**：只输出候选与结论，`--apply` 会被拒绝；真实删除需单独审批与演练。
+- **GC 仅 dry-run**：资产 GC 只输出候选与结论，`--apply` 会被拒绝；真实删除需单独审批与演练。
+- **回收站没有调度器**：`trashGc` 只有 CLI，compose 与进程内都没有定时任务；超过 30 天的板不会自动物理删除，需要手动清理。
+- **`last_edited_at` 编辑后不更新**：代码中没有 `dirty:boards` 与 5 秒回写，op 落库不会刷新白板的最近编辑时间，列表排序实际接近「最近创建」。
+- **游客删板不可恢复**：登录用户删除进 30 天回收站；游客删除是物理删除（`mode:'purged'`），没有回收站。
 - **移动端裁切**：Excalidraw 工具岛在窄屏下约 20px 被裁切，未修。
-- **视觉待优化**：当前视觉是冻结版本，等全部功能完成后再统一优化。
+- **视觉**：首页 WebGL 山湖、鹤的独立透明画布、`skyClock` 时辰渐变、SVG 小舟、花瓣与涟漪已落地，规范见 [开发文档 §9](docs/实时协作白板_开发文档.md)；`docs/视觉方案.md` 已降级为历史设计稿。
 - **presence 注册表是进程内的**：多实例下各实例只看到自己的连接，presence 聚合不完整；完整方案需把注册表搬到 Redis 或使用粘性房间。
-- **未实现**：GitHub OAuth、成员管理、白板重命名/归档/删除接口、导出 PNG。
+- **未实现**：GitHub OAuth、白板级成员管理、空间成员变更/移除/退出/转让、白板归档接口、导出 PNG、游客过期清理任务、SSE。
 - **口子**：单张 5MB / 单板 50MB 是硬编码常量（`packages/shared` 的 `LIMITS`），要按套餐区分需改为可配置。
 
 ## License
