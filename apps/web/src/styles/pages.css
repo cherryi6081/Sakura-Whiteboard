@@ -1773,7 +1773,8 @@ body:has(.wb-home) {
 .wb-boards__count {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  /* 12px 正文压在天顶/中部渐变上：neutral-700 实测 4.28，换 neutral-800 才过 4.5 */
+  color: var(--neutral-800);
 }
 
 .wb-boards__banner {
@@ -1785,13 +1786,74 @@ body:has(.wb-home) {
   border-bottom: 1px solid var(--rose-200);
 }
 
-.wb-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+/* ---------- 背景 A：天空渐变前四档 + 右上角一枝樱花 ---------- */
+/* 只借用首页天空的冷调上半段，420px 内淡回 --bg，不用深色面板压住内容；
+   枝条是纯装饰（pointer-events: none），<700px 直接隐藏。 */
+.wb-page--boards {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--bg);
+  background-image: linear-gradient(
+    180deg,
+    var(--sky-zenith) 0,
+    var(--sky-high) 96px,
+    var(--sky-mid) 232px,
+    var(--sky-rose) 340px,
+    var(--bg) 420px
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 420px;
 }
 
+.wb-page--boards > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 顶栏文字直接压在天空渐变上：12px 用户名与登录链接都要比纸面多用一档深色 */
+.wb-page--boards .wb-topbar .wb-caption {
+  color: var(--neutral-800);
+}
+
+.wb-page--boards .wb-link {
+  color: var(--rose-800);
+}
+
+.wb-boards__deco {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 0;
+  width: 560px;
+  height: 400px;
+  /* 枝条按设计稿放在 right:-10，越界的那 10px 必须裁掉，否则页面横向溢出 */
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.wb-boards__branch {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: block;
+  width: 560px;
+  height: 400px;
+}
+
+/* 1440 下内容区 1200（左右 120），三列 × 384 + 24 间距，和设计稿卡片宽度一致 */
+.wb-container--boards {
+  max-width: 1440px;
+  padding: var(--space-8) clamp(20px, 8.33vw, 120px);
+}
+
+.wb-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+/* ---------- 卡片：缩略图 16:10 / 标题行 22 / 元信息行 24 ---------- */
 .wb-board-card {
   position: relative;
   display: flex;
@@ -1805,6 +1867,12 @@ body:has(.wb-home) {
   box-shadow: var(--shadow-2);
 }
 
+.wb-board-card:hover .wb-board-card__title {
+  color: var(--text-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .wb-board-card__link {
   color: inherit;
   text-decoration: none;
@@ -1814,28 +1882,63 @@ body:has(.wb-home) {
 }
 
 .wb-board-card__thumb {
-  height: 72px;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
+  position: relative;
   display: grid;
   place-items: center;
-  color: var(--rose-500);
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* 直接子选择器：置顶胶囊里的 12px 花形不能被缩略图规则拉伸 */
+.wb-board-card__thumb > .wb-board-card__thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.wb-board-card__thumb-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--rose-300);
+}
+
+.wb-board-card__thumb .wb-board-card__pin {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--space-2) 0 6px;
+  border: 1px solid var(--rose-200);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 92%, var(--rose-100));
+  box-shadow: var(--shadow-1);
+  color: var(--rose-700);
+  font-size: var(--text-micro);
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .wb-board-card__title {
+  display: block;
+  height: 22px;
   font-size: var(--text-body);
-  line-height: var(--lh-body);
+  line-height: 22px;
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.wb-board-card__title:hover {
-  color: var(--text-link);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .wb-board-card__meta {
@@ -1843,30 +1946,156 @@ body:has(.wb-home) {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  height: 24px;
+}
+
+.wb-board-card__meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .wb-board-card__time {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
-.wb-board-card__more {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  width: 32px;
-  height: 32px;
+.wb-board-card__pinbtn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: calc(var(--space-1) * -1);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-sm);
-  border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-weak-readable);
   cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard);
 }
 
-.wb-board-card__more:hover {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+.wb-board-card__pinbtn:hover:not(:disabled) {
+  background: var(--rose-50);
+  color: var(--rose-700);
+}
+
+.wb-board-card__pinbtn[aria-pressed="true"] {
+  color: var(--rose-700);
+}
+
+.wb-board-card__pinbtn:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+/* ---------- 骨架：同盒模型，填充 --neutral-200 ---------- */
+.wb-board-card--skeleton {
+  pointer-events: none;
+}
+
+.wb-board-card--skeleton .wb-board-card__thumb {
+  background: var(--neutral-200);
+}
+
+.wb-board-card__sk-title {
+  display: block;
+  width: 62%;
+  height: 14px;
+  margin-top: 4px;
+}
+
+.wb-board-card__sk-badge {
+  display: block;
+  width: 56px;
+  height: 24px;
+}
+
+.wb-board-card__sk-time {
+  display: block;
+  width: 48px;
+  height: 12px;
+}
+
+/* ---------- 网格进场：骨架与卡片同位置交叉淡出 ---------- */
+.wb-boards__grid {
+  position: relative;
+  margin-top: var(--space-6);
+}
+
+.wb-grid--cards {
+  animation: wb-boards-in var(--dur-base) var(--ease-standard) both;
+}
+
+.wb-grid--skeleton.is-exiting {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: wb-boards-out var(--dur-base) var(--ease-standard) forwards;
+}
+
+@keyframes wb-boards-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes wb-boards-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.wb-boards__more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
+}
+
+.wb-boards__more-count {
+  margin-left: var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-grid--cards,
+  .wb-grid--skeleton.is-exiting {
+    animation: none;
+  }
+}
+
+/* ---------- 响应式：1024 两列、700 以下单列 ---------- */
+@media (max-width: 1439px) {
+  .wb-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .wb-container--boards {
+    padding: var(--space-4);
+  }
+
+  .wb-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .wb-boards__deco {
+    display: none;
+  }
 }
 
 /* ============ 画布页外壳 ============ */
@@ -2783,12 +3012,6 @@ body:has(.wb-home) {
 }
 
 /* ============ 响应式 ============ */
-@media (max-width: 1023px) {
-  .wb-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 720px) {
   /* 窄屏只留图标，避免顶栏换行 */
   .wb-board__image .wb-board__share-text {

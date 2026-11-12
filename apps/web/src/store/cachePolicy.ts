@@ -6,7 +6,8 @@ import { LIMITS } from '@whiteboard/shared';
  */
 
 export const CACHE_DB_NAME = 'wb-cache';
-export const CACHE_DB_VERSION = 1;
+/** v2：新增 `thumbs` store（首帧缩略图），老库在原地升级，不清元素缓存 */
+export const CACHE_DB_VERSION = 2;
 
 export const CACHE_STORES = {
   /** 元素缓存，主键是复合键 [boardId, elementId]（设计契约 §8.6.4） */
@@ -15,6 +16,8 @@ export const CACHE_STORES = {
   outbox: 'outbox',
   /** 每块板的同步水位（seq）与最近访问时间，用于 TTL 清理 */
   meta: 'meta',
+  /** 首帧缩略图，主键 boardId；只存压缩后的 WebP Blob，不进服务端 */
+  thumbs: 'thumbs',
 } as const;
 
 export const ELEMENT_KEY_PATH = ['boardId', 'elementId'] as const;

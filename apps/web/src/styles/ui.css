@@ -428,7 +428,8 @@ body {
 
 /* ---------- 骨架 ---------- */
 .wb-skeleton {
-  background: var(--neutral-100);
+  /* neutral-200 在纸面上能看出形状（neutral-100 几乎与白同色，骨架会“消失”） */
+  background: var(--neutral-200);
   border-radius: var(--radius-sm);
   animation: wb-pulse 1.4s ease-in-out infinite;
 }

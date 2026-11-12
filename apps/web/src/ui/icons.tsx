@@ -12,6 +12,24 @@ export function IconBack({ size = 18 }: IconProps) {
   );
 }
 
+export function IconEye({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  );
+}
+
+export function IconEyeOff({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M4 5l16 14" />
+      <path d="M9.6 6.4A10.7 10.7 0 0 1 12 6c6.4 0 10 6 10 6a17.3 17.3 0 0 1-3 3.5M6.3 8.1A17.4 17.4 0 0 0 2 12s3.6 6 10 6a11 11 0 0 0 3.9-.7" />
+    </svg>
+  );
+}
+
 export function IconPlus({ size = 18 }: IconProps) {
   return (
     <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
@@ -82,6 +100,32 @@ export function IconImage({ size = 16 }: IconProps) {
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <circle cx="8.5" cy="10" r="1.5" />
       <path d="M21 16l-5-5-6 6-2-2-5 5" />
+    </svg>
+  );
+}
+
+export function IconPin({ size = 14 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M9.5 3h5l-.9 4.6 3 3.2H7.4l3-3.2L9.5 3z" />
+      <path d="M12 10.8V21" />
+    </svg>
+  );
+}
+
+/** 花形标记：用在「置顶」胶囊上，和首页樱花同属一个造型语言 */
+export function IconFlower({ size = 12 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      {/* 12px 下描边花瓣会糊成一团，用实心五瓣剪影 + 白芯，缩到 12px 仍能读出花形 */}
+      <g fill="currentColor" stroke="none">
+        <circle cx="12" cy="7.4" r="2.8" />
+        <circle cx="16.4" cy="10.6" r="2.8" />
+        <circle cx="14.7" cy="15.6" r="2.8" />
+        <circle cx="9.3" cy="15.6" r="2.8" />
+        <circle cx="7.6" cy="10.6" r="2.8" />
+      </g>
+      <circle cx="12" cy="12" r="1.5" style={{ fill: "var(--paper)" }} stroke="none" />
     </svg>
   );
 }

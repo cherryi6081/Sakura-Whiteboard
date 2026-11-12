@@ -56,6 +56,19 @@ export type QueuedOp = {
   createdAt: number;
 };
 
+/**
+ * 首帧缩略图（v2）。只存压缩后的 Blob 与内容指纹：
+ * - `signature` 用来判断"内容有没有改过"，一致就不重拍；
+ * - `bytes` 便于验收时核对体积，不参与渲染。
+ */
+export type StoredThumb = {
+  boardId: string;
+  blob: Blob;
+  signature: string;
+  bytes: number;
+  updatedAt: number;
+};
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 export function openCacheDb(): Promise<IDBDatabase> {
@@ -79,6 +92,9 @@ export function openCacheDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(CACHE_STORES.meta)) {
         db.createObjectStore(CACHE_STORES.meta, { keyPath: 'boardId' });
+      }
+      if (!db.objectStoreNames.contains(CACHE_STORES.thumbs)) {
+        db.createObjectStore(CACHE_STORES.thumbs, { keyPath: 'boardId' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -161,6 +177,46 @@ export async function writeCachedScene(
     tx.onerror = () => reject(tx.error ?? new Error('write scene failed'));
     tx.onabort = () => reject(tx.error ?? new Error('write scene aborted'));
   });
+}
+
+/** 读一块板的首帧缩略图；没有或库不可用时返回 null（页面回退线稿占位）。 */
+export async function readBoardThumb(boardId: string): Promise<StoredThumb | null> {
+  const db = await openCacheDb();
+  const tx = db.transaction(CACHE_STORES.thumbs, 'readonly');
+  const record = await requestOf(
+    tx.objectStore(CACHE_STORES.thumbs).get(boardId) as IDBRequest<StoredThumb | undefined>,
+  );
+  await done(tx);
+  return record ?? null;
+}
+
+/** 「我的白板」一次取回全部缩略图：最多 30 块板，读一次比逐块 get 更省事。 */
+export async function readAllBoardThumbs(): Promise<Map<string, StoredThumb>> {
+  const db = await openCacheDb();
+  const tx = db.transaction(CACHE_STORES.thumbs, 'readonly');
+  const records = await requestOf(
+    tx.objectStore(CACHE_STORES.thumbs).getAll() as IDBRequest<StoredThumb[]>,
+  );
+  await done(tx);
+  return new Map(records.map((record) => [record.boardId, record]));
+}
+
+export async function writeBoardThumb(input: {
+  boardId: string;
+  blob: Blob;
+  signature: string;
+  updatedAt?: number;
+}): Promise<void> {
+  const db = await openCacheDb();
+  const tx = db.transaction(CACHE_STORES.thumbs, 'readwrite');
+  tx.objectStore(CACHE_STORES.thumbs).put({
+    boardId: input.boardId,
+    blob: input.blob,
+    signature: input.signature,
+    bytes: input.blob.size,
+    updatedAt: input.updatedAt ?? now(),
+  } satisfies StoredThumb);
+  await done(tx);
 }
 
 /** 只更新 `lastAccessAt`（刷新时让缓存不计入过期）。 */
@@ -250,7 +306,10 @@ export async function clearQueuedOps(boardId: string): Promise<void> {
 export async function clearBoardCache(boardId: string): Promise<void> {
   const db = await openCacheDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([CACHE_STORES.elements, CACHE_STORES.outbox, CACHE_STORES.meta], 'readwrite');
+    const tx = db.transaction(
+      [CACHE_STORES.elements, CACHE_STORES.outbox, CACHE_STORES.meta, CACHE_STORES.thumbs],
+      'readwrite',
+    );
     const elementStore = tx.objectStore(CACHE_STORES.elements);
     const outbox = tx.objectStore(CACHE_STORES.outbox);
 
@@ -263,6 +322,7 @@ export async function clearBoardCache(boardId: string): Promise<void> {
       for (const key of outboxKeys.result) outbox.delete(key);
     };
     tx.objectStore(CACHE_STORES.meta).delete(boardId);
+    tx.objectStore(CACHE_STORES.thumbs).delete(boardId);
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error('clear board cache failed'));

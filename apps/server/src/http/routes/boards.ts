@@ -40,7 +40,15 @@ const listQuerySchema = z.object({
   cursor: z.string().datetime().optional(),
 });
 
-type BoardMetaRow = { id: string; title: string; role: string; last_edited_at: Date };
+type BoardMetaRow = {
+  id: string;
+  title: string;
+  role: string;
+  last_edited_at: Date;
+  pinned_at: Date | null;
+};
+
+const pinSchema = z.object({ pinned: z.boolean() });
 
 async function enforceGuestQuota(guestId: string): Promise<void> {
   const { rows } = await pool.query<{ unarchived: number }>(
@@ -132,17 +140,17 @@ boardsRouter.get(
 
     const { limit, cursor } = listQuerySchema.parse(req.query);
     const { rows } = await pool.query<BoardMetaRow>(
-      `select b.id, b.title, 'owner' as role, b.last_edited_at
+      `select b.id, b.title, 'owner' as role, b.last_edited_at, b.pinned_at
          from boards b
         where b.owner_id = $1 and b.archived_at is null
           and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
         union all
-       select b.id, b.title, m.role, b.last_edited_at
+       select b.id, b.title, m.role, b.last_edited_at, b.pinned_at
          from boards b
          join board_members m on m.board_id = b.id
         where m.user_id = $1 and b.archived_at is null
           and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
-        order by last_edited_at desc, id desc
+        order by pinned_at desc nulls last, last_edited_at desc, id desc
         limit $3`,
       [identity.userId, cursor ?? null, limit],
     );
@@ -154,9 +162,37 @@ boardsRouter.get(
         title: row.title,
         role: row.role,
         lastEditedAt: row.last_edited_at.toISOString(),
+        pinnedAt: row.pinned_at ? row.pinned_at.toISOString() : null,
       })),
       nextCursor: last ? last.last_edited_at.toISOString() : null,
     });
+  }),
+);
+
+/**
+ * `PATCH /api/boards/:id/pin` —— 置顶 / 取消置顶。
+ *
+ * 只有创建者（登录 owner，或持游客 cookie 的 owner）能改；协作者即使可编辑也不改别人的置顶。
+ * 置顶只是列表排序偏好：只写 `pinned_at`，不改 `last_edited_at`，避免改变「最近打开」的语义。
+ */
+boardsRouter.patch(
+  '/boards/:id/pin',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const { pinned } = pinSchema.parse(req.body ?? {});
+    const access = await resolveBoardAccess(boardId, identityOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    if (access.role !== 'owner') throw new AppError(403, 'FORBIDDEN', '只有创建者可以置顶');
+
+    const { rows } = await pool.query<{ pinned_at: Date | null }>(
+      `update boards
+          set pinned_at = case when $2 then now() else null end
+        where id = $1
+        returning pinned_at`,
+      [boardId, pinned],
+    );
+
+    res.json({ id: boardId, pinnedAt: rows[0]?.pinned_at?.toISOString() ?? null });
   }),
 );
 

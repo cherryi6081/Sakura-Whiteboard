@@ -5,6 +5,7 @@ import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
 import { recordRecentBoard, titleOf } from "../boards/recentBoards";
+import { scheduleThumbCapture } from "../boards/boardThumb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from "../ui/icons";
 import { ShareDrawer } from "./ShareDrawer";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
@@ -85,6 +86,8 @@ declare global {
 export function BoardPage({ boardId }: { boardId: string }) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const bridgeRef = useRef<BoardCanvasHandle | null>(null);
+  /** 首帧缩略图每次进板只排一次（画布 API 可能因 StrictMode 重放两次） */
+  const thumbScheduledRef = useRef(false);
   const storeRef = useRef<BoardStore | null>(null);
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
@@ -147,6 +150,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   useEffect(() => {
     let alive = true;
+    thumbScheduledRef.current = false;
     setScene(null);
     setStoreState(null);
     void loadBoardScene(boardId, {
@@ -455,6 +459,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
               timingRef.current.canvasReadyAt = performance.now();
               storeRef.current?.notifyCanvasReady();
               if (window.__board) window.__board.ready = true;
+              // 首帧快照：每次进板只排一次，已有快照且内容未改时 captureBoardThumb 内部会跳过
+              if (!thumbScheduledRef.current) {
+                thumbScheduledRef.current = true;
+                scheduleThumbCapture(api, boardId);
+              }
             }}
             onOps={(ops) => {
               window.__board?.opBatches.push(ops);
