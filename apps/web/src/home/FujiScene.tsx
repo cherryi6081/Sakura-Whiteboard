@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
+import { BOAT_ANCHOR, mountBoatWave } from "./boatWave";
 import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
 import type { Period } from "./usePeriod";
 import { createSkyClock, type SkyClock } from "./skyClock";
@@ -503,6 +504,17 @@ export function FujiScene({ period }: { period: Period }) {
   }, []);
 
   /**
+   * 小舟随浪：heave / tilt 由 waveField 的 sampleWave 逐帧写 transform（不再走关键帧），
+   * 三段 swell 也是同一份波场的二阶残差。只写几棵 <g> 的 transform，不碰路径 d。
+   * WebGL 与 SVG 两个分支都跑 —— 船在两种模式下都是同一份 SVG。
+   */
+  useEffect(() => {
+    const root = sceneRef.current;
+    if (!root) return;
+    return mountBoatWave(root);
+  }, []);
+
+  /**
    * 时辰变化：先把目标推给钟，再决定谁来推进它。
    * WebGL 模式由渲染器在自己那一帧里 tick（和主光同帧）；SVG 模式在这里用 rAF 推进，
    * 收敛（全部通道落进同一个 8bit 值）后立刻停表，静止时不占帧。
@@ -828,12 +840,14 @@ export function FujiScene({ period }: { period: Period }) {
             新画把局部 y=0 定义为吃水线（旧版 y=0 在船身上沿、水线约在 y≈8），
             所以锚点从 706 下移到 722，船在画面里的位置与旧版一致。
             scale 4：局部 1 单位 = 4 舞台单位，整船（含橹）≈ 176 舞台单位 ≈ 158px @1440。
-            动画关键帧写在船的局部坐标里（translateX/translateY 的 px 是局部单位），
-            所以缩放会带着漂移与升沉一起等比放大，视觉占比不变。 */}
-        <g className="wb-scene__boat" transform="translate(1272 722) scale(4)">
-          {/* 五层分工，避免多条曲线在同一个 transform 里互相抵消：
-              drift 只横向漂移（41.3s）；heave + swell 两级不同周期的升沉（17.9s / 11.7s）；
-              tilt 只做俯仰与极轻横摇（17.9s，相位比升沉提前 90°，船头先起）；
+            局部坐标里的 translate / rotate 会被 scale(4) 一并放大，视觉占比不变。 */}
+        <g
+          className="wb-scene__boat"
+          transform={`translate(${BOAT_ANCHOR.x} ${BOAT_ANCHOR.y}) scale(${BOAT_ANCHOR.scale})`}
+        >
+          {/* 分工，避免多条曲线在同一个 transform 里互相抵消：
+              drift 只横向漂移（41.3s，仍是 CSS）；heave 与 tilt 由 waveField 逐帧驱动
+              （升沉 = 船中波高，俯仰 = 船中斜率），swell 拆成首 / 中 / 尾三段二阶残差；
               reflection 只跟横漂、用明暗回应升沉。 */}
           <g className="wb-scene__boat-drift">
             <g className="wb-scene__boat-heave">
@@ -842,34 +856,43 @@ export function FujiScene({ period }: { period: Period }) {
                     不进 tilt 层：影子落在水面上，不跟着船体俯仰转 */}
                 <ellipse className="wb-scene__boat-shadow" cx="0" cy="0.95" rx="19" ry="1.3" />
                 <g className="wb-scene__boat-tilt">
-                  {/* 橹与橹杭：先画，压在船身之下；局部 x 正向 = 船首 */}
-                  <path className="wb-scene__boat-oar" d="M-17.6 -2.9 L-24.5 0.3" />
-                  <path className="wb-scene__boat-oar-pivot" d="M-17.2 -0.8 L-17.2 -3.6" />
+                  {/* 船尾段：橹与橹杭，先画，压在船身之下；局部 x 正向 = 船首 */}
+                  <g className="wb-scene__boat-swell-stern">
+                    <path className="wb-scene__boat-oar" d="M-17.6 -2.9 L-24.5 0.3" />
+                    <path className="wb-scene__boat-oar-pivot" d="M-17.2 -0.8 L-17.2 -3.6" />
+                  </g>
                   {/* 船身：舷弧从船尾 (−19.2,−4.2) 压平到中段 −2.8，首柱在 (19.3,−7.1) 收尖 */}
                   <path className="wb-scene__boat-hull" d="M-19.2 -4.2 C-17.2 -3.15 -13.6 -2.82 -9.4 -2.78 C-3 -2.72 3.6 -2.82 8.6 -3.05 C12.4 -3.2 15 -3.85 16.4 -4.6 C17.6 -5.3 18.6 -6.4 19.3 -7.1 C19 -5.9 18.5 -4.4 18 -3 C17.85 -2.3 17.7 -1.6 17.6 -1 C17 -0.2 16.3 0.1 15.4 0.15 C9.6 1 -1.4 1.05 -11.2 0.9 C-15.4 0.85 -18 0.1 -18.8 -1.4 C-19.2 -2.2 -19.3 -3.3 -19.2 -4.2 Z" />
                   {/* 舷侧板缝 ×2：跟着舷弧走的两条横笔，只做木板质感 */}
                   <path className="wb-scene__boat-seam" d="M-16.6 -2.05 C-12 -1.65 -5 -1.45 1 -1.55 C7 -1.65 12 -2 15.4 -2.65" />
                   <path className="wb-scene__boat-seam" d="M-14 -0.85 C-9.2 -0.5 -3 0.05 3 -0.05 C8 -0.15 12.2 -0.5 14.6 -1.05" />
-                  {/* 穹顶苫布矮篷：底边坐在舷沿 −2.85，脊在 −5.9 */}
-                  <path className="wb-scene__boat-awning" d="M-7.2 -2.8 C-7.6 -4.6 -6.2 -5.8 -2.4 -5.9 C1.5 -6 4.2 -4.9 4.7 -2.85 Z" />
-                  {/* 四根篷骨：竹骨唯一的线索，近看是骨、远看是极淡的纹理 */}
-                  <path className="wb-scene__boat-rib" d="M-5.5 -2.9 C-5.8 -4.1 -5.4 -5.1 -4.6 -5.55" />
-                  <path className="wb-scene__boat-rib" d="M-3.1 -2.9 C-3.4 -4.2 -2.7 -5.3 -2.1 -5.75" />
-                  <path className="wb-scene__boat-rib" d="M-0.3 -2.9 C-0.3 -4.3 0.2 -5.5 0.8 -5.85" />
-                  <path className="wb-scene__boat-rib" d="M2.3 -2.9 C2.5 -4 2.9 -4.8 3.3 -5.1" />
-                  {/* 篷檐压线：把篷与船身切开的那一笔，删掉就糊成一坨 */}
-                  <path className="wb-scene__boat-eave" d="M-7.15 -2.9 L4.65 -2.9" />
-                  {/* 橹绳：一圈套在橹杭上，绳尾沿舷沿向里收 */}
-                  <path className="wb-scene__boat-rope" d="M-17.9 -3.35 C-17 -3.95 -16.5 -3 -17.3 -2.65 C-18.05 -2.35 -18.45 -3.2 -17.65 -3.35" />
-                  <path className="wb-scene__boat-rope" d="M-16.9 -2.6 C-16.35 -2.25 -15.95 -2.05 -15.5 -1.95" />
-                  {/* 篷边渔火：灯挑从篷肩 (3.5,−5.35) 伸出，灯笼挂在篷檐右肩之外。
+                  {/* 中段：穹顶苫布矮篷，底边坐在舷沿 −2.85，脊在 −5.9 */}
+                  <g className="wb-scene__boat-swell-mid">
+                    <path className="wb-scene__boat-awning" d="M-7.2 -2.8 C-7.6 -4.6 -6.2 -5.8 -2.4 -5.9 C1.5 -6 4.2 -4.9 4.7 -2.85 Z" />
+                    {/* 四根篷骨：竹骨唯一的线索，近看是骨、远看是极淡的纹理 */}
+                    <path className="wb-scene__boat-rib" d="M-5.5 -2.9 C-5.8 -4.1 -5.4 -5.1 -4.6 -5.55" />
+                    <path className="wb-scene__boat-rib" d="M-3.1 -2.9 C-3.4 -4.2 -2.7 -5.3 -2.1 -5.75" />
+                    <path className="wb-scene__boat-rib" d="M-0.3 -2.9 C-0.3 -4.3 0.2 -5.5 0.8 -5.85" />
+                    <path className="wb-scene__boat-rib" d="M2.3 -2.9 C2.5 -4 2.9 -4.8 3.3 -5.1" />
+                    {/* 篷檐压线：把篷与船身切开的那一笔，删掉就糊成一坨 */}
+                    <path className="wb-scene__boat-eave" d="M-7.15 -2.9 L4.65 -2.9" />
+                  </g>
+                  {/* 船尾段（续）：橹绳一圈套在橹杭上，绳尾沿舷沿向里收。
+                      画在船身之后，才压得住舷沿 */}
+                  <g className="wb-scene__boat-swell-stern">
+                    <path className="wb-scene__boat-rope" d="M-17.9 -3.35 C-17 -3.95 -16.5 -3 -17.3 -2.65 C-18.05 -2.35 -18.45 -3.2 -17.65 -3.35" />
+                    <path className="wb-scene__boat-rope" d="M-16.9 -2.6 C-16.35 -2.25 -15.95 -2.05 -15.5 -1.95" />
+                  </g>
+                  {/* 船首段：篷边渔火。灯挑从篷肩 (3.5,−5.35) 伸出，灯笼挂在篷檐右肩之外。
                       光晕半径从旧版的 34 收到 12，避免大光晕叠水纹形成淡黄色斑 */}
-                  <path className="wb-scene__boat-lamp-arm" d="M3.5 -5.35 L6.4 -5.35" />
-                  <path className="wb-scene__boat-lamp-arm" d="M6.4 -5.35 L6.4 -5.15" />
-                  <circle className="wb-scene__boat-glow" cx="6.43" cy="-4.05" r="12" fill="url(#wb-boat-glow)" />
-                  <rect className="wb-scene__boat-lantern" x="5.3" y="-5.15" width="2.25" height="2.2" rx="0.55" />
-                  <path className="wb-scene__boat-lamp-cap" d="M5.4 -5.03 L7.45 -5.03" />
-                  <path className="wb-scene__boat-lamp-cap" d="M5.45 -3.07 L7.4 -3.07" />
+                  <g className="wb-scene__boat-swell-bow">
+                    <path className="wb-scene__boat-lamp-arm" d="M3.5 -5.35 L6.4 -5.35" />
+                    <path className="wb-scene__boat-lamp-arm" d="M6.4 -5.35 L6.4 -5.15" />
+                    <circle className="wb-scene__boat-glow" cx="6.43" cy="-4.05" r="12" fill="url(#wb-boat-glow)" />
+                    <rect className="wb-scene__boat-lantern" x="5.3" y="-5.15" width="2.25" height="2.2" rx="0.55" />
+                    <path className="wb-scene__boat-lamp-cap" d="M5.4 -5.03 L7.45 -5.03" />
+                    <path className="wb-scene__boat-lamp-cap" d="M5.45 -3.07 L7.4 -3.07" />
+                  </g>
                 </g>
               </g>
             </g>

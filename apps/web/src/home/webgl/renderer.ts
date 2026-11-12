@@ -6,6 +6,7 @@ import { createMist } from "./mist";
 import { createPetals } from "./petals";
 import { createCraneLayer, type CraneLayer } from "./crane";
 import { layoutCamera } from "./stage";
+import { waveTime } from "../waveField";
 import type { Period } from "../usePeriod";
 import type { SkyClock } from "../skyClock";
 
@@ -174,7 +175,8 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
       0,
     );
 
-    water.update(time);
+    // 水面与 SVG 小舟吃同一个波场时钟：同帧同相，不各走各的 Clock
+    water.update(waveTime());
     mountain.update(time);
     mist.update(time);
     petals.update(time);

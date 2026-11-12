@@ -835,32 +835,24 @@
 
 /* ---------- 小舟随浪：位置层 / 升沉层 / 姿态层分开做 ---------- */
 /* 一条 transform 里塞多条正弦会互相抵消、也会让姿态和位移绑死，所以拆开：
-   - drift：只做横向漂移（41.3s，±9 局部单位 ≈ ±32px @1440，峰峰 64px）
-   - heave + swell：两级不同周期的升沉（17.9s ±0.95 + 11.7s ±0.5，峰值合计约 9.5px @1440），
-     合成后的曲线不再等幅往复
-   - tilt：只做俯仰与极轻横摇（17.9s，±2°，相位比升沉提前 90°：船头先起、船尾后跟）
-   周期一律取非整数秒，避开花瓣（14–29s 整数）与鹤（25s）的点。
-   关键帧里的 px / 角度是船的局部单位，整组 scale(4) 会带着它们一起放大，
-   所以船放大后位移的"占船比例"不变，不需要另调幅度：
+   - drift：只做横向漂移（41.3s，±9 局部单位 ≈ ±32px @1440，峰峰 64px），仍是 CSS
+   - heave / tilt：由 waveField.ts 的波场逐帧写 transform（见 boatWave.ts）——
+     升沉 = 船中波高，俯仰 = 船中斜率 atan(∂h/∂x)，与 WebGL 水面同一条浪、同一个时钟
+   - swell：拆成首 / 中 / 尾三段，各取波面相对船身弦线的二阶残差，同样只写 transform
+   波场周期取 17.9s / 11.7s / 33.1s（非整数），继续避开花瓣（14–29s 整数）与鹤（25s）的点。
+   transform 里的 px / 角度都是船的局部单位，整组 scale(4) 会带着它们一起放大，
+   所以船放大后位移的"占船比例"不变：
    局部 1 单位 = 4 舞台单位 = 3.6px @1440 / 2.56px @1024 / 0.975px @390。 */
 .wb-scene__boat-drift {
   animation: wb-boat-drift 41.3s linear infinite;
 }
 
-.wb-scene__boat-heave {
-  animation: wb-boat-heave 17.9s linear infinite;
-}
-
-.wb-scene__boat-swell {
-  animation: wb-boat-swell 11.7s linear infinite;
-}
-
 .wb-scene__boat-tilt {
   /* SVG 元素的 transform-origin 默认按 viewBox 取，会绕画面中心转；
-     钉回船自己的局部原点（水线中点），俯仰才是绕着船身转 */
+     钉回船自己的局部原点（水线中点），俯仰才是绕着船身转。
+     rotate 现在逐帧写在 style.transform 上，这条 origin 必须保留 */
   transform-box: view-box;
   transform-origin: 0 0;
-  animation: wb-boat-tilt 17.9s linear infinite;
 }
 
 /* 倒影只跟横向漂移：船升高时压暗、落下时提亮。
@@ -897,90 +889,6 @@
   }
   87.5% {
     transform: translateX(6.36px);
-  }
-}
-
-@keyframes wb-boat-heave {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  12.5% {
-    transform: translateY(-0.67px);
-  }
-  25% {
-    transform: translateY(-0.95px);
-  }
-  37.5% {
-    transform: translateY(-0.67px);
-  }
-  50% {
-    transform: translateY(0);
-  }
-  62.5% {
-    transform: translateY(0.67px);
-  }
-  75% {
-    transform: translateY(0.95px);
-  }
-  87.5% {
-    transform: translateY(0.67px);
-  }
-}
-
-@keyframes wb-boat-swell {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  12.5% {
-    transform: translateY(-0.35px);
-  }
-  25% {
-    transform: translateY(-0.5px);
-  }
-  37.5% {
-    transform: translateY(-0.35px);
-  }
-  50% {
-    transform: translateY(0);
-  }
-  62.5% {
-    transform: translateY(0.35px);
-  }
-  75% {
-    transform: translateY(0.5px);
-  }
-  87.5% {
-    transform: translateY(0.35px);
-  }
-}
-
-@keyframes wb-boat-tilt {
-  0%,
-  100% {
-    transform: rotate(-2deg) scaleY(1.02);
-  }
-  12.5% {
-    transform: rotate(-1.41deg) scaleY(1.014);
-  }
-  25% {
-    transform: rotate(0deg) scaleY(1);
-  }
-  37.5% {
-    transform: rotate(1.41deg) scaleY(0.986);
-  }
-  50% {
-    transform: rotate(2deg) scaleY(0.98);
-  }
-  62.5% {
-    transform: rotate(1.41deg) scaleY(0.986);
-  }
-  75% {
-    transform: rotate(0deg) scaleY(1);
-  }
-  87.5% {
-    transform: rotate(-1.41deg) scaleY(1.014);
   }
 }
 
@@ -1796,11 +1704,9 @@ body:has(.wb-home) {
     animation: none;
   }
 
-  /* 随浪漂移是纯装饰：reduce 下回到静止的基准姿态，船的造型与位置不变 */
+  /* 随浪漂移是纯装饰：reduce 下回到静止的基准姿态，船的造型与位置不变。
+     heave / tilt / 三段 swell 由 boatWave.ts 驱动，reduce 时那边同样不起 rAF */
   .wb-scene__boat-drift,
-  .wb-scene__boat-heave,
-  .wb-scene__boat-swell,
-  .wb-scene__boat-tilt,
   .wb-scene__boat-reflection {
     animation: none;
   }

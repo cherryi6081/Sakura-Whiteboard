@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { STAGE_H, STAGE_W, WATERLINE, toWorld } from "./stage";
+import { CAM_DIST, STAGE_H, STAGE_W, WATERLINE, toWorld } from "./stage";
+import { waveHeightGlsl } from "../waveField";
 import type { Palette } from "./palette";
 
 /**
@@ -14,6 +15,11 @@ import type { Palette } from "./palette";
 // 早先把平面往下拉长过，结果是屏幕底部只走到整块平面的 3%，四档湖色根本用不上。
 const SPAN = STAGE_H - WATERLINE;
 const TOP = WATERLINE;
+
+/** 水面平面的深度（与 buildGeometry 的 z 同一处真值） */
+const WATER_Z = -2;
+/** toWorld 的透视反补偿系数：世界坐标 = (舞台坐标 − 中心) × k */
+const WATER_K = (CAM_DIST - WATER_Z) / CAM_DIST;
 
 const vertexShader = /* glsl */ `
   attribute float aStageY;
@@ -54,8 +60,18 @@ const fragmentShader = /* glsl */ `
     );
   }
 
+  ${waveHeightGlsl}
+
   void main() {
     float d = vDepth;
+
+    // 波场：与驱动小舟的 sampleWave 同一张表（waveField.ts）。vWorld 是 toWorld 的结果，
+    // 先反算回舞台坐标（x 向右、y 向下），采样点才能和 SVG 里的小舟落在同一条浪上
+    vec2 stage = vec2(
+      vWorld.x / ${WATER_K.toFixed(6)} + ${(STAGE_W / 2).toFixed(1)},
+      ${(STAGE_H / 2).toFixed(1)} - vWorld.y / ${WATER_K.toFixed(6)}
+    );
+    float field = waveHeight(stage, uTime);
 
     // 四档湖色：0 / 28 / 66 / 100%
     vec3 color = mix(uTop, uMid, smoothstep(0.0, 0.28, d));
@@ -68,7 +84,11 @@ const fragmentShader = /* glsl */ `
     // 横向水纹：远处密、近处疏
     float freq = mix(0.42, 0.19, pow(d, 0.7));
     float drift = noise(vec2(vWorld.x * 0.006, vWorld.y * 0.05 + uTime * 0.07));
-    float wave = sin(vWorld.y * freq + uTime * (0.5 + d * 0.3) + drift * 6.0 + vWorld.x * 0.0007);
+    // 波高进条纹相位（不做几何位移）：水面是小舟脚下那条浪，条纹随浪面缓慢起伏，
+    // 与小舟的升沉/俯仰同源、同相。系数 0.55 让 ±3.9 舞台单位的波高变成 ±2.1 弧度
+    float wave = sin(
+      vWorld.y * freq + uTime * (0.5 + d * 0.3) + drift * 6.0 + vWorld.x * 0.0007 + field * 0.55
+    );
     float fine = sin(vWorld.y * freq * 2.7 - uTime * 0.85 + vWorld.x * 0.0016);
     float lines = smoothstep(0.9, 0.995, wave * 0.72 + fine * 0.28);
     color = mix(
@@ -201,7 +221,7 @@ function buildGeometry(): THREE.BufferGeometry {
   const x1 = STAGE_W + 1400;
   const y0 = TOP;
   const y1 = TOP + SPAN;
-  const z = -2;
+  const z = WATER_Z;
 
   // 左上 / 左下 / 右上 / 右下
   const corners: Array<[number, number]> = [
