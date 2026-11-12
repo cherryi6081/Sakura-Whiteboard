@@ -33,12 +33,13 @@ import * as THREE from "three";
 import type { Palette, SunState } from "./palette";
 import { buildCraneGeometry, CRANE_LOCAL_HEIGHT, CRANE_ROLE } from "./craneMesh";
 import {
-  CRANE_FLAP,
   CRANE_FLAP_SECONDS,
   CRANE_FLIGHT,
   CRANE_FLIGHT_SECONDS,
   CRANE_TRAIL_DELAY_SECONDS,
 } from "../craneGeometry";
+import { cranePose } from "../cranePose";
+import { waveTime } from "../waveField";
 import { CAM_DIST, readStageLayout, STAGE_H, STAGE_W } from "./stage";
 
 const DEG2RAD = Math.PI / 180;
@@ -86,8 +87,12 @@ const VERTEX_SHADER = /* glsl */ `
   attribute float aWidth;
   attribute float aRole;
   attribute float aAlpha;
+  // 展向弯曲：x 是权重（0 内翼 → 1 翼尖），yz 是腕点（翼局部坐标，几何烘焙时就写死）
+  attribute vec3 aBend;
 
   uniform float uCssPxPerLocal;
+  // 内外翼夹角（弧度），由 cranePose 逐帧写入；两端用的是同一份数
+  uniform float uBend;
 
   varying float vRole;
   varying float vAlpha;
@@ -98,13 +103,26 @@ const VERTEX_SHADER = /* glsl */ `
     // 既不会因为亚像素覆盖丢样本而闪烁，也保住 SVG 里那种「淡墨」而不是实心黑边。
     float minLocal = 1.0 / uCssPxPerLocal;
     float width = max(aWidth, minLocal);
-    vec2 offset = aNormal * (aSide * width * 0.5) * stroke;
     float subPixel = min(1.0, aWidth * uCssPxPerLocal);
+
+    // 展向弯曲：绕腕点转 uBend × 权重。法线与位置同步旋转，墨线在折点处不错位；
+    // 权重为 0 的顶点（躯干、腿、内翼）走的是恒等变换，一个三角面都不多。
+    vec2 p = position.xy;
+    vec2 n = aNormal;
+    if (aBend.x > 0.0) {
+      float ang = uBend * aBend.x;
+      float c = cos(ang);
+      float s = sin(ang);
+      vec2 rel = p - aBend.yz;
+      p = aBend.yz + vec2(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
+      n = vec2(n.x * c - n.y * s, n.x * s + n.y * c);
+    }
+    vec2 offset = n * (aSide * width * 0.5) * stroke;
 
     vAlpha = aAlpha * mix(1.0, subPixel, stroke);
     vRole = aRole;
 
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy + offset, position.z, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p + offset, position.z, 1.0);
   }
 `;
 
@@ -281,6 +299,7 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     const uniforms: Record<string, THREE.IUniform> = {
       uAlpha: { value: 1 },
       uCssPxPerLocal: { value: 0.637 },
+      uBend: { value: 0 },
     };
     ROLE_UNIFORM_KEYS.forEach((key, index) => {
       uniforms[key] = { value: colors[index] };
@@ -367,6 +386,9 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
   });
   const rigs: CraneRig[] = [trail, lead];
 
+  /** 前鹤这一帧实际写进 uniform / rotation 的角度，DEV 探针用它和 SVG 分支对齐 */
+  const applied = { seconds: 0, nearRoll: 0, farRoll: 0, bend: 0, nearTip: 0, farTip: 0 };
+
   const layout: Layout = { scale: 1, left: 0, top: 0 };
   let viewportW = 0;
   let viewportH = 0;
@@ -447,21 +469,48 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     // 舞台 y 向下、世界 y 向上：屏幕顺时针 rot 对应 rotation.z = -rot
     rig.root.rotation.z = -rot * DEG2RAD;
 
-    const flapPhase = wrap((time + rig.wingPhase) / CRANE_FLAP_SECONDS, 1);
+    // 振翅与本文件外层的飞行动画各用各的钟：飞行仍按 renderer 的 clock（与航路关键帧同源），
+    // 振翅改吃 waveTime()——SVG 分支的翼组读的是同一个钟，两端同帧同相，不会各走各的
+    const flapSeconds = waveTime() + rig.wingPhase;
+    const flapPhase = wrap(flapSeconds / CRANE_FLAP_SECONDS, 1);
     const ease = 0.5 - 0.5 * Math.cos(flapPhase * Math.PI * 2);
-    const nearAngle = CRANE_FLAP.near.from + (CRANE_FLAP.near.to - CRANE_FLAP.near.from) * ease;
-    const farAngle = CRANE_FLAP.far.from + (CRANE_FLAP.far.to - CRANE_FLAP.far.from) * ease;
 
-    rig.nearWing.rotation.z = nearAngle * DEG2RAD;
-    rig.farWing.rotation.z = farAngle * DEG2RAD;
+    const near = cranePose(flapSeconds, "near");
+    const far = cranePose(flapSeconds, "far");
+    rig.nearWing.rotation.z = near.roll * DEG2RAD;
+    rig.farWing.rotation.z = far.roll * DEG2RAD;
+    // 两翼共用一条弹簧：bend 只取决于时间，不区分远近翼，所以一个 uniform 就够
+    rig.material.uniforms.uBend.value = near.bend * DEG2RAD;
     // 与 CSS 的 wb-crane-bob 同相：相位 0 / 1 归位，半周期（振翅下压）抬到 -2% 鹤高
     rig.bob.position.y = -geometry.bobOffset * ease;
 
-    const legPhase = wrap((time + rig.wingPhase) / CRANE_FLAP_SECONDS - LEG_LAG_PHASE, 1);
+    const legPhase = wrap(flapSeconds / CRANE_FLAP_SECONDS - LEG_LAG_PHASE, 1);
     rig.legs.rotation.z = Math.sin(legPhase * Math.PI * 2) * LEG_SWING_DEG * DEG2RAD;
 
     rig.material.uniforms.uAlpha.value = opacity;
+
+    if (rig === lead) {
+      applied.seconds = flapSeconds;
+      applied.nearRoll = near.roll;
+      applied.farRoll = far.roll;
+      applied.bend = near.bend;
+      applied.nearTip = near.roll + near.bend;
+      applied.farTip = far.roll + far.bend;
+    }
   };
+
+  // 生产构建里 import.meta.env.DEV 为 false，整段被摇掉
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    (window as Window & { __craneLayer?: unknown }).__craneLayer = {
+      applied,
+      stats: {
+        drawCalls: rigs.length * 4,
+        vertices: geometry.stats.vertices * rigs.length,
+        triangles: geometry.stats.triangles * rigs.length,
+        spans: geometry.spans,
+      },
+    };
+  }
 
   return {
     update(time: number, sun: SunState): void {

@@ -167,14 +167,15 @@ describe("丹顶鹤飞行关键帧", () => {
     expect(hidden.every((frame) => frame.opacity === 0)).toBe(true);
   });
 
-  it("两只鹤起飞间隔 1.5–3s，且后一只错开振翅相位", () => {
+  it("两只鹤起飞间隔 1.5–3s，且后一只错开起伏相位", () => {
     expect(CRANE_TRAIL_DELAY_SECONDS).toBeGreaterThanOrEqual(1.5);
     expect(CRANE_TRAIL_DELAY_SECONDS).toBeLessThanOrEqual(3);
     const trail = CSS.slice(CSS.indexOf(".wb-scene__crane--trail {"));
     expect(trail.slice(0, trail.indexOf("}"))).toContain(
       `animation-delay: -${CRANE_FLIGHT_SECONDS - CRANE_TRAIL_DELAY_SECONDS}s`,
     );
-    expect(CSS).toContain(".wb-scene__crane--trail .wb-crane__wing");
+    // 振翅相位改由 craneWings.ts 按鹤分别加，CSS 里只剩起伏那一层
+    expect(CSS).toContain(".wb-scene__crane--trail .wb-scene__crane-bob");
   });
 
   it("最低点 88vh、最高点 8vh：与页脚、视口上缘的关系只在预期范围内", () => {
@@ -201,11 +202,14 @@ describe("丹顶鹤飞行关键帧", () => {
     expect(frames).toEqual(CRANE_FLIGHT.map((frame) => ({ ...frame })));
   });
 
-  it("pages.css 的振翅时长与幅度与 CRANE_FLAP_SECONDS 一致", () => {
+  it("pages.css 的两翼只读同名变量，振翅曲线不再写死在关键帧里", () => {
     const wing = CSS.slice(CSS.indexOf(".wb-crane__wing {"));
-    expect(wing.slice(0, wing.indexOf("}"))).toContain(`animation-duration: ${CRANE_FLAP_SECONDS}s`);
-    expect(CSS).toContain("@keyframes wb-crane-flap-near");
-    expect(CSS).toContain("@keyframes wb-crane-flap-far");
+    const block = wing.slice(0, wing.indexOf("}"));
+    expect(block).toContain("--crane-roll");
+    expect(block).toContain("--crane-bend");
+    expect(block).not.toContain("animation-name");
+    expect(CSS).not.toContain("@keyframes wb-crane-flap-near");
+    expect(CSS).not.toContain("@keyframes wb-crane-flap-far");
   });
 });
 

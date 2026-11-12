@@ -1080,8 +1080,8 @@
   opacity: 0.88;
 }
 
-/* 振翅相位错开 0.31s（0.9s 周期的三分之一多一点），两只不会同拍扇翼 */
-.wb-scene__crane--trail .wb-crane__wing,
+/* 振翅相位错开 0.31s（0.9s 周期的三分之一多一点），两只不会同拍扇翼。
+   两翼的相位由 craneWings.ts 按鹤分别算（后鹤 +0.31s），这里只剩起伏那层 */
 .wb-scene__crane--trail .wb-scene__crane-bob {
   animation-delay: -0.31s;
 }
@@ -1110,24 +1110,20 @@
   overflow: visible;
 }
 
-/* 两翼的旋转原点都落在共同肩点 (141,58)，整个摆幅内翼根不脱肩线 */
+/* 两翼的旋转原点都落在共同肩点 (141,58)，整个摆幅内翼根不脱肩线。
+   角度来自 cranePose：--crane-roll 是肩点刚体角，--crane-bend 是内外翼夹角，
+   由 craneWings.ts 逐帧写入同名变量（WebGL 那端写的是 uBend uniform，同一条曲线）。
+   SVG 只有一层附加旋转，画不出展向弯曲的中间形态，所以这里转的是两角之和：
+   翼尖角与 WebGL 严格一致，中段则是刚体近似。 */
 .wb-crane__wing {
   transform-box: view-box;
   transform-origin: 141px 58px;
-  animation-duration: 0.9s;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
+  transform: rotate(calc((var(--crane-roll, 0) + var(--crane-bend, 0)) * 1deg));
   will-change: transform;
 }
 
-.wb-crane__wing--near {
-  animation-name: wb-crane-flap-near;
-}
-
-/* 远翼不再整组半透明（那会把墨黑飞羽一起洗成灰色），深度差由翼面的冷灰调承担 */
-.wb-crane__wing--far {
-  animation-name: wb-crane-flap-far;
-}
+/* 远翼不再整组半透明（那会把墨黑飞羽一起洗成灰色），深度差由翼面的冷灰调承担。
+   近/远翼的差别现在只剩幅值（cranePose 里的 6.5° / 7.5°），不再各挂一条关键帧 */
 
 /* 白羽面：白身 + 冷灰羽缘描边。白羽在浅天空/雪上到不了 3:1，
    可辨性交给这条描边与墨羽块。描边 0.95 单位，在 0.64 缩放下约 0.6px，
@@ -1220,26 +1216,8 @@
   stroke-width: 1.7;
 }
 
-/* 内层振翅：同周期同相位，近翼小幅、远翼稍大 */
-@keyframes wb-crane-flap-near {
-  0%,
-  100% {
-    transform: rotate(-7deg);
-  }
-  50% {
-    transform: rotate(6deg);
-  }
-}
-
-@keyframes wb-crane-flap-far {
-  0%,
-  100% {
-    transform: rotate(-5deg);
-  }
-  50% {
-    transform: rotate(10deg);
-  }
-}
+/* 内层振翅已改由 cranePose 逐帧驱动（见 cranePose.ts / craneWings.ts），
+   这里不再有 wb-crane-flap-near / -far 两条关键帧 */
 
 /* 轻微起伏：下压时略微下沉，幅度随鹤的尺寸缩放 */
 @keyframes wb-crane-bob {
@@ -1723,10 +1701,11 @@ body:has(.wb-home) {
 
   /* 鹤：曲线飞行和振翅都是装饰性动效，reduce 下全部停下，但造型保留 ——
      停在 .wb-scene__crane 的基础 transform（64vw / 42vh，画面中部偏右），
-     既不压页脚，也不会因为缺省 transform 而聚到左上角 */
+     既不压页脚，也不会因为缺省 transform 而聚到左上角。
+     两翼的振翅已改由 craneWings.ts 驱动，那边在 reduce 下直接不启动，
+     --crane-roll / --crane-bend 保持缺省 0，翼组停在基准姿态 */
   .wb-scene__crane,
-  .wb-scene__crane-bob,
-  .wb-crane__wing {
+  .wb-scene__crane-bob {
     animation: none;
   }
 

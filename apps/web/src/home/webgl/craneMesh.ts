@@ -42,6 +42,7 @@ import {
   CRANE_VIEWBOX,
   bladePath,
 } from "../craneGeometry";
+import { CRANE_BEND_RIG } from "../cranePose";
 
 /** 顶点色角色。着色器按角色取 uWhite/uShade/... 一个 uniform，换时辰只改 uniform，不重建几何 */
 export const CRANE_ROLE = {
@@ -190,10 +191,12 @@ type Accumulator = {
   role: number[];
   alpha: number[];
   width: number[];
+  /** 展向弯曲：x 权重 0..1，yz 腕点（翼局部坐标）。躯干/腿恒为 0，不在着色器里转 */
+  bend: number[];
 };
 
 function emptyAcc(): Accumulator {
-  return { pos: [], nrm: [], side: [], role: [], alpha: [], width: [] };
+  return { pos: [], nrm: [], side: [], role: [], alpha: [], width: [], bend: [] };
 }
 
 function pushVert(
@@ -213,6 +216,42 @@ function pushVert(
   acc.role.push(role);
   acc.alpha.push(alpha);
   acc.width.push(width);
+  acc.bend.push(0, 0, 0);
+}
+
+/**
+ * 给一整翼烘焙展向弯曲权重（**不新增顶点/网格**，只多一个 vec3 属性）。
+ * 权重 = smoothstep(0.60 → 1.00 翼长)，腕点 = 0.66 翼长处（自肩点量的同一条径向上）。
+ * 顶点着色器按权重点 `ang = uBend * weight` 绕腕点转，于是内翼几乎不动、
+ * 外翼渐进弯折，翼尖的附加位移恰好是 (1 − 0.66)·翼长·sin(bend)。
+ * 返回翼长（局部单位），供探针算位移占比。
+ */
+function applySpanBend(acc: Accumulator): number {
+  let span = 0;
+  let tipX = 0;
+  let tipY = 0;
+  for (let i = 0; i < acc.pos.length; i += 3) {
+    const r = Math.hypot(acc.pos[i], acc.pos[i + 1]);
+    if (r > span) {
+      span = r;
+      tipX = acc.pos[i];
+      tipY = acc.pos[i + 1];
+    }
+  }
+  if (span <= 0) return 0;
+
+  const wristX = tipX * CRANE_BEND_RIG.wrist;
+  const wristY = tipY * CRANE_BEND_RIG.wrist;
+  const start = CRANE_BEND_RIG.start;
+  const inv = 1 / (1 - start);
+  for (let i = 0; i < acc.pos.length; i += 3) {
+    const r = Math.hypot(acc.pos[i], acc.pos[i + 1]) / span;
+    const t = Math.min(1, Math.max(0, (r - start) * inv));
+    acc.bend[i] = t * t * (3 - 2 * t);
+    acc.bend[i + 1] = wristX;
+    acc.bend[i + 2] = wristY;
+  }
+  return span;
 }
 
 /** 把 viewBox 坐标平移到「以画面中心为原点、再减去分组枢轴」的局部坐标 */
@@ -325,6 +364,7 @@ function toGeometry(acc: Accumulator): THREE.BufferGeometry {
   geometry.setAttribute("aRole", new THREE.Float32BufferAttribute(acc.role, 1));
   geometry.setAttribute("aAlpha", new THREE.Float32BufferAttribute(acc.alpha, 1));
   geometry.setAttribute("aWidth", new THREE.Float32BufferAttribute(acc.width, 1));
+  geometry.setAttribute("aBend", new THREE.Float32BufferAttribute(acc.bend, 3));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -455,6 +495,8 @@ export type CraneGeometrySet = {
   };
   /** 一个振翅周期里的起伏幅度（局部单位，= viewBox 高 × 0.02，与 CSS 的 -2% 一致） */
   bobOffset: number;
+  /** 两翼的翼长（肩点 → 翼尖，局部单位），探针用它算「翼尖位移占翼展」 */
+  spans: { near: number; far: number };
   stats: {
     triangles: number;
     vertices: number;
@@ -467,6 +509,8 @@ export function buildCraneGeometry(): CraneGeometrySet {
   const farWing = buildFarWing();
   const body = buildBody();
   const nearWing = buildNearWing();
+
+  const spans = { near: applySpanBend(nearWing), far: applySpanBend(farWing) };
 
   const perGroup: Record<CraneGroupId, number> = {
     legs: triangleCount(legs),
@@ -489,6 +533,7 @@ export function buildCraneGeometry(): CraneGeometrySet {
       hip: { ...HIP },
     },
     bobOffset: CRANE_VIEWBOX.height * 0.02,
+    spans,
     stats: {
       triangles,
       vertices: triangles * 3,

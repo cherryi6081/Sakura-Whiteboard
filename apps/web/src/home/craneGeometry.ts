@@ -309,11 +309,7 @@ export const CRANE_FAR_WING =
 /** 远翼翼轴：从翼根顺着翼面向翼尖的一道结构线 */
 export const CRANE_FAR_WING_SHAFT = "M141 52 C128 32 110 19 92 14";
 
-/** 两翼摆动的幅度（deg）：内层同一个周期，近翼小幅、远翼稍大，读起来是一次完整的振翅 */
-export const CRANE_FLAP = {
-  near: { from: -7, to: 6 },
-  far: { from: -5, to: 10 },
-} as const;
+/** 两翼的摆幅已交给 cranePose.ts（肩点刚体角 + 内外翼夹角），这里不再留关键帧数据 */
 
 /** 飞行包裹盒（视口百分比）：用于验收越界与页脚重叠，不做动画 */
 export function craneFlightEnvelope(frames: readonly CraneFlightFrame[] = CRANE_FLIGHT) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
 import { BOAT_ANCHOR, mountBoatWave } from "./boatWave";
+import { mountCraneWings } from "./craneWings";
 import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
 import type { Period } from "./usePeriod";
 import { createSkyClock, type SkyClock } from "./skyClock";
@@ -513,6 +514,18 @@ export function FujiScene({ period }: { period: Period }) {
     if (!root) return;
     return mountBoatWave(root);
   }, []);
+
+  /**
+   * 鹤的两翼：与 WebGL 分支共用 cranePose（肩点角 + 内外翼夹角），这里只负责
+   * 把两个标量写进同名 CSS 变量。WebGL 模式下 SVG 鹤是 display:none，
+   * 那边由 uBend / rotation 驱动，所以这里只在 svg 分支挂 rAF，不白烧帧。
+   */
+  useEffect(() => {
+    if (renderMode !== "svg") return;
+    const root = sceneRef.current;
+    if (!root) return;
+    return mountCraneWings(root);
+  }, [renderMode]);
 
   /**
    * 时辰变化：先把目标推给钟，再决定谁来推进它。
