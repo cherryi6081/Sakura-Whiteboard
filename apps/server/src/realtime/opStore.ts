@@ -83,7 +83,7 @@ export async function persistOp(input: PersistOpInput): Promise<PersistOpResult>
     await client.query(
       `insert into board_ops (board_id, seq, op_id, client_id, user_id, guest_id, kind, element_id, payload)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-       on conflict (op_id) do nothing`,
+       on conflict (board_id, op_id) do nothing`,
       [boardId, seq, op.opId, clientId, userId, guestId, op.kind, op.id, JSON.stringify(op)],
     );
 
