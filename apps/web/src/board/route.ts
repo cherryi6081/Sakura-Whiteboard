@@ -10,10 +10,13 @@ export type BoardRoute =
   | { kind: "auth"; mode: "login" | "register"; next: string | null }
   | { kind: "boards" }
   | { kind: "trash" }
+  | { kind: "join"; token: string }
   | { kind: "index" };
 
 /** 与 `LIMITS.boardIdPattern` 保持一致：12 位 `[A-Za-z0-9_-]`。 */
 const BOARD_PATH = /^\/board\/([A-Za-z0-9_-]{12})\/?$/;
+/** 邀请 token：与服务端 `inviteTokenSchema` 同一区间 */
+const JOIN_PATH = /^\/join\/([A-Za-z0-9_-]{16,64})\/?$/;
 
 export function parseBoardRoute(pathname: string, search = ""): BoardRoute {
   const match = BOARD_PATH.exec(pathname);
@@ -29,6 +32,9 @@ export function parseBoardRoute(pathname: string, search = ""): BoardRoute {
   if (/^\/boards\/?$/.test(pathname)) return { kind: "boards" };
   // 回收站：列表页的第三个状态，独立路由便于刷新/分享
   if (/^\/boards\/trash\/?$/.test(pathname)) return { kind: "trash" };
+  // 团队空间邀请链接：与文档里的 shiro.app/join/xxx 一致
+  const joinMatch = JOIN_PATH.exec(pathname);
+  if (joinMatch) return { kind: "join", token: joinMatch[1] };
   // `/spike` 与历史入口 `/?board=xxx` 都进 M2 前置验证页（boardId 同样来自地址栏）
   if (/^\/spike\/?$/.test(pathname) || new URLSearchParams(search).has("board")) {
     return { kind: "spike" };

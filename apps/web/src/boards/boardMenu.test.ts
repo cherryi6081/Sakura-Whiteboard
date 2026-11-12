@@ -35,11 +35,14 @@ describe("buildBoardMenu", () => {
     expect(item(buildBoardMenu({ role: "owner", pinned: false }), "pin").label).toBe("置顶");
   });
 
-  it("editor 可改名与置顶，但不能移到回收站，也看不到协作者", () => {
+  it("editor 可改名与置顶，但只能删自己创建的板，也看不到协作者", () => {
     const groups = buildBoardMenu({ role: "editor", pinned: false });
     expect(item(groups, "rename").disabledReason).toBeUndefined();
     expect(item(groups, "pin").disabledReason).toBeUndefined();
-    expect(item(groups, "trash").disabledReason).toBe("仅所有者");
+    expect(item(groups, "trash").disabledReason).toBe("仅自己创建的");
+    expect(
+      item(buildBoardMenu({ role: "editor", pinned: false, isOwn: true }), "trash").disabledReason,
+    ).toBeUndefined();
     expect(flat(groups).some((entry) => entry.key === "members")).toBe(false);
   });
 
@@ -47,7 +50,7 @@ describe("buildBoardMenu", () => {
     const groups = buildBoardMenu({ role: "viewer", pinned: false });
     expect(item(groups, "rename").disabledReason).toBe("只读");
     expect(item(groups, "pin").disabledReason).toBe("只读");
-    expect(item(groups, "trash").disabledReason).toBe("仅所有者");
+    expect(item(groups, "trash").disabledReason).toBe("只读");
     expect(flat(groups)).toHaveLength(7);
   });
 

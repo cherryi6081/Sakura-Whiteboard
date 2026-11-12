@@ -5159,6 +5159,549 @@ button.wb-sortchip:hover {
   visibility: hidden;
 }
 
+/* ---------- 团队空间：标题区 / 角色 chip / 只读提示 ---------- */
+.wb-boards__eyebrow {
+  margin: 0 0 2px;
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.wb-boards__titleline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.wb-space-role {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--neutral-300);
+  background: var(--neutral-100);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.wb-space-role--owner {
+  border-color: var(--rose-200);
+  background: var(--rose-50);
+  color: var(--rose-800);
+}
+
+.wb-space-role--editor {
+  border-color: var(--fuji-300);
+  background: var(--fuji-snow);
+  color: var(--info-text);
+}
+
+.wb-boards__readonly {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+}
+
+.wb-badge--member {
+  background: var(--neutral-100);
+  border-color: var(--neutral-300);
+  color: var(--text-secondary);
+}
+
+/* ---------- 空间切换器：顶栏胶囊 + 下拉 ---------- */
+.wb-space {
+  position: relative;
+  margin-left: var(--space-2);
+}
+
+.wb-space-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  max-width: 240px;
+  padding: 4px 10px;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wb-space-pill:hover {
+  border-color: var(--rose-300);
+  background: var(--rose-50);
+}
+
+.wb-space-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.wb-space-pill__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.wb-space-pill__name {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-space-pill__meta {
+  font-size: var(--text-footer);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-space-pill__chevron {
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-1px);
+  flex: none;
+}
+
+.wb-space-avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--rose-100);
+  color: var(--rose-800);
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+.wb-space-avatar--team {
+  border-radius: 8px;
+  background: var(--fuji-200);
+  color: var(--fuji-600);
+}
+
+.wb-space-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 360px;
+  padding: var(--space-2);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-3);
+}
+
+.wb-space-menu__scroll {
+  /* 最多 5 行可见，超出内部滚动 */
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.wb-space-menu__group + .wb-space-menu__group {
+  margin-top: var(--space-2);
+}
+
+.wb-space-menu__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+}
+
+.wb-space-menu__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--text-link);
+  font-size: var(--text-micro);
+  cursor: pointer;
+}
+
+.wb-space-menu__new:hover {
+  background: var(--rose-50);
+}
+
+.wb-space-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wb-space-menu__item:hover {
+  background: var(--neutral-100);
+}
+
+.wb-space-menu__item:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.wb-space-menu__item.is-active {
+  background: var(--rose-50);
+}
+
+.wb-space-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.wb-space-menu__title {
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-space-menu__meta {
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+}
+
+.wb-space-menu__empty {
+  width: 100%;
+  padding: 12px 8px;
+  border: 1px dashed var(--neutral-300);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.wb-space-menu__sep {
+  height: 1px;
+  margin: var(--space-2) 0;
+  background: var(--neutral-200);
+}
+
+.wb-space-menu__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 4px;
+}
+
+.wb-space-menu__footlink {
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  color: var(--text-link);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.wb-space-menu__footnote {
+  font-size: var(--text-footer);
+  color: var(--text-secondary);
+}
+
+/* 390：顶栏下 48px 空间条，点开 80vh 底部床单 */
+@media (max-width: 639px) {
+  .wb-space {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    margin: 0;
+    z-index: 40;
+  }
+
+  .wb-space-pill--mobile {
+    width: 100%;
+    height: 48px;
+    max-width: none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+    box-shadow: none;
+    background: var(--paper);
+  }
+
+  .wb-space-pill--mobile .wb-space-pill__text {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex: 1;
+  }
+
+  .wb-space-pill--mobile .wb-space-pill__chevron {
+    margin-left: auto;
+  }
+
+  .wb-space-sheet {
+    width: 100%;
+    max-height: 80vh;
+    padding: var(--space-4) var(--space-4) var(--space-6);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    background: var(--paper);
+    box-shadow: var(--shadow-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .wb-space-sheet__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0 var(--space-2);
+  }
+
+  .wb-space-sheet__title {
+    font-size: var(--text-subtitle);
+    font-weight: 600;
+  }
+
+  .wb-space-sheet__current {
+    font-size: var(--text-micro);
+    color: var(--text-secondary);
+  }
+
+  .wb-space-sheet__done {
+    align-self: flex-end;
+    border: 0;
+    background: transparent;
+    color: var(--text-link);
+    font-size: var(--text-caption);
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+
+  .wb-container--boards {
+    /* 让出固定空间条的高度，标题不被压住 */
+    padding-top: calc(48px + var(--space-6));
+  }
+}
+
+/* ---------- 空间设置 ---------- */
+.wb-space-settings {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.wb-space-settings__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.wb-space-settings__eyebrow {
+  margin: 0 0 2px;
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+}
+
+.wb-space-settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--neutral-200);
+}
+
+.wb-space-settings__subtitle {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wb-space-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-space-members__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 4px 0;
+}
+
+.wb-space-members__avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  flex: none;
+}
+
+.wb-space-members__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.wb-space-members__name {
+  font-size: var(--text-body);
+  color: var(--text-primary);
+}
+
+.wb-space-members__meta {
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-space-invite {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.wb-space-invite__role {
+  min-width: 120px;
+}
+
+.wb-space-invite__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--neutral-100);
+}
+
+.wb-space-invite__link code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-space-invite__copied {
+  font-size: var(--text-micro);
+  color: var(--success-text);
+  white-space: nowrap;
+}
+
+.wb-space-create {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---------- 邀请落地页 /join/<token> ---------- */
+.wb-join {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: var(--bg);
+}
+
+.wb-join__card {
+  width: 420px;
+  max-width: 100%;
+  padding: var(--space-8);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-xl);
+  background: var(--paper);
+  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.wb-join__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--rose-50);
+  color: var(--rose-700);
+}
+
+.wb-join__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  color: var(--text-primary);
+}
+
+/* 1024：胶囊只留单行，避免和右侧「回收站 / 用户名」抢宽度 */
+@media (max-width: 1100px) and (min-width: 640px) {
+  .wb-space-pill__meta {
+    display: none;
+  }
+
+  .wb-space-pill {
+    height: 36px;
+  }
+}
+
 .wb-board-card.is-dragging .wb-board-card__handle {
   opacity: 1;
   cursor: grabbing;

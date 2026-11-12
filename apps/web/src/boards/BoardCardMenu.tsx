@@ -35,6 +35,8 @@ export type BoardMenuTarget = {
   role: string;
   pinned: boolean;
   guest?: boolean;
+  /** 团队空间里是否由我创建（编辑者据此判断能否删除） */
+  isOwn?: boolean;
   anchor: MenuAnchor;
   trigger: HTMLElement | null;
 };
@@ -75,7 +77,12 @@ export function BoardCardMenu({ target, onAction, onClose }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<MenuPlacement | null>(null);
   const [submenu, setSubmenu] = useState<{ key: string; left: number; top: number } | null>(null);
-  const groups = buildBoardMenu({ role: target.role, pinned: target.pinned, guest: target.guest });
+  const groups = buildBoardMenu({
+    role: target.role,
+    pinned: target.pinned,
+    guest: target.guest,
+    isOwn: target.isOwn,
+  });
   const roleLabel = target.guest ? "临时板" : (ROLE_LABEL[target.role] ?? target.role);
 
   const topLevel = useCallback(

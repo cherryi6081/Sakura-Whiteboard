@@ -10,6 +10,7 @@ import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
 import { BoardsPage } from "./boards/BoardsPage";
 import { TrashPage } from "./boards/TrashPage";
+import { JoinSpacePage } from "./boards/JoinSpacePage";
 import { HomePage } from "./home/HomePage";
 import { SpikeApp } from "./spike/SpikeApp";
 import { purgeExpiredCache } from "./store/cacheDb";
@@ -30,6 +31,8 @@ createRoot(document.getElementById("root")!).render(
       <BoardsPage />
     ) : route.kind === "trash" ? (
       <TrashPage />
+    ) : route.kind === "join" ? (
+      <JoinSpacePage token={route.token} />
     ) : route.kind === "spike" ? (
       <SpikeApp />
     ) : (

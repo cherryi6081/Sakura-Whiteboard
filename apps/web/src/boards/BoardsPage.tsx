@@ -33,6 +33,9 @@ import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
 import { IconAlert, IconBoard, IconCheck, IconFlower, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
+import type { SpaceSummary } from "@whiteboard/shared";import { fetchSpaces } from "./spaceApi";
+import { SpaceSwitcher } from "./SpaceSwitcher";
+import { SpaceSettings } from "./SpaceSettings";
 
 /**
  * 我的白板列表（视觉方案 §4.2）。
@@ -49,7 +52,9 @@ type ViewState =
   | { kind: "loading" }
   | { kind: "guest"; items: RecentBoard[] }
   | { kind: "user"; items: BoardListItem[]; user: { displayName: string } }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  /** `?space=` 指向的空间不存在 / 已不是成员：404 面板，不自动回退 */
+  | { kind: "missing" };
 
 type CardModel = {
   id: string;
@@ -57,9 +62,11 @@ type CardModel = {
   lastEditedAt: string;
   pinned: boolean;
   badge: string;
-  badgeTone: "role" | "readonly" | "guest";
+  badgeTone: "role" | "readonly" | "guest" | "member";
   role: string;
   guest?: boolean;
+  /** 团队空间：这块板是不是我创建的 */
+  isOwn?: boolean;
 };
 
 type UndoState =
@@ -107,6 +114,11 @@ const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
 /** 列表一次取满 30 条（接口上限），页内再按 6 张/页加载更多 */
 const FETCH_LIMIT = 30;
+const SPACE_ROLE_LABEL: Record<string, string> = {
+  owner: "所有者",
+  editor: "编辑者",
+  viewer: "只读",
+};
 
 /** 本页的建板失败文案：沿用这一页原来的措辞，避免因为共用 hook 改掉已有提示 */
 function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?: string }): string {
@@ -117,6 +129,12 @@ function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?:
 
 export function BoardsPage() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
+  // 空间上下文：spaceId 为空表示尚未确定；个人空间在 URL 上不写 ?space=
+  const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
+  const [spaceId, setSpaceId] = useState("");
+  const spaceIdRef = useRef("");
+  const [spaceRole, setSpaceRole] = useState<string>("owner");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [preview, setPreview] = useState<ClaimPreview | null>(null);
   const [claimBarVisible, setClaimBarVisible] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -159,10 +177,16 @@ export function BoardsPage() {
   const previewGroupsRef = useRef<{ pinned: string[]; others: string[] } | null>(null);
   const dragApiRef = useRef<{ begin: (source: DragSource) => void; move: (x: number, y: number) => void; end: (commit: boolean) => void } | null>(null);
   const touchTimerRef = useRef<number | null>(null);
+  const currentSpace = spaces.find((space) => space.id === spaceId) ?? null;
+  const role = currentSpace?.role ?? spaceRole;
+  const readOnly = role === "viewer";
   // 建板逻辑（含配额/离线/慢请求处理）统一走 useCreateBoard，与旧首页入口同一份实现
-  const { busy, slow, error: createError, start } = useCreateBoard({ messageFor: boardsMessageFor });
+  const { busy, slow, error: createError, start } = useCreateBoard({
+    messageFor: boardsMessageFor,
+    spaceId: currentSpace?.kind === "team" ? currentSpace.id : undefined,
+  });
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetSpace?: string) => {
     setView({ kind: "loading" });
     setPage(1);
     setSelectMode(false);
@@ -171,19 +195,43 @@ export function BoardsPage() {
     setAnchorId(null);
     setFocusedId(null);
     setTrashConfirm(null);
+    setMenu(null);
+    setSettingsOpen(false);
+    setPreviewIds(null);
+    previewGroupsRef.current = null;
     const me = await fetchMe();
     if (!me.ok) {
+      setSpaces([]);
       setView({ kind: "guest", items: listRecentBoards() });
       return;
     }
-    const list = await fetchBoards(FETCH_LIMIT);
-    if (!list.ok) {
+
+    // 空间是列表的一级上下文：先取空间列表，再按空间取白板
+    const spacesResult = await fetchSpaces();
+    if (!spacesResult.ok) {
       setView({ kind: "error", message: "列表没刷新成功" });
       return;
     }
+    const listSpaces = spacesResult.data.spaces;
+    setSpaces(listSpaces);
+    const personal = listSpaces.find((space) => space.kind === "personal");
+    const requested = targetSpace ?? new URLSearchParams(window.location.search).get("space") ?? "";
+    const candidate = requested || personal?.id || "";
+    if (!candidate || !listSpaces.some((space) => space.id === candidate)) {
+      // 地址栏是唯一真相：空间没了就显示 404，不偷偷切回个人空间
+      setView({ kind: "missing" });
+      return;
+    }
+    spaceIdRef.current = candidate;
+    setSpaceId(candidate);
+
+    const list = await fetchBoards(FETCH_LIMIT, 0, candidate);
+    if (!list.ok) {
+      setView(list.status === 404 ? { kind: "missing" } : { kind: "error", message: "列表没刷新成功" });
+      return;
+    }
+    setSpaceRole(list.data.spaceRole ?? "owner");
     setSortModeState(list.data.sortMode);
-    setPreviewIds(null);
-    previewGroupsRef.current = null;
     setView({
       kind: "user",
       items: sortBoards(list.data.boards, list.data.sortMode),
@@ -201,6 +249,13 @@ export function BoardsPage() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // 前进 / 后退按地址栏重新加载；切空间用 pushState，刷新后仍停在同一个空间
+  useEffect(() => {
+    const onPop = () => void load();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, [load]);
 
   // 回收站入口徽标：登录用户才取，401/网络失败都静默降级为不显示徽标
@@ -301,9 +356,23 @@ export function BoardsPage() {
           title: item.title,
           lastEditedAt: item.lastEditedAt,
           pinned: isPinned(item),
-          badge: ROLE_LABEL[item.role] ?? item.role,
-          badgeTone: item.role === "viewer" ? "readonly" : "role",
+          // 团队空间把徽标换成「谁创建」：空间名已经在标题区，卡片里不再重复
+          badge:
+            currentSpace?.kind === "team"
+              ? item.isOwn
+                ? "我创建"
+                : (item.ownerName ?? "成员")
+              : (ROLE_LABEL[item.role] ?? item.role),
+          badgeTone:
+            currentSpace?.kind === "team"
+              ? item.isOwn
+                ? "role"
+                : "member"
+              : item.role === "viewer"
+                ? "readonly"
+                : "role",
           role: item.role,
+          isOwn: item.isOwn,
         }))
       : sortBoards(view.items, sortMode).map((item) => ({
           id: item.id,
@@ -335,8 +404,9 @@ export function BoardsPage() {
     : paged;
   const more = hasMoreBoards(cards.length, page);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
-  const isSelectable = view.kind === "user";
-  const canSort = view.kind === "user" && !selectMode && !sortBusy;
+  // 只读成员：能浏览、搜索、复制到个人空间，但不能批量选择（批量动作全是写操作）
+  const isSelectable = view.kind === "user" && !readOnly;
+  const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly;
   const groupsNow = splitGroups(visible);
   const groupIdsOf = (group: DragGroupKey): string[] =>
     (group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card) => card.id);
@@ -547,8 +617,31 @@ export function BoardsPage() {
     setMenu({ board, anchor, trigger });
   };
 
+  const selectSpace = (id: string) => {
+    const space = spaces.find((entry) => entry.id === id);
+    if (!space || id === spaceIdRef.current) return;
+    window.history.pushState(
+      {},
+      "",
+      space.kind === "team" ? `/boards?space=${encodeURIComponent(id)}` : "/boards",
+    );
+    window.scrollTo({ top: 0, behavior: "auto" });
+    void load(id);
+  };
+
+  const handleSpaceCreated = (space: SpaceSummary) => {
+    setSpaces((current) => [...current, space]);
+    window.history.pushState({}, "", `/boards?space=${encodeURIComponent(space.id)}`);
+    void load(space.id);
+  };
+
+  const backToPersonal = () => {
+    window.history.pushState({}, "", "/boards");
+    void load();
+  };
+
   const refreshList = useCallback(async () => {
-    const list = await fetchBoards(FETCH_LIMIT);
+    const list = await fetchBoards(FETCH_LIMIT, 0, spaceIdRef.current || undefined);
     if (!list.ok) return;
     setSortModeState(list.data.sortMode);
     setView((current) =>
@@ -1170,6 +1263,7 @@ export function BoardsPage() {
       pinBusy={pinBusyId === board.id}
       menuOpen={menu?.board.id === board.id}
       selectMode={selectMode}
+      readOnly={readOnly}
       selected={selected.has(board.id)}
       focused={focusedId === board.id}
       sortable={canSort}
@@ -1212,6 +1306,15 @@ export function BoardsPage() {
           </span>
           白板
         </a>
+        {view.kind === "user" && spaces.length > 0 ? (
+          <SpaceSwitcher
+            spaces={spaces}
+            currentId={spaceId}
+            onSelect={selectSpace}
+            onCreated={handleSpaceCreated}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        ) : null}
         <div className="wb-board__spacer" />
         {view.kind === "user" ? (
           <a className="wb-trash__nav" href="/boards/trash" data-testid="boards-trash-link">
@@ -1258,8 +1361,24 @@ export function BoardsPage() {
         ) : (
           <div className="wb-boards__head">
             <div className="wb-boards__headline">
-              <h1 className="wb-display">{isGuest ? "最近打开" : "我的白板"}</h1>
-              {listReady ? <span className="wb-boards__count wb-nums">{view.items.length} 块</span> : null}
+              <p className="wb-boards__eyebrow">
+                {isGuest
+                  ? "本机临时板"
+                  : currentSpace?.kind === "team"
+                    ? `团队空间 · ${currentSpace.memberCount} 位成员`
+                    : "个人空间 · 只有你能看到"}
+              </p>
+              <div className="wb-boards__titleline">
+                <h1 className="wb-display">
+                  {isGuest ? "最近打开" : currentSpace?.kind === "team" ? currentSpace.name : "我的白板"}
+                </h1>
+                {!isGuest && currentSpace ? (
+                  <span className={`wb-space-role wb-space-role--${role}`} data-testid="space-role">
+                    {SPACE_ROLE_LABEL[role] ?? role}
+                  </span>
+                ) : null}
+                {listReady ? <span className="wb-boards__count wb-nums">{view.items.length} 块</span> : null}
+              </div>
             </div>
             <div className="wb-boards__head-actions">
               {canSort && cards.length > 1 && !isGuest ? (
@@ -1297,16 +1416,22 @@ export function BoardsPage() {
                   选择
                 </button>
               ) : null}
-              <button
-                className="wb-btn wb-btn--primary"
-                type="button"
-                onClick={() => void start()}
-                disabled={busy}
-                data-testid="boards-new"
-              >
-                {busy ? <span className="wb-spinner" aria-hidden /> : <IconPlus />}
-                {busy ? (slow ? "还在连接…" : "正在新建…") : "新建白板"}
-              </button>
+              {readOnly ? (
+                <span className="wb-boards__readonly" data-testid="boards-readonly">
+                  只读空间 · 可浏览、复制到个人空间
+                </span>
+              ) : (
+                <button
+                  className="wb-btn wb-btn--primary"
+                  type="button"
+                  onClick={() => void start()}
+                  disabled={busy}
+                  data-testid="boards-new"
+                >
+                  {busy ? <span className="wb-spinner" aria-hidden /> : <IconPlus />}
+                  {busy ? (slow ? "还在连接…" : "正在新建…") : "新建白板"}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1331,6 +1456,16 @@ export function BoardsPage() {
           </div>
         ) : null}
 
+        {view.kind === "missing" ? (
+          <div className="wb-panel--error" style={{ marginTop: "var(--space-6)" }} role="alert">
+            <h2 className="wb-subtitle">这个空间不存在，或你没有访问权限</h2>
+            <p className="wb-caption">可能是邀请被撤销，或你已被移出空间。</p>
+            <button className="wb-btn wb-btn--primary" type="button" onClick={backToPersonal}>
+              返回我的白板
+            </button>
+          </div>
+        ) : null}
+
         {view.kind === "error" ? (
           <div className="wb-panel--error" style={{ marginTop: "var(--space-6)" }} role="alert">
             <h2 className="wb-subtitle">{view.message}</h2>
@@ -1342,11 +1477,27 @@ export function BoardsPage() {
         ) : null}
 
         {showEmpty ? (
-          <EmptyState
-            title={isGuest ? "还没有打开过白板" : "还没有白板"}
-            hint={isGuest ? "这块浏览器还没记录任何临时板。新建一块，立刻开始画。" : "新建一块，立刻开始画。"}
-            onNew={() => void start()}
-          />
+          readOnly ? (
+            <div className="wb-empty" data-testid="boards-empty">
+              <span className="wb-empty__icon" aria-hidden>
+                <IconBoard size={24} />
+              </span>
+              <h2 className="wb-title">这个空间还没有白板</h2>
+              <p className="wb-caption">只读成员不能新建，等编辑者创建后会出现在这里。</p>
+            </div>
+          ) : (
+            <EmptyState
+              title={isGuest ? "还没有打开过白板" : "还没有白板"}
+              hint={
+                isGuest
+                  ? "这块浏览器还没记录任何临时板。新建一块，立刻开始画。"
+                  : currentSpace?.kind === "team"
+                    ? "新建一块，空间里的成员都能看到。"
+                    : "新建一块，立刻开始画。"
+              }
+              onNew={() => void start()}
+            />
+          )
         ) : null}
 
         {cards.length > 0 || skeletonVisible(skeletonPhase) ? (
@@ -1512,6 +1663,7 @@ export function BoardsPage() {
             role: menu.board.role,
             pinned: menu.board.pinned,
             guest: menu.board.guest,
+            isOwn: menu.board.isOwn,
             anchor: menu.anchor,
             trigger: menu.trigger,
           }}
@@ -1575,6 +1727,10 @@ export function BoardsPage() {
         </div>
       ) : null}
 
+      {settingsOpen && currentSpace ? (
+        <SpaceSettings space={currentSpace} onClose={() => setSettingsOpen(false)} />
+      ) : null}
+
       {dialogOpen && preview && preview.count > 0 ? (
         <ClaimDialog
           preview={preview}
@@ -1600,6 +1756,7 @@ function BoardCard({
   pinBusy,
   menuOpen,
   selectMode,
+  readOnly,
   selected,
   focused,
   sortable,
@@ -1626,6 +1783,7 @@ function BoardCard({
   pinBusy: boolean;
   menuOpen: boolean;
   selectMode: boolean;
+  readOnly: boolean;
   selected: boolean;
   focused: boolean;
   sortable: boolean;
@@ -1861,7 +2019,7 @@ function BoardCard({
           <time className="wb-board-card__time wb-nums" dateTime={board.lastEditedAt}>
             {formatRelative(board.lastEditedAt)}
           </time>
-          {!selectMode ? (
+          {!selectMode && !readOnly ? (
             <button
               className="wb-board-card__pinbtn"
               type="button"

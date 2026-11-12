@@ -22,6 +22,8 @@ type CreateBoardFailure = {
 type UseCreateBoardOptions = {
   /** 覆盖失败文案；不传则用首页旧入口那套默认文案 */
   messageFor?: (failure: { kind: CreateBoardFailureKind; code?: string }) => string;
+  /** 建到哪个空间；不传 = 服务端落到个人空间 */
+  spaceId?: string;
 };
 
 const DEFAULT_MESSAGES: Record<CreateBoardFailureKind, string> = {
@@ -38,7 +40,7 @@ function readOffline(): boolean {
 }
 
 export function useCreateBoard(options: UseCreateBoardOptions = {}) {
-  const { messageFor } = options;
+  const { messageFor, spaceId } = options;
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState<CreateBoardFailure | null>(null);
@@ -88,7 +90,7 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(true);
     slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
 
-    const result = await createBoard();
+    const result = await createBoard(undefined, spaceId);
 
     if (slowTimer.current !== null) {
       window.clearTimeout(slowTimer.current);
@@ -108,7 +110,7 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
       return;
     }
     setError(buildFailure("error", result.code));
-  }, [buildFailure]);
+  }, [buildFailure, spaceId]);
 
   return { busy, slow, error, start };
 }

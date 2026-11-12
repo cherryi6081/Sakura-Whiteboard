@@ -34,10 +34,17 @@ export type BoardMenuGroup = { items: BoardMenuItem[]; danger?: boolean };
 
 export type BoardMenuRole = "owner" | "editor" | "viewer" | string;
 
-export function buildBoardMenu(options: { role: BoardMenuRole; pinned: boolean; guest?: boolean }): BoardMenuGroup[] {
+export function buildBoardMenu(options: {
+  role: BoardMenuRole;
+  pinned: boolean;
+  guest?: boolean;
+  /** 团队空间里「是我创建的吗」；编辑者只能删自己创建的板 */
+  isOwn?: boolean;
+}): BoardMenuGroup[] {
   const canEdit = options.role === "owner" || options.role === "editor";
   // 游客没有服务端回收站（删除即物理删除），「移到回收站」对它禁用
   const isOwner = options.role === "owner" && !options.guest;
+  const canDelete = isOwner || (options.role === "editor" && options.isOwn === true);
 
   const members: BoardMenuItem = {
     key: "members",
@@ -72,7 +79,7 @@ export function buildBoardMenu(options: { role: BoardMenuRole; pinned: boolean; 
           key: "move-to",
           label: "移动到…",
           icon: "move",
-          disabledReason: options.guest ? "登录后可用" : undefined,
+          disabledReason: options.guest ? "登录后可用" : canEdit ? undefined : "只读",
         },
         {
           key: "pin",
@@ -99,7 +106,13 @@ export function buildBoardMenu(options: { role: BoardMenuRole; pinned: boolean; 
           label: "移到回收站",
           icon: "trash",
           danger: true,
-          disabledReason: isOwner ? undefined : options.guest ? "登录后可用" : "仅所有者",
+          disabledReason: canDelete
+            ? undefined
+            : options.guest
+              ? "登录后可用"
+              : options.role === "editor"
+                ? "仅自己创建的"
+                : "只读",
         },
       ],
     },
