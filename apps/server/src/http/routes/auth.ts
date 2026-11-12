@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
+import { assessPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@whiteboard/shared';
 import { pool } from '../../infra/db.js';
 import { hashPassword, verifyPassword } from '../../auth/password.js';
 import { clearSessionCookie, createSession, destroySession } from '../../auth/session.js';
@@ -17,8 +18,8 @@ export const authRouter = Router();
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
 const passwordSchema = z
   .string()
-  .min(8)
-  .max(72, '密码最多 72 字节（argon2 输入上限）');
+  .min(PASSWORD_MIN_LENGTH, `密码至少 ${PASSWORD_MIN_LENGTH} 位`)
+  .max(PASSWORD_MAX_LENGTH, `密码最多 ${PASSWORD_MAX_LENGTH} 位`);
 
 const registerSchema = z.object({
   email: emailSchema,
@@ -81,6 +82,11 @@ authRouter.post(
   handle(async (req, res) => {
     const body = registerSchema.parse(req.body);
     const displayName = body.displayName ?? body.email.split('@')[0]?.slice(0, 24) ?? '用户';
+    // 长度以外的硬门槛（弱口令表、邮箱前缀）与前端共用同一份规则
+    const assessment = assessPassword(body.password, { email: body.email });
+    if (assessment.blockers.length > 0) {
+      throw new AppError(400, 'INVALID_INPUT', assessment.blockers[0] ?? '密码不符合要求');
+    }
     const passwordHash = await hashPassword(body.password);
 
     const client = await pool.connect();
