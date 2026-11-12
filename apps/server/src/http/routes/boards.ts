@@ -10,6 +10,7 @@ import { identityOf } from '../../auth/identity.js';
 import { issueGuestCookie } from '../../auth/guestCookie.js';
 import { resolveBoardAccess } from '../../domain/access.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
+import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -38,7 +39,8 @@ const createBoardSchema = z.object({
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(20),
-  cursor: z.string().datetime().optional(),
+  /** 手动排序与时间解耦后游标不再可靠（会把已排到前面的板重复取回），统一用 offset 分页 */
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 type BoardMetaRow = {
@@ -47,6 +49,7 @@ type BoardMetaRow = {
   role: string;
   last_edited_at: Date;
   pinned_at: Date | null;
+  rank: string | null;
 };
 
 const pinSchema = z.object({ pinned: z.boolean() });
@@ -136,31 +139,47 @@ boardsRouter.post(
   }),
 );
 
-/** `GET /api/boards` —— 登录用户的"最近编辑"；游客 401（列表只在本机）。 */
+/**
+ * `GET /api/boards` —— 登录用户的"最近编辑"；游客 401（列表只在本机）。
+ *
+ * 排序契约（设计稿 boards-drag-sort §3.3）：
+ * 置顶组恒在上 → 手动模式下组内按 `rank` → 其余按最近编辑 → id 兜底。
+ * `sort_mode` 为 auto（默认，等同于没有记录）时完全忽略 rank，与旧行为逐字节一致。
+ */
 boardsRouter.get(
   '/boards',
   handle(async (req, res) => {
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '游客没有服务端白板列表，请使用本机列表');
 
-    const { limit, cursor } = listQuerySchema.parse(req.query);
+    const { limit, offset } = listQuerySchema.parse(req.query);
+    const { rows: settingRows } = await pool.query<{ sort_mode: string }>(
+      'select sort_mode from board_user_settings where user_id = $1',
+      [identity.userId],
+    );
+    const sortMode = settingRows[0]?.sort_mode === 'manual' ? 'manual' : 'auto';
+
     const { rows } = await pool.query<BoardMetaRow>(
-      `select b.id, b.title, 'owner' as role, b.last_edited_at, b.pinned_at
-         from boards b
-        where b.owner_id = $1 and b.archived_at is null and b.deleted_at is null
-          and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
-        union all
-       select b.id, b.title, m.role, b.last_edited_at, b.pinned_at
-         from boards b
-         join board_members m on m.board_id = b.id
-        where m.user_id = $1 and b.archived_at is null and b.deleted_at is null
-          and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
-        order by pinned_at desc nulls last, last_edited_at desc, id desc
-        limit $3`,
-      [identity.userId, cursor ?? null, limit],
+      `select t.id, t.title, t.role, t.last_edited_at, t.pinned_at, t.rank
+         from (
+           select b.id, b.title, 'owner' as role, b.last_edited_at, b.pinned_at, o.rank
+             from boards b
+             left join board_user_order o on o.board_id = b.id and o.user_id = $1
+            where b.owner_id = $1 and b.archived_at is null and b.deleted_at is null
+           union all
+           select b.id, b.title, m.role, b.last_edited_at, b.pinned_at, o.rank
+             from boards b
+             join board_members m on m.board_id = b.id and m.user_id = $1
+             left join board_user_order o on o.board_id = b.id and o.user_id = $1
+            where b.archived_at is null and b.deleted_at is null
+         ) t
+        order by (t.pinned_at is not null) desc,
+                 case when $4 = 'manual' then t.rank end asc nulls last,
+                 t.last_edited_at desc, t.id desc
+        limit $2 offset $3`,
+      [identity.userId, limit, offset, sortMode],
     );
 
-    const last = rows[rows.length - 1];
     res.json({
       boards: rows.map((row) => ({
         id: row.id,
@@ -168,8 +187,10 @@ boardsRouter.get(
         role: row.role,
         lastEditedAt: row.last_edited_at.toISOString(),
         pinnedAt: row.pinned_at ? row.pinned_at.toISOString() : null,
+        rank: row.rank === null ? null : Number(row.rank),
       })),
-      nextCursor: last ? last.last_edited_at.toISOString() : null,
+      sortMode,
+      nextOffset: rows.length === limit ? offset + limit : null,
     });
   }),
 );
@@ -325,6 +346,143 @@ boardsRouter.post(
     });
 
     res.json({ items, okCount: rows.length, skippedCount: ids.length - rows.length });
+  }),
+);
+
+/**
+ * 手动排序（设计稿 boards-drag-sort §3.2）。
+ *
+ * 语义是「放到两个邻居之间」而不是「放到第 N 位」：客户端只加载 6/30 条，
+ * 邻居是它唯一确定的信息。rank 存在 `board_user_order`，作用域是「该用户 + 该组」，
+ * 不校验角色——能看见这块板的人都能排自己的列表；置顶仍走 owner/editor 的 /pin。
+ */
+
+const orderSchema = z.object({
+  /** 落点左侧的邻居；null = 组首 */
+  beforeId: boardIdSchema.nullish(),
+  /** 落点右侧的邻居；null = 组尾 */
+  afterId: boardIdSchema.nullish(),
+});
+
+const sortModeSchema = z.object({ mode: z.enum(['auto', 'manual']) });
+
+/** 当前用户可见、且与目标同组的白板 id，按视觉顺序（置顶组按置顶时间，普通组按最近编辑）。 */
+async function groupBoardIds(userId: string, pinned: boolean): Promise<string[]> {
+  const { rows } = await pool.query<{ id: string }>(
+    `select b.id
+       from boards b
+      where b.archived_at is null and b.deleted_at is null
+        and (b.owner_id = $1
+             or exists (select 1 from board_members m where m.board_id = b.id and m.user_id = $1))
+        and (($2::boolean and b.pinned_at is not null) or (not $2::boolean and b.pinned_at is null))
+      order by case when $2::boolean then b.pinned_at end desc nulls last,
+               b.last_edited_at desc, b.id desc`,
+    [userId, pinned],
+  );
+  return rows.map((row) => row.id);
+}
+
+/** 把某一组的当前顺序整体落成 rank = 1024, 2048…（首次拖动 / 间隙不足时调用）。 */
+async function materializeGroup(userId: string, pinned: boolean): Promise<void> {
+  const ranks = materializeRanks(await groupBoardIds(userId, pinned));
+  if (ranks.size === 0) return;
+  const ids = [...ranks.keys()];
+  await pool.query(
+    `insert into board_user_order (user_id, board_id, rank)
+     select $1, u.id, u.ord * $3::numeric
+       from unnest($2::text[]) with ordinality as u(id, ord)
+     on conflict (user_id, board_id) do update set rank = excluded.rank, updated_at = now()`,
+    [userId, ids, ORDER_STEP],
+  );
+}
+
+async function ranksOf(userId: string, ids: string[]): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const { rows } = await pool.query<{ board_id: string; rank: string }>(
+    'select board_id, rank from board_user_order where user_id = $1 and board_id = any($2::text[])',
+    [userId, ids],
+  );
+  return new Map(rows.map((row) => [row.board_id, Number(row.rank)]));
+}
+
+/** `PATCH /api/boards/:id/order` —— 把白板放到两个邻居之间；首次写入顺带切到手动模式。 */
+boardsRouter.patch(
+  '/boards/:id/order',
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '登录后才能调整顺序');
+    const boardId = boardIdSchema.parse(req.params.id);
+    const { beforeId, afterId } = orderSchema.parse(req.body ?? {});
+    if (beforeId === boardId || afterId === boardId) {
+      throw new AppError(400, 'INVALID_NEIGHBOR', '落点邻居不能是白板自己');
+    }
+
+    const access = await resolveBoardAccess(boardId, identity);
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+
+    const { rows: boardRows } = await pool.query<{ pinned_at: Date | null }>(
+      'select pinned_at from boards where id = $1',
+      [boardId],
+    );
+    const pinned = Boolean(boardRows[0]?.pinned_at);
+
+    // 邻居失效（被删 / 被置顶换了组）时返回 409：客户端重拉一次再算落点
+    const neighbors = [beforeId, afterId].filter((id): id is string => Boolean(id));
+    const visibleIds = new Set(await groupBoardIds(identity.userId, pinned));
+    if (neighbors.some((id) => !visibleIds.has(id))) {
+      throw new AppError(409, 'STALE_NEIGHBOR', '落点附近的顺序已变化，请刷新后重试');
+    }
+
+    const { rows: settingRows } = await pool.query<{ sort_mode: string }>(
+      'select sort_mode from board_user_settings where user_id = $1',
+      [identity.userId],
+    );
+    if (settingRows[0]?.sort_mode !== 'manual') {
+      // 首次拖动：整组当前顺序先落成 rank，再算落点，避免只有被拖的那块有 rank
+      await materializeGroup(identity.userId, pinned);
+      await pool.query(
+        `insert into board_user_settings (user_id, sort_mode) values ($1, 'manual')
+         on conflict (user_id) do update set sort_mode = 'manual', updated_at = now()`,
+        [identity.userId],
+      );
+    }
+
+    let ranks = await ranksOf(identity.userId, neighbors);
+    let rank = rankBetween(beforeId ? ranks.get(beforeId) ?? null : null, afterId ? ranks.get(afterId) ?? null : null);
+    if (rank === null) {
+      // 间隙不足或邻居没有 rank：整组重排后用新的 rank 再算一次
+      await materializeGroup(identity.userId, pinned);
+      ranks = await ranksOf(identity.userId, neighbors);
+      rank = rankBetween(beforeId ? ranks.get(beforeId) ?? null : null, afterId ? ranks.get(afterId) ?? null : null);
+    }
+    if (rank === null) throw new AppError(409, 'STALE_NEIGHBOR', '落点附近的顺序已变化，请刷新后重试');
+
+    await pool.query(
+      `insert into board_user_order (user_id, board_id, rank) values ($1, $2, $3)
+       on conflict (user_id, board_id) do update set rank = excluded.rank, updated_at = now()`,
+      [identity.userId, boardId, rank],
+    );
+    res.json({ id: boardId, rank, sortMode: 'manual' });
+  }),
+);
+
+/** `PUT /api/boards/sort-mode` —— 恢复自动会清空该用户的全部 rank，不动别人的列表。 */
+boardsRouter.put(
+  '/boards/sort-mode',
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '登录后才能切换排序模式');
+    const { mode } = sortModeSchema.parse(req.body ?? {});
+
+    if (mode === 'auto') {
+      await pool.query('delete from board_user_order where user_id = $1', [identity.userId]);
+    }
+    await pool.query(
+      `insert into board_user_settings (user_id, sort_mode) values ($1, $2)
+       on conflict (user_id) do update set sort_mode = excluded.sort_mode, updated_at = now()`,
+      [identity.userId, mode],
+    );
+    res.json({ mode });
   }),
 );
 

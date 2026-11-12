@@ -5,7 +5,16 @@
  * 这两块都不碰 DOM，便于单测覆盖所有角色与贴边组合。
  */
 
-export type BoardMenuIcon = "open" | "rename" | "pin" | "pinOff" | "link" | "copy" | "users" | "trash";
+export type BoardMenuIcon =
+  | "open"
+  | "rename"
+  | "move"
+  | "pin"
+  | "pinOff"
+  | "link"
+  | "copy"
+  | "users"
+  | "trash";
 
 export type BoardMenuItem = {
   key: string;
@@ -57,6 +66,13 @@ export function buildBoardMenu(options: { role: BoardMenuRole; pinned: boolean; 
           shortcut: "F2",
           // 游客列表的标题只存本机，改名后刷新会回退，因此只对登录用户开放
           disabledReason: options.guest ? "登录后可用" : canEdit ? undefined : "只读",
+        },
+        {
+          // 单列（≤700）下横向拖拽失效，这里是精确与读屏用户的兜底入口
+          key: "move-to",
+          label: "移动到…",
+          icon: "move",
+          disabledReason: options.guest ? "登录后可用" : undefined,
         },
         {
           key: "pin",

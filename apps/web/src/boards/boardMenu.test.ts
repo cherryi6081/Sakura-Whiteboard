@@ -12,12 +12,13 @@ function item(groups: ReturnType<typeof buildBoardMenu>, key: string): BoardMenu
 }
 
 describe("buildBoardMenu", () => {
-  it("owner 有 3 组 7 项，危险项独占最后一组", () => {
+  it("owner 有 3 组 8 项，危险项独占最后一组", () => {
     const groups = buildBoardMenu({ role: "owner", pinned: false });
-    expect(groups.map((group) => group.items.length)).toEqual([3, 3, 1]);
+    expect(groups.map((group) => group.items.length)).toEqual([4, 3, 1]);
     expect(flat(groups).map((entry) => entry.key)).toEqual([
       "open",
       "rename",
+      "move-to",
       "pin",
       "copy-link",
       "duplicate",
@@ -47,7 +48,7 @@ describe("buildBoardMenu", () => {
     expect(item(groups, "rename").disabledReason).toBe("只读");
     expect(item(groups, "pin").disabledReason).toBe("只读");
     expect(item(groups, "trash").disabledReason).toBe("仅所有者");
-    expect(flat(groups)).toHaveLength(6);
+    expect(flat(groups)).toHaveLength(7);
   });
 
   it("游客可置顶（本机），改名与回收站禁用", () => {

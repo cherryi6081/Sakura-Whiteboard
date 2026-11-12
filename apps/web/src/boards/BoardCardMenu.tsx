@@ -12,6 +12,7 @@ import {
   IconBoard,
   IconArrowRight,
   IconCopy,
+  IconMove,
   IconPin,
   IconPinOff,
   IconRename,
@@ -47,6 +48,7 @@ type Props = {
 const ICONS = {
   open: IconBoard,
   rename: IconRename,
+  move: IconMove,
   pin: IconPin,
   pinOff: IconPinOff,
   link: IconShare,

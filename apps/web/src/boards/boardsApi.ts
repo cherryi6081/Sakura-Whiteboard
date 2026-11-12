@@ -14,20 +14,49 @@ export type BoardListItem = {
   lastEditedAt: string;
   /** 服务端置顶时间；null = 未置顶。列表按「置顶优先，其次最近打开」返回 */
   pinnedAt?: string | null;
+  /** 手动顺序（仅 sortMode = manual 时有效）；null = 尚未排过 */
+  rank?: number | null;
 };
 
-export type BoardList = { boards: BoardListItem[]; nextCursor: string | null };
+export type BoardSortMode = "auto" | "manual";
 
+export type BoardList = {
+  boards: BoardListItem[];
+  sortMode: BoardSortMode;
+  nextOffset: number | null;
+};
+
+export function fetchBoards(limit = 20, offset = 0): Promise<ApiResult<BoardList>> {
+  return request<BoardList>(`/api/boards?limit=${limit}&offset=${offset}`);
+}
+
+/**
+ * 把白板放到两个邻居之间（owner/editor/viewer 都能排自己的列表）。
+ * 首次调用会把整组当前顺序落成 rank 并把用户切到手动模式。
+ */
+export function reorderBoard(
+  boardId: string,
+  neighbors: { beforeId: string | null; afterId: string | null },
+): Promise<ApiResult<{ id: string; rank: number; sortMode: BoardSortMode }>> {
+  return request(`/api/boards/${encodeURIComponent(boardId)}/order`, {
+    method: "PATCH",
+    body: JSON.stringify(neighbors),
+  });
+}
+
+/** 恢复自动排序会清空该用户全部 rank，列表立刻按时间重排。 */
+export function setSortMode(mode: BoardSortMode): Promise<ApiResult<{ mode: BoardSortMode }>> {
+  return request<{ mode: BoardSortMode }>("/api/boards/sort-mode", {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
+}
 export type CreatedBoard = {
   id: string;
   title: string;
   ownerType: "user" | "guest";
   createdAt: string;
 };
-
-export function fetchBoards(limit = 20): Promise<ApiResult<BoardList>> {
-  return request<BoardList>(`/api/boards?limit=${limit}`);
-}
 
 /** 置顶 / 取消置顶（仅创建者）。游客板走本地 `recentBoards`，不会调用这里。 */
 export function setBoardPinned(

@@ -10,10 +10,13 @@ import {
   fetchBoards,
   fetchTrashCount,
   renameBoard,
+  reorderBoard,
   restoreBoard,
   ROLE_LABEL,
   setBoardPinned,
+  setSortMode,
   type BoardListItem,
+  type BoardSortMode,
 } from "./boardsApi";
 import { moveBoardToTrash } from "./boardActions";
 import { clearBoardCache } from "../store/cacheDb";
@@ -23,6 +26,7 @@ import { BoardCardMenu, type BoardMenuTarget } from "./BoardCardMenu";
 import type { MenuAnchor } from "./boardMenu";
 import { hasMoreBoards, isPinned, sortBoards, visibleBoards } from "./boardList";
 import { gridColumnsForWidth, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
+import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
 import { loadThumbUrls } from "./boardThumb";
 import { listRecentBoards, setRecentPinned, type RecentBoard } from "./recentBoards";
 import { SakuraBranch } from "./SakuraBranch";
@@ -60,7 +64,38 @@ type CardModel = {
 
 type UndoState =
   | { kind: "trash"; ids: string[]; title?: string; failed?: number; ttl: number }
-  | { kind: "pin"; changes: { id: string; pinned: boolean }[]; pinned: boolean; skipped: number; ttl: number };
+  | { kind: "pin"; changes: { id: string; pinned: boolean }[]; pinned: boolean; skipped: number; ttl: number }
+  /** 排序保存失败：整表已回滚，toast 提供一次重试 */
+  | { kind: "sort"; id: string; neighbors: { beforeId: string | null; afterId: string | null }; ttl: number }
+  /** 首次拖动切到自定义顺序：toast 提供「恢复自动」 */
+  | { kind: "mode"; ttl: number };
+
+type DragGroupKey = "pinned" | "others";
+
+type DragSession = {
+  id: string;
+  group: DragGroupKey;
+  from: number;
+  to: number;
+  ghost: { left: number; top: number; width: number; height: number };
+  line: { kind: "v" | "h"; left: number; top: number; width: number; height: number } | null;
+  noDrop: boolean;
+};
+
+type DragSource = {
+  id: string;
+  group: DragGroupKey;
+  from: number;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  /** 按下点相对卡片左上角，ghost 跟手但不跳位 */
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  active: boolean;
+};
 
 type TrashConfirm = {
   rows: SelectableCard[];
@@ -108,6 +143,22 @@ export function BoardsPage() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [trashConfirm, setTrashConfirm] = useState<TrashConfirm | null>(null);
   const selectEntryRef = useRef<HTMLButtonElement>(null);
+  // 拖拽排序：组内接管（方案 B），置顶组与普通组固定，不跨组
+  const [sortMode, setSortModeState] = useState<BoardSortMode>("auto");
+  const [previewIds, setPreviewIds] = useState<string[] | null>(null);
+  const [drag, setDrag] = useState<DragSession | null>(null);
+  const [movedId, setMovedId] = useState<string | null>(null);
+  const [sortBusy, setSortBusy] = useState(false);
+  const [picker, setPicker] = useState<{ board: CardModel; group: DragGroupKey } | null>(null);
+  const [pickTarget, setPickTarget] = useState(0);
+  const [kbPick, setKbPick] = useState<string | null>(null);
+  const [liveText, setLiveText] = useState("");
+  const gridRef = useRef<HTMLDivElement>(null);
+  const dragSourceRef = useRef<DragSource | null>(null);
+  const dragSessionRef = useRef<DragSession | null>(null);
+  const previewGroupsRef = useRef<{ pinned: string[]; others: string[] } | null>(null);
+  const dragApiRef = useRef<{ begin: (source: DragSource) => void; move: (x: number, y: number) => void; end: (commit: boolean) => void } | null>(null);
+  const touchTimerRef = useRef<number | null>(null);
   // 建板逻辑（含配额/离线/慢请求处理）统一走 useCreateBoard，与旧首页入口同一份实现
   const { busy, slow, error: createError, start } = useCreateBoard({ messageFor: boardsMessageFor });
 
@@ -130,7 +181,14 @@ export function BoardsPage() {
       setView({ kind: "error", message: "列表没刷新成功" });
       return;
     }
-    setView({ kind: "user", items: sortBoards(list.data.boards), user: { displayName: me.data.user.displayName } });
+    setSortModeState(list.data.sortMode);
+    setPreviewIds(null);
+    previewGroupsRef.current = null;
+    setView({
+      kind: "user",
+      items: sortBoards(list.data.boards, list.data.sortMode),
+      user: { displayName: me.data.user.displayName },
+    });
 
     if (!claimSnoozed() && !readFlag(CLAIM_DISMISSED_KEY)) {
       const p = await fetchClaimPreview();
@@ -238,7 +296,7 @@ export function BoardsPage() {
   const cards: CardModel[] = !listReady
     ? []
     : view.kind === "user"
-      ? sortBoards(view.items).map((item) => ({
+      ? sortBoards(view.items, sortMode).map((item) => ({
           id: item.id,
           title: item.title,
           lastEditedAt: item.lastEditedAt,
@@ -247,7 +305,7 @@ export function BoardsPage() {
           badgeTone: item.role === "viewer" ? "readonly" : "role",
           role: item.role,
         }))
-      : sortBoards(view.items).map((item) => ({
+      : sortBoards(view.items, sortMode).map((item) => ({
           id: item.id,
           title: item.title,
           lastEditedAt: item.lastEditedAt,
@@ -263,10 +321,25 @@ export function BoardsPage() {
   const skeletonActive = view.kind === "loading" || (listReady && cards.length > 0 && !thumbsReady);
   const skeletonPhase = useSkeletonPhase(skeletonActive);
 
-  const visible = visibleBoards(cards, page);
+  const paged = visibleBoards(cards, page);
+  // 拖拽中的乐观顺序：只在预览里重排，松手保存成功后才回落到服务端顺序
+  const visible = previewIds
+    ? (() => {
+        const byId = new Map(paged.map((card) => [card.id, card]));
+        const ordered = previewIds
+          .map((id) => byId.get(id))
+          .filter((card): card is CardModel => Boolean(card));
+        const seen = new Set(ordered.map((card) => card.id));
+        return [...ordered, ...paged.filter((card) => !seen.has(card.id))];
+      })()
+    : paged;
   const more = hasMoreBoards(cards.length, page);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
   const isSelectable = view.kind === "user";
+  const canSort = view.kind === "user" && !selectMode && !sortBusy;
+  const groupsNow = splitGroups(visible);
+  const groupIdsOf = (group: DragGroupKey): string[] =>
+    (group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card) => card.id);
 
   // 翻页 / 列表变化后，焦点卡不在当前页时回落到第一张
   useEffect(() => {
@@ -477,8 +550,9 @@ export function BoardsPage() {
   const refreshList = useCallback(async () => {
     const list = await fetchBoards(FETCH_LIMIT);
     if (!list.ok) return;
+    setSortModeState(list.data.sortMode);
     setView((current) =>
-      current.kind === "user" ? { ...current, items: sortBoards(list.data.boards) } : current,
+      current.kind === "user" ? { ...current, items: sortBoards(list.data.boards, list.data.sortMode) } : current,
     );
   }, []);
 
@@ -527,6 +601,16 @@ export function BoardsPage() {
           ? `已恢复「${target.title}」`
           : `已恢复 ${restored} 块白板`,
       );
+      return;
+    }
+
+    if (target.kind === "sort") {
+      await commitOrder(target.id, target.neighbors);
+      return;
+    }
+
+    if (target.kind === "mode") {
+      await restoreAutoSort();
       return;
     }
 
@@ -613,8 +697,384 @@ export function BoardsPage() {
     setUndoToast({ kind: "trash", ids: moved, title: singleTitle, failed, ttl: 8000 });
   };
 
-  const copyBoardLink = async (board: CardModel) => {
-    const ok = await copyText(`${window.location.origin}/board/${board.id}`);
+  /* ---------------- 拖拽排序（方案 B：组内接管，不跨组） ---------------- */
+
+  const dragOriginalRef = useRef<{ pinned: string[]; others: string[] } | null>(null);
+  const kbFromRef = useRef(0);
+
+  const titleOf = (id: string) => visible.find((card) => card.id === id)?.title ?? "白板";
+
+  /** 把某一组的新顺序写进预览；预览只影响渲染，保存失败会整体丢弃。 */
+  const applyPreview = (group: DragGroupKey, ids: string[]) => {
+    const original = dragOriginalRef.current;
+    if (!original) return;
+    const pinned = group === "pinned" ? ids : original.pinned;
+    const others = group === "others" ? ids : original.others;
+    previewGroupsRef.current = { pinned, others };
+    setPreviewIds([...pinned, ...others]);
+  };
+
+  const clearPreview = () => {
+    previewGroupsRef.current = null;
+    dragOriginalRef.current = null;
+    setPreviewIds(null);
+  };
+
+  const groupRects = (ids: string[]) => {
+    const grid = gridRef.current;
+    if (!grid) return [];
+    return ids
+      .map((id) => {
+        const el = grid.querySelector<HTMLElement>(`[data-board-id="${CSS.escape(id)}"]`);
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { id, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      })
+      .filter((rect): rect is { id: string; left: number; top: number; width: number; height: number } => Boolean(rect));
+  };
+
+  const swallowNextClick = () => {
+    const handler = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("click", handler, { capture: true, once: true });
+    window.setTimeout(() => window.removeEventListener("click", handler, true), 300);
+  };
+
+  const commitOrder = async (
+    id: string,
+    neighbors: { beforeId: string | null; afterId: string | null },
+  ) => {
+    setSortBusy(true);
+    const wasAuto = sortMode !== "manual";
+    const result = await reorderBoard(id, neighbors);
+    setSortBusy(false);
+
+    if (!result.ok) {
+      clearPreview();
+      if (result.status === 409) {
+        await refreshList();
+        setToast("顺序已更新，请再拖一次。");
+        return;
+      }
+      setUndoToast({ kind: "sort", id, neighbors, ttl: 6000 });
+      setLiveText("排序没保存成功，已回到原位。");
+      return;
+    }
+
+    setSortModeState("manual");
+    await refreshList();
+    clearPreview();
+    setMovedId(id);
+    setLiveText("已保存新的顺序。");
+    if (wasAuto) setUndoToast({ kind: "mode", ttl: 8000 });
+  };
+
+  const beginDrag = (source: DragSource) => {
+    const ids = groupIdsOf(source.group);
+    const from = ids.indexOf(source.id);
+    if (from < 0) return;
+    source.active = true;
+    dragOriginalRef.current = { pinned: groupIdsOf("pinned"), others: groupIdsOf("others") };
+    applyPreview(source.group, ids);
+    const session: DragSession = {
+      id: source.id,
+      group: source.group,
+      from,
+      to: from,
+      ghost: {
+        left: source.startX - source.offsetX,
+        top: source.startY - source.offsetY,
+        width: source.width,
+        height: source.height,
+      },
+      line: null,
+      noDrop: false,
+    };
+    dragSessionRef.current = session;
+    setDrag(session);
+    document.body.classList.add("wb-sorting");
+    setLiveText(`已拿起《${titleOf(source.id)}》，第 ${from + 1} 位，共 ${ids.length} 位。`);
+  };
+
+  const moveDrag = (x: number, y: number) => {
+    const source = dragSourceRef.current;
+    const session = dragSessionRef.current;
+    if (!source?.active || !session) return;
+
+    const ghost = {
+      left: x - source.offsetX,
+      top: y - source.offsetY,
+      width: source.width,
+      height: source.height,
+    };
+    const center = { x: ghost.left + ghost.width / 2, y: ghost.top + ghost.height / 2 };
+    const horizontal = gridColumnsForWidth(window.innerWidth) > 1;
+
+    const mine = groupRects(groupIdsOf(session.group));
+    const otherGroup: DragGroupKey = session.group === "pinned" ? "others" : "pinned";
+    const other = groupRects(groupIdsOf(otherGroup));
+    const otherBand =
+      other.length > 0
+        ? {
+            top: Math.min(...other.map((rect) => rect.top)) - 12,
+            bottom: Math.max(...other.map((rect) => rect.top + rect.height)) + 12,
+          }
+        : null;
+    // 组边界不可跨越：跨组等于改置顶状态，走卡片菜单
+    const noDrop = Boolean(otherBand && center.y > otherBand.top && center.y < otherBand.bottom);
+
+    const to = dropIndex(mine, center, session.id, horizontal);
+    const rest = mine.filter((rect) => rect.id !== session.id);
+    let line: DragSession["line"] = null;
+    if (!noDrop && rest.length > 0) {
+      if (to < rest.length) {
+        const target = rest[to];
+        const prev = to > 0 ? rest[to - 1] : null;
+        if (target && prev && horizontal && Math.abs(prev.top - target.top) > 2) {
+          // 换排：横线贯穿内容宽，落在两排间隙中线
+          const gridRect = gridRef.current?.getBoundingClientRect();
+          line = {
+            kind: "h",
+            left: gridRect?.left ?? 0,
+            top: (prev.top + prev.height + target.top) / 2 - 1,
+            width: gridRect?.width ?? 0,
+            height: 2,
+          };
+        } else if (target) {
+          line = { kind: "v", left: target.left - 9, top: target.top, width: 2, height: target.height };
+        }
+      } else {
+        const last = rest[rest.length - 1];
+        if (last) {
+          line = { kind: "v", left: last.left + last.width + 9, top: last.top, width: 2, height: last.height };
+        }
+      }
+    }
+
+    const next: DragSession = { ...session, to, ghost, line, noDrop };
+    dragSessionRef.current = next;
+    setDrag(next);
+
+    if (to !== session.to) {
+      applyPreview(session.group, moveItem(groupIdsOf(session.group), session.from, to));
+      setLiveText(`第 ${to + 1} 位，共 ${mine.length} 位。`);
+    }
+  };
+
+  const finishDrag = (commit: boolean) => {
+    const session = dragSessionRef.current;
+    const source = dragSourceRef.current;
+    dragSessionRef.current = null;
+    dragSourceRef.current = null;
+    document.body.classList.remove("wb-sorting");
+    setDrag(null);
+    if (!session || !source?.active) {
+      clearPreview();
+      return;
+    }
+    swallowNextClick();
+
+    if (!commit || session.to === session.from) {
+      clearPreview();
+      setLiveText(commit ? "顺序未变。" : "已取消移动。");
+      return;
+    }
+
+    const group = previewGroupsRef.current?.[session.group];
+    if (!group) {
+      clearPreview();
+      return;
+    }
+    const neighbors = neighborsAt(
+      group.map((id) => ({ id })),
+      session.to,
+    );
+    setLiveText(`《${titleOf(session.id)}》已移到第 ${session.to + 1} 位，正在保存。`);
+    void commitOrder(session.id, neighbors);
+  };
+
+  dragApiRef.current = { begin: beginDrag, move: moveDrag, end: finishDrag };
+
+  // 指针与键盘共用同一套事件：阈值在 window 上判定，避免卡片内的 click 抢跑
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      const source = dragSourceRef.current;
+      if (!source || event.pointerId !== source.pointerId) return;
+      if (!source.active) {
+        const distance = Math.hypot(event.clientX - source.startX, event.clientY - source.startY);
+        if (distance < 6) return;
+        dragApiRef.current?.begin(source);
+      }
+      dragApiRef.current?.move(event.clientX, event.clientY);
+      event.preventDefault();
+    };
+    const onUp = (event: PointerEvent) => {
+      const source = dragSourceRef.current;
+      if (!source || event.pointerId !== source.pointerId) return;
+      dragApiRef.current?.end(event.type === "pointerup");
+    };
+    const onCancel = () => {
+      if (dragSourceRef.current) dragApiRef.current?.end(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !dragSessionRef.current) return;
+      event.preventDefault();
+      dragApiRef.current?.end(false);
+    };
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onCancel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!movedId) return;
+    const timer = window.setTimeout(() => setMovedId(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [movedId]);
+
+  const armDrag = (event: ReactPointerEvent<HTMLElement>, card: CardModel) => {
+    if (!canSort || !event.isPrimary) return;
+    const cardEl = (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-testid="board-card"]');
+    const rect = (cardEl ?? event.currentTarget).getBoundingClientRect();
+    const group: DragGroupKey = card.pinned ? "pinned" : "others";
+    const from = groupIdsOf(group).indexOf(card.id);
+    if (from < 0) return;
+    dragSourceRef.current = {
+      id: card.id,
+      group,
+      from,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      active: false,
+    };
+  };
+
+  const onCardPointerDown = (event: ReactPointerEvent<HTMLElement>, card: CardModel) => {
+    if ((event.target as HTMLElement).closest("button, [data-no-drag]")) return;
+    armDrag(event, card);
+  };
+
+  /** 抓手起手：触屏唯一可靠的拖动入口（抓手自己 touch-action: none）。 */
+  const onHandlePointerDown = (event: ReactPointerEvent<HTMLElement>, card: CardModel) => {
+    event.stopPropagation();
+    armDrag(event, card);
+  };
+
+  /* ---------------- 键盘排序 ---------------- */
+
+  const keyboardPickUp = (id: string) => {
+    if (!canSort) return;
+    const group: DragGroupKey = visible.find((card) => card.id === id)?.pinned ? "pinned" : "others";
+    dragOriginalRef.current = { pinned: groupIdsOf("pinned"), others: groupIdsOf("others") };
+    applyPreview(group, groupIdsOf(group));
+    kbFromRef.current = groupIdsOf(group).indexOf(id);
+    setKbPick(id);
+    setLiveText(
+      `已拿起《${titleOf(id)}》，第 ${kbFromRef.current + 1} 位，共 ${groupIdsOf(group).length} 位。方向键移动，空格放下，Esc 取消。`,
+    );
+  };
+
+  const keyboardMove = (id: string, delta: number) => {
+    const group: DragGroupKey = visible.find((card) => card.id === id)?.pinned ? "pinned" : "others";
+    const ids = previewGroupsRef.current?.[group] ?? groupIdsOf(group);
+    const current = ids.indexOf(id);
+    const to = Math.min(ids.length - 1, Math.max(0, current + delta));
+    if (to === current) {
+      setLiveText(delta > 0 ? "已到组末尾，不能再往后。" : "已到组首，不能再往前。");
+      return;
+    }
+    if (!dragOriginalRef.current) {
+      dragOriginalRef.current = { pinned: groupIdsOf("pinned"), others: groupIdsOf("others") };
+    }
+    applyPreview(group, moveItem(dragOriginalRef.current[group], kbFromRef.current, to));
+    setLiveText(`第 ${to + 1} 位，共 ${ids.length} 位。`);
+  };
+
+  const keyboardDrop = (id: string) => {
+    setKbPick(null);
+    const groups = previewGroupsRef.current;
+    if (!groups) return;
+    const group: DragGroupKey = visible.find((card) => card.id === id)?.pinned ? "pinned" : "others";
+    const ids = groups[group];
+    const position = ids.indexOf(id);
+    if (position < 0 || position === kbFromRef.current) {
+      clearPreview();
+      setLiveText("顺序未变。");
+      return;
+    }
+    setLiveText(`《${titleOf(id)}》已移到第 ${position + 1} 位，正在保存。`);
+    void commitOrder(
+      id,
+      neighborsAt(
+        ids.map((entry) => ({ id: entry })),
+        position,
+      ),
+    );
+  };
+
+  const keyboardCancel = () => {
+    setKbPick(null);
+    clearPreview();
+    setLiveText("已取消，顺序没变。");
+  };
+
+  const restoreAutoSort = async () => {
+    setUndoToast(null);
+    const result = await setSortMode("auto");
+    if (!result.ok) {
+      setToast("恢复自动排序没成功，再试一次。");
+      return;
+    }
+    setSortModeState("auto");
+    clearPreview();
+    await refreshList();
+    setToast("已恢复自动排序");
+  };
+
+  /* ---------------- 移动到…（单列 / 读屏的精确入口） ---------------- */
+
+  const openPicker = (board: CardModel) => {
+    setPicker({ board, group: board.pinned ? "pinned" : "others" });
+    setPickTarget(Math.max(0, groupIdsOf(board.pinned ? "pinned" : "others").indexOf(board.id)));
+  };
+
+  const confirmPicker = () => {
+    const target = picker;
+    if (!target) return;
+    const group = target.group;
+    const ids = groupIdsOf(group);
+    const from = ids.indexOf(target.board.id);
+    setPicker(null);
+    if (from < 0 || from === pickTarget) return;
+    const next = moveItem(ids, from, pickTarget);
+    dragOriginalRef.current = { pinned: groupIdsOf("pinned"), others: groupIdsOf("others") };
+    applyPreview(group, next);
+    void commitOrder(
+      target.board.id,
+      neighborsAt(
+        next.map((id) => ({ id })),
+        pickTarget,
+      ),
+    );
+  };
+
+  const copyBoardLink = async (board: CardModel) => {    const ok = await copyText(`${window.location.origin}/board/${board.id}`);
     setToast(ok ? "链接已复制" : "复制失败，请手动复制地址栏链接。");
   };
 
@@ -682,6 +1142,9 @@ export function BoardsPage() {
         setRenameValue(board.title);
         setRenameError(null);
         return;
+      case "move-to":
+        openPicker(board);
+        return;
       case "pin":
         void togglePin(board.id, !board.pinned);
         return;
@@ -699,9 +1162,42 @@ export function BoardsPage() {
     }
   };
 
+  const renderBoardCard = (board: CardModel) => (
+    <BoardCard
+      key={board.id}
+      board={board}
+      thumbUrl={thumbs[board.id]}
+      pinBusy={pinBusyId === board.id}
+      menuOpen={menu?.board.id === board.id}
+      selectMode={selectMode}
+      selected={selected.has(board.id)}
+      focused={focusedId === board.id}
+      sortable={canSort}
+      dragging={drag?.id === board.id}
+      dropBlocked={Boolean(drag?.noDrop && drag.id !== board.id)}
+      justMoved={movedId === board.id}
+      picked={kbPick === board.id}
+      onTogglePin={togglePin}
+      onOpenMenu={openMenu}
+      onCloseMenu={() => closeMenu(true)}
+      onToggleSelect={toggleCard}
+      onExtendSelect={extendSelection}
+      onEnterSelect={enterSelectWith}
+      onFocusSelect={setFocusedId}
+      onPointerDownCard={onCardPointerDown}
+      onHandlePointerDown={onHandlePointerDown}
+      onPickUp={keyboardPickUp}
+      onKeyboardMove={keyboardMove}
+      onKeyboardDrop={keyboardDrop}
+      onKeyboardCancel={keyboardCancel}
+    />
+  );
+
+  const dragCard = drag ? cards.find((card) => card.id === drag.id) : null;
+
   return (
     <div
-      className={`wb-page wb-page--boards${selectMode ? " wb-page--selecting" : ""}`}
+      className={`wb-page wb-page--boards${selectMode ? " wb-page--selecting" : ""}${drag ? " wb-page--sorting" : ""}`}
       onKeyDown={onPageKeyDown}
       onPointerDown={onBlankPointerDown}
     >
@@ -766,6 +1262,30 @@ export function BoardsPage() {
               {listReady ? <span className="wb-boards__count wb-nums">{view.items.length} 块</span> : null}
             </div>
             <div className="wb-boards__head-actions">
+              {canSort && cards.length > 1 && !isGuest ? (
+                sortMode === "manual" ? (
+                  <button
+                    className="wb-sortchip wb-sortchip--manual"
+                    type="button"
+                    onClick={() => void restoreAutoSort()}
+                    title="当前按你拖过的顺序排列，点击恢复自动排序"
+                    data-testid="boards-sort-chip"
+                  >
+                    <span className="wb-sortchip__dot" aria-hidden />
+                    自定义顺序
+                    <span className="wb-sortchip__hint">恢复自动</span>
+                  </button>
+                ) : (
+                  <span
+                    className="wb-sortchip"
+                    title="按住卡片拖动可排序，也可用 Ctrl + ↑ ↓ 或卡片菜单里的「移动到…」"
+                    data-testid="boards-sort-chip"
+                  >
+                    <span className="wb-sortchip__dot" aria-hidden />
+                    自动排序
+                  </span>
+                )
+              ) : null}
               {isSelectable && cards.length > 0 ? (
                 <button
                   ref={selectEntryRef}
@@ -832,26 +1352,28 @@ export function BoardsPage() {
         {cards.length > 0 || skeletonVisible(skeletonPhase) ? (
           <div className="wb-boards__grid">
             {cardsReady && visible.length > 0 ? (
-              <div className="wb-grid wb-grid--cards" data-testid="boards-grid" onKeyDown={onGridKeyDown}>
-                {visible.map((board) => (
-                  <BoardCard
-                    key={board.id}
-                    board={board}
-                    thumbUrl={thumbs[board.id]}
-                    pinBusy={pinBusyId === board.id}
-                    menuOpen={menu?.board.id === board.id}
-                    selectMode={selectMode}
-                    selected={selected.has(board.id)}
-                    focused={focusedId === board.id}
-                    onTogglePin={togglePin}
-                    onOpenMenu={openMenu}
-                    onCloseMenu={() => closeMenu(true)}
-                    onToggleSelect={toggleCard}
-                    onExtendSelect={extendSelection}
-                    onEnterSelect={enterSelectWith}
-                    onFocusSelect={setFocusedId}
-                  />
-                ))}
+              <div
+                className={`wb-grid wb-grid--cards${drag ? " is-sorting" : ""}`}
+                ref={gridRef}
+                data-testid="boards-grid"
+                onKeyDown={onGridKeyDown}
+              >
+                {groupsNow.pinned.length > 0 ? (
+                  <>
+                    <div className="wb-boards__group-title" aria-hidden>
+                      <span>置顶</span>
+                      <span className="wb-boards__group-count wb-nums">{groupsNow.pinned.length}</span>
+                      <span className="wb-boards__group-note">组内可排序，不跨组</span>
+                    </div>
+                    {groupsNow.pinned.map(renderBoardCard)}
+                    <div className="wb-boards__group-title" aria-hidden>
+                      <span>其余白板</span>
+                      <span className="wb-boards__group-count wb-nums">{groupsNow.others.length}</span>
+                      <span className="wb-boards__group-note">{sortMode === "manual" ? "自定义顺序" : "最近编辑"}</span>
+                    </div>
+                  </>
+                ) : null}
+                {groupsNow.others.map(renderBoardCard)}
               </div>
             ) : null}
 
@@ -880,14 +1402,92 @@ export function BoardsPage() {
         ) : null}
       </div>
 
+      {/* 落点指示线：组内排序时贯穿卡片高度，换排时贯穿内容宽度 */}
+      {drag?.line ? (
+        <div
+          className={`wb-dropline wb-dropline--${drag.line.kind}${drag.noDrop ? " is-blocked" : ""}`}
+          style={{ left: drag.line.left, top: drag.line.top, width: drag.line.width, height: drag.line.height }}
+          aria-hidden
+        />
+      ) : null}
+
+      {drag && dragCard ? (
+        <div
+          className={`wb-drag-ghost${drag.noDrop ? " is-blocked" : ""}`}
+          style={{ left: drag.ghost.left, top: drag.ghost.top, width: drag.ghost.width, height: drag.ghost.height }}
+          aria-hidden
+        >
+          <span className="wb-drag-ghost__title">{dragCard.title}</span>
+          <span className="wb-drag-ghost__note">{drag.noDrop ? "不能跨组" : `第 ${drag.to + 1} 位`}</span>
+        </div>
+      ) : null}
+
       {toast ? <div className="wb-toast">{toast}</div> : null}
 
       {undoToast ? (
         <div className="wb-toast wb-toast--action" role="status" aria-live="polite">
           <span>{undoText(undoToast)}</span>
           <button className="wb-toast__action" type="button" onClick={() => void undoLast()}>
-            撤销
+            {undoLabel(undoToast)}
           </button>
+        </div>
+      ) : null}
+
+      {/* 拖拽与键盘排序共用一条播报，避免读屏用户听不到落点变化 */}
+      <div className="wb-sr-only" role="status" aria-live="polite">
+        {liveText}
+      </div>
+
+      {picker ? (
+        <div
+          className="wb-overlay wb-overlay--sheet"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setPicker(null);
+          }}
+        >
+          <div
+            className="wb-sheet wb-move-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wb-move-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setPicker(null);
+              }
+            }}
+          >
+            <h2 className="wb-subtitle" id="wb-move-title">
+              移动到第几位？
+            </h2>
+            <p className="wb-caption">
+              《{picker.board.title}》 · {picker.group === "pinned" ? "置顶组" : "其余白板"}
+            </p>
+            <div className="wb-move-sheet__list" role="listbox" aria-labelledby="wb-move-title">
+              {(picker.group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card, index) => (
+                <button
+                  key={card.id}
+                  className={`wb-move-sheet__item${index === pickTarget ? " is-current" : ""}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === pickTarget}
+                  onClick={() => setPickTarget(index)}
+                >
+                  <span className="wb-move-sheet__index wb-nums">{index + 1}</span>
+                  <span className="wb-move-sheet__title">{card.title}</span>
+                  {card.id === picker.board.id ? <span className="wb-move-sheet__tag">当前</span> : null}
+                </button>
+              ))}
+            </div>
+            <div className="wb-move-sheet__actions">
+              <button className="wb-btn wb-btn--ghost" type="button" onClick={() => setPicker(null)}>
+                取消
+              </button>
+              <button className="wb-btn wb-btn--primary" type="button" onClick={confirmPicker}>
+                移动
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1002,6 +1602,11 @@ function BoardCard({
   selectMode,
   selected,
   focused,
+  sortable,
+  dragging,
+  dropBlocked,
+  justMoved,
+  picked,
   onTogglePin,
   onOpenMenu,
   onCloseMenu,
@@ -1009,6 +1614,12 @@ function BoardCard({
   onExtendSelect,
   onEnterSelect,
   onFocusSelect,
+  onPointerDownCard,
+  onHandlePointerDown,
+  onPickUp,
+  onKeyboardMove,
+  onKeyboardDrop,
+  onKeyboardCancel,
 }: {
   board: CardModel;
   thumbUrl?: string;
@@ -1017,6 +1628,11 @@ function BoardCard({
   selectMode: boolean;
   selected: boolean;
   focused: boolean;
+  sortable: boolean;
+  dragging: boolean;
+  dropBlocked: boolean;
+  justMoved: boolean;
+  picked: boolean;
   onTogglePin: (id: string, pinned: boolean) => void;
   onOpenMenu: (board: CardModel, anchor: MenuAnchor, trigger: HTMLElement | null) => void;
   onCloseMenu: () => void;
@@ -1024,6 +1640,12 @@ function BoardCard({
   onExtendSelect: (id: string) => void;
   onEnterSelect: (id: string, extend: boolean) => void;
   onFocusSelect: (id: string) => void;
+  onPointerDownCard: (event: ReactPointerEvent<HTMLElement>, board: CardModel) => void;
+  onHandlePointerDown: (event: ReactPointerEvent<HTMLElement>, board: CardModel) => void;
+  onPickUp: (id: string) => void;
+  onKeyboardMove: (id: string, delta: number) => void;
+  onKeyboardDrop: (id: string) => void;
+  onKeyboardCancel: () => void;
 }) {
   // 触屏长按 400ms 打开同一实例；移动超过 8px 视为滚动/拖拽，取消长按
   const holdTimer = useRef<number | null>(null);
@@ -1039,7 +1661,10 @@ function BoardCard({
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (selectMode) return;
-    if (event.pointerType === "mouse" || !event.isPrimary) return;
+    if (!event.isPrimary) return;
+    // 鼠标/触控笔由页面判断 6px 阈值后接管；触屏仍走长按出菜单，避免和滚动打架
+    onPointerDownCard(event, board);
+    if (event.pointerType === "mouse") return;
     if ((event.target as HTMLElement).closest("button")) return;
     const trigger = event.currentTarget;
     holdStart.current = { x: event.clientX, y: event.clientY };
@@ -1067,12 +1692,49 @@ function BoardCard({
         { type: "button", left: rect.left, right: rect.right, top: rect.top, bottom: rect.top + 4 },
         event.currentTarget,
       );
+      return;
+    }
+    // Ctrl/⌘ + ↑ ↓：不用拿起也能挪一位，适合只想微调的场景
+    if (sortable && (event.ctrlKey || event.metaKey) && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const step = gridColumnsForWidth(window.innerWidth);
+      onPickUp(board.id);
+      onKeyboardMove(board.id, event.key === "ArrowUp" ? -step : step);
+      onKeyboardDrop(board.id);
+    }
+  };
+
+  const onHandleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!picked) {
+      if (event.key === " " || event.key === "Enter") {
+        event.preventDefault();
+        onPickUp(board.id);
+      }
+      return;
+    }
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      onKeyboardDrop(board.id);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onKeyboardCancel();
+      return;
+    }
+    const step = gridColumnsForWidth(window.innerWidth);
+    const delta = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+    if (delta !== 0) {
+      event.preventDefault();
+      onKeyboardMove(board.id, delta);
     }
   };
 
   return (
     <article
-      className={`wb-card wb-board-card${selectMode ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
+      className={`wb-card wb-board-card${selectMode ? " is-selecting" : ""}${selected ? " is-selected" : ""}${
+        dragging ? " is-dragging" : ""
+      }${picked ? " is-picked" : ""}${dropBlocked ? " is-drop-blocked" : ""}${justMoved ? " is-just-moved" : ""}`}
       data-testid="board-card"
       data-board-id={board.id}
       data-selected={selected ? "true" : undefined}
@@ -1093,9 +1755,32 @@ function BoardCard({
         onToggleSelect(board.id);
       }}
     >
+      {sortable && !selectMode ? (
+        <button
+          className="wb-board-card__handle"
+          type="button"
+          aria-label={`拖动排序：${board.title}`}
+          aria-pressed={picked}
+          title="拖动排序（空格拿起，方向键移动，空格放下）"
+          data-drag-handle={board.id}
+          onPointerDown={(event) => onHandlePointerDown(event, board)}
+          onKeyDown={onHandleKeyDown}
+        >
+          <span className="wb-board-card__grip" aria-hidden>
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+        </button>
+      ) : null}
       <a
         className="wb-board-card__link"
         href={`/board/${board.id}`}
+        // 链接默认可原生拖拽，会抢走 pointermove：排序必须关掉
+        draggable={false}
         tabIndex={selectMode ? -1 : undefined}
         onClick={(event) => {
           if (selectMode) {
@@ -1271,9 +1956,17 @@ function undoText(state: UndoState): string {
         : `已将 ${state.ids.length} 块白板移入回收站`;
     return state.failed ? `${base}，${state.failed} 块没成功` : base;
   }
+  if (state.kind === "sort") return "顺序没保存成功";
+  if (state.kind === "mode") return "已切换为自定义顺序";
   const verb = state.pinned ? "置顶" : "取消置顶";
   const skipped = state.skipped > 0 ? `，${state.skipped} 块跳过` : "";
   return `已${verb} ${state.changes.length} 块白板${skipped}`;
+}
+
+function undoLabel(state: UndoState): string {
+  if (state.kind === "sort") return "重试";
+  if (state.kind === "mode") return "恢复自动";
+  return "撤销";
 }
 
 function formatRelative(iso: string): string {

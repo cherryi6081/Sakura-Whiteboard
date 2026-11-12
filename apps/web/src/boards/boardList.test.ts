@@ -37,6 +37,30 @@ describe('sortBoards', () => {
     const sorted = sortBoards([board('bad', 'not-a-date'), board('ok', '2026-11-10T00:00:00.000Z')]);
     expect(sorted[0]?.id).toBe('ok');
   });
+
+  it('手动模式下组内按 rank 升序，没 rank 的排在后面', () => {
+    const sorted = sortBoards(
+      [
+        board('a', '2026-11-10T00:00:00.000Z', { rank: 3072 }),
+        board('b', '2026-11-01T00:00:00.000Z', { rank: 1024 }),
+        board('c', '2026-11-05T00:00:00.000Z', { rank: 2048 }),
+        board('d', '2026-11-11T00:00:00.000Z'),
+      ],
+      'manual',
+    );
+    expect(sorted.map((item) => item.id)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('手动模式也不跨组：置顶区仍整体在前', () => {
+    const sorted = sortBoards(
+      [
+        board('a', '2026-11-10T00:00:00.000Z', { rank: 1024 }),
+        board('p', '2026-10-01T00:00:00.000Z', { pinnedAt: '2026-10-01T00:00:00.000Z', rank: 2048 }),
+      ],
+      'manual',
+    );
+    expect(sorted.map((item) => item.id)).toEqual(['p', 'a']);
+  });
 });
 
 describe('isPinned', () => {

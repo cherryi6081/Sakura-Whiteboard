@@ -75,6 +75,16 @@ export function IconShare({ size = 16 }: IconProps) {
   );
 }
 
+export function IconMove({ size = 14 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M12 4v16M4 12h16" />
+      <path d="M12 4l-2.4 2.4M12 4l2.4 2.4M12 20l-2.4-2.4M12 20l2.4-2.4" />
+      <path d="M4 12l2.4-2.4M4 12l2.4 2.4M20 12l-2.4-2.4M20 12l-2.4 2.4" />
+    </svg>
+  );
+}
+
 export function IconCopy({ size = 14 }: IconProps) {
   return (
     <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
