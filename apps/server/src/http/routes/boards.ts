@@ -53,7 +53,7 @@ const pinSchema = z.object({ pinned: z.boolean() });
 async function enforceGuestQuota(guestId: string): Promise<void> {
   const { rows } = await pool.query<{ unarchived: number }>(
     `select count(*)::int as unarchived from boards
-      where owner_guest_id = $1 and archived_at is null`,
+      where owner_guest_id = $1 and archived_at is null and deleted_at is null`,
     [guestId],
   );
   if ((rows[0]?.unarchived ?? 0) >= GUEST_UNARCHIVED_MAX) {
@@ -70,7 +70,7 @@ async function enforceGuestQuota(guestId: string): Promise<void> {
     // Redis 不可用时退回 PG 计数（降级路径必须打日志，不能静默）
     const { rows: fallback } = await pool.query<{ created: number }>(
       `select count(*)::int as created from boards
-        where owner_guest_id = $1 and created_at > now() - interval '24 hours'`,
+        where owner_guest_id = $1 and created_at > now() - interval '24 hours' and deleted_at is null`,
       [guestId],
     );
     created = fallback[0]?.created ?? 0;
@@ -142,13 +142,13 @@ boardsRouter.get(
     const { rows } = await pool.query<BoardMetaRow>(
       `select b.id, b.title, 'owner' as role, b.last_edited_at, b.pinned_at
          from boards b
-        where b.owner_id = $1 and b.archived_at is null
+        where b.owner_id = $1 and b.archived_at is null and b.deleted_at is null
           and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
         union all
        select b.id, b.title, m.role, b.last_edited_at, b.pinned_at
          from boards b
          join board_members m on m.board_id = b.id
-        where m.user_id = $1 and b.archived_at is null
+        where m.user_id = $1 and b.archived_at is null and b.deleted_at is null
           and ($2::timestamptz is null or b.last_edited_at < $2::timestamptz)
         order by pinned_at desc nulls last, last_edited_at desc, id desc
         limit $3`,

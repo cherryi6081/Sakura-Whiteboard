@@ -9,7 +9,7 @@ import { resolveShareToken } from './shareLinks.js';
  * **身份来源只有 `Identity`**（签名 cookie + Redis 会话），调用方不得再传客户端自报的
  * `guestId` / `role`。规则：
  *
- * 1. 板不存在 / 已归档 → `not_found`；
+ * 1. 板不存在 / 已归档 / 已在回收站 → `not_found`（软删除后分享链接与协作者一律失效）；
  * 2. 会话用户是 `owner_id` → `owner`；
  * 3. **无会话**且签名游客是 `owner_guest_id` → `owner`（有会话时 `guestId` 不参与权限）；
  * 4. 会话用户是 `board_members` 成员 → `editor` / `viewer`（成员角色优先于分享链接，不借链接提权）；
@@ -29,7 +29,7 @@ export async function resolveBoardAccess(
   shareToken?: string | null,
 ): Promise<AccessResult> {
   const board = await getBoardForJoin(boardId);
-  if (!board || board.archived_at) return { ok: false, reason: 'not_found' };
+  if (!board || board.archived_at || board.deleted_at) return { ok: false, reason: 'not_found' };
 
   if (identity.userId && board.owner_id === identity.userId) {
     return { ok: true, board, role: 'owner' };

@@ -104,6 +104,7 @@ export type BoardRow = {
   share_mode: 'private' | 'link_read' | 'link_edit';
   last_seq: number;
   archived_at: Date | null;
+  deleted_at: Date | null;
   owner_id: string | null;
   owner_guest_id: string | null;
 };
@@ -114,9 +115,13 @@ export async function getBoardForJoin(boardId: string): Promise<BoardRow | null>
     share_mode: BoardRow['share_mode'];
     last_seq: string;
     archived_at: Date | null;
+    deleted_at: Date | null;
     owner_id: string | null;
     owner_guest_id: string | null;
-  }>('select id, share_mode, last_seq, archived_at, owner_id, owner_guest_id from boards where id = $1', [boardId]);
+  }>(
+    'select id, share_mode, last_seq, archived_at, deleted_at, owner_id, owner_guest_id from boards where id = $1',
+    [boardId],
+  );
 
   const row = rows[0];
   if (!row) return null;

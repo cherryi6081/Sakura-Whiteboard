@@ -9,6 +9,7 @@
     "start": "tsx src/index.ts",
     "migrate": "tsx src/db/migrate.ts",
     "asset:gc": "tsx src/jobs/assetGc.ts",
+    "trash:gc": "tsx src/jobs/trashGc.ts",
     "build": "npm run build -w @whiteboard/shared && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build -w @whiteboard/shared",

@@ -137,3 +137,49 @@ export function IconArrowRight({ size = 16 }: IconProps) {
     </svg>
   );
 }
+
+export function IconTrash({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13" />
+      <path d="M10 11v5M14 11v5" />
+    </svg>
+  );
+}
+
+export function IconRestore({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M4 12a8 8 0 1 0 2.6-5.9" />
+      <path d="M4 4v5h5" />
+    </svg>
+  );
+}
+
+export function IconMore({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <circle cx="6" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function IconUser({ size = 14 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <circle cx="12" cy="8" r="3.2" />
+      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
+export function IconCheck({ size = 12 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  );
+}
+

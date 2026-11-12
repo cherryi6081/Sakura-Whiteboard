@@ -9,6 +9,7 @@ import { AuthFlow } from "./auth/AuthFlow";
 import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
 import { BoardsPage } from "./boards/BoardsPage";
+import { TrashPage } from "./boards/TrashPage";
 import { HomePage } from "./home/HomePage";
 import { SpikeApp } from "./spike/SpikeApp";
 import { purgeExpiredCache } from "./store/cacheDb";
@@ -27,6 +28,8 @@ createRoot(document.getElementById("root")!).render(
       <AuthFlow mode={route.mode} next={route.next} />
     ) : route.kind === "boards" ? (
       <BoardsPage />
+    ) : route.kind === "trash" ? (
+      <TrashPage />
     ) : route.kind === "spike" ? (
       <SpikeApp />
     ) : (

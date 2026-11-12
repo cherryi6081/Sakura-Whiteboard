@@ -7,8 +7,13 @@ describe("parseBoardRoute", () => {
     expect(parseBoardRoute("/board/m3_board_001/")).toEqual({ kind: "board", boardId: "m3_board_001" });
   });
 
-  it("长度/字符集不符时回到首页，不做任何存储回退", () => {
-    expect(parseBoardRoute("/board/short")).toEqual({ kind: "index" });
+  it("回收站是独立路由，不落到列表页", () => {
+    expect(parseBoardRoute("/boards/trash")).toEqual({ kind: "trash" });
+    expect(parseBoardRoute("/boards/trash/")).toEqual({ kind: "trash" });
+    expect(parseBoardRoute("/boards")).toEqual({ kind: "boards" });
+  });
+
+  it("长度/字符集不符时回到首页，不做任何存储回退", () => {    expect(parseBoardRoute("/board/short")).toEqual({ kind: "index" });
     expect(parseBoardRoute("/board/m3 board 001")).toEqual({ kind: "index" });
     expect(parseBoardRoute("/")).toEqual({ kind: "index" });
     // 旧入口仍然只认地址栏里的 board 参数

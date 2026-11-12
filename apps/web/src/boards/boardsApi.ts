@@ -52,3 +52,78 @@ export const ROLE_LABEL: Record<string, string> = {
   editor: "可编辑",
   viewer: "只读",
 };
+
+/* ---------------- 回收站（v1.2 第 1 步） ---------------- */
+
+export type TrashBoardItem = {
+  id: string;
+  title: string;
+  /** 第 5 步接入团队空间后是真实空间名，当前固定 null → 「个人空间」 */
+  spaceName: string | null;
+  deletedAt: string;
+  /** deleted_at + 30 天；前端据此换算剩余天数 */
+  purgeAt: string;
+};
+
+export type TrashList = {
+  boards: TrashBoardItem[];
+  total: number;
+  allTotal: number;
+  expiringSoon: number;
+  nextOffset: number | null;
+};
+
+export type TrashFilter = "all" | "expiring";
+
+export function fetchTrash(options: {
+  offset?: number;
+  limit?: number;
+  filter?: TrashFilter;
+} = {}): Promise<ApiResult<TrashList>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(options.limit ?? 12));
+  params.set("offset", String(options.offset ?? 0));
+  params.set("filter", options.filter ?? "all");
+  return request<TrashList>(`/api/boards/trash?${params.toString()}`);
+}
+
+/** 顶栏徽标只取数量，不拉整页。 */
+export function fetchTrashCount(): Promise<ApiResult<{ count: number }>> {
+  return request<{ count: number }>("/api/boards/trash/count");
+}
+
+export type DeleteBoardResult = {
+  id: string;
+  mode: "trash" | "purged";
+  deletedAt: string | null;
+  purgeAt: string | null;
+};
+
+/** 删除：登录 owner 走软删除；游客板由服务端直接物理删除。 */
+export function deleteBoard(boardId: string): Promise<ApiResult<DeleteBoardResult>> {
+  return request<DeleteBoardResult>(`/api/boards/${encodeURIComponent(boardId)}`, { method: "DELETE" });
+}
+
+export type RestoreBoardResult = {
+  id: string;
+  title: string;
+  renamed: boolean;
+  deletedAt: null;
+};
+
+export function restoreBoard(boardId: string): Promise<ApiResult<RestoreBoardResult>> {
+  return request<RestoreBoardResult>(`/api/boards/${encodeURIComponent(boardId)}/restore`, {
+    method: "POST",
+  });
+}
+
+export function purgeBoard(boardId: string): Promise<ApiResult<{ id: string; purged: true }>> {
+  return request<{ id: string; purged: true }>(
+    `/api/boards/${encodeURIComponent(boardId)}/purge`,
+    { method: "DELETE" },
+  );
+}
+
+export function emptyTrash(): Promise<ApiResult<{ purged: number }>> {
+  return request<{ purged: number }>("/api/boards/trash", { method: "DELETE" });
+}

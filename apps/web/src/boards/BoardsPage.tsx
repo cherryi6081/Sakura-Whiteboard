@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchClaimPreview, fetchMe, type ClaimPreview } from "../auth/authApi";
 import { ClaimDialog, claimSnoozed } from "../auth/ClaimDialog";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
-import { fetchBoards, ROLE_LABEL, setBoardPinned, type BoardListItem } from "./boardsApi";
+import { fetchBoards, fetchTrashCount, ROLE_LABEL, setBoardPinned, type BoardListItem } from "./boardsApi";
 import { hasMoreBoards, isPinned, sortBoards, visibleBoards } from "./boardList";
 import { loadThumbUrls } from "./boardThumb";
 import { listRecentBoards, setRecentPinned, type RecentBoard } from "./recentBoards";
 import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
-import { IconAlert, IconBoard, IconFlower, IconPin, IconPlus } from "../ui/icons";
+import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
+import { IconAlert, IconBoard, IconFlower, IconPin, IconPlus, IconTrash } from "../ui/icons";
 
 /**
  * 我的白板列表（视觉方案 §4.2）。
@@ -40,10 +41,6 @@ const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
 /** 列表一次取满 30 条（接口上限），页内再按 6 张/页加载更多 */
 const FETCH_LIMIT = 30;
-const SKELETON_DELAY_MS = 200;
-const SKELETON_EXIT_MS = 180;
-/** 骨架一旦出现，至少显示这么久再退场，避免「刚出现就消失」的闪烁 */
-const SKELETON_MIN_SHOW_MS = 360;
 
 /** 本页的建板失败文案：沿用这一页原来的措辞，避免因为共用 hook 改掉已有提示 */
 function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?: string }): string {
@@ -63,6 +60,7 @@ export function BoardsPage() {
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [thumbsReady, setThumbsReady] = useState(false);
   const [pinBusyId, setPinBusyId] = useState<string | null>(null);
+  const [trashCount, setTrashCount] = useState(0);
   // 建板逻辑（含配额/离线/慢请求处理）统一走 useCreateBoard，与旧首页入口同一份实现
   const { busy, slow, error: createError, start } = useCreateBoard({ messageFor: boardsMessageFor });
 
@@ -93,6 +91,17 @@ export function BoardsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 回收站入口徽标：登录用户才取，401/网络失败都静默降级为不显示徽标
+  useEffect(() => {
+    let alive = true;
+    void fetchTrashCount().then((result) => {
+      if (alive && result.ok) setTrashCount(result.data.count);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 缩略图与列表并行取：列表先到也要等缩略图，避免卡片先显示线稿再换成图片
   useEffect(() => {
@@ -208,6 +217,15 @@ export function BoardsPage() {
           白板
         </a>
         <div className="wb-board__spacer" />
+        {view.kind === "user" ? (
+          <a className="wb-trash__nav" href="/boards/trash" data-testid="boards-trash-link">
+            <IconTrash size={15} />
+            <span className="wb-trash__nav-text">回收站</span>
+            {trashCount > 0 ? (
+              <span className="wb-trash__badge wb-nums">{trashCount > 99 ? "99+" : trashCount}</span>
+            ) : null}
+          </a>
+        ) : null}
         {view.kind === "user" ? (
           <span className="wb-caption" data-testid="boards-user">
             {view.user.displayName}
@@ -447,58 +465,6 @@ function EmptyState({
       </button>
     </div>
   );
-}
-
-type SkeletonPhase = "idle" | "waiting" | "shown" | "exiting";
-
-/** waiting 是「已排队但还没到 200ms」的静默阶段，不渲染任何灰块 */
-function skeletonVisible(phase: SkeletonPhase): boolean {
-  return phase === "shown" || phase === "exiting";
-}
-
-/**
- * 延迟显示 + 最短展示 + 交叉淡出：
- * - 数据 200ms 内到达就完全不出现骨架（首屏只看到卡片淡入）；
- * - 真的慢时才显示骨架；一旦显示就至少停留 360ms，再淡出 180ms，
- *   这样不会出现"骨架闪一下就换真实卡片"的抖动。
- */
-function useSkeletonPhase(active: boolean, delayMs = SKELETON_DELAY_MS, exitMs = SKELETON_EXIT_MS): SkeletonPhase {
-  const [phase, setPhase] = useState<SkeletonPhase>("idle");
-  const shownAtRef = useRef(0);
-
-  useEffect(() => {
-    if (active) {
-      setPhase((current) => (current === "idle" ? "waiting" : current === "exiting" ? "shown" : current));
-      return undefined;
-    }
-    if (phase === "waiting") {
-      setPhase("idle");
-      return undefined;
-    }
-    if (phase === "shown") {
-      const remain = Math.max(0, shownAtRef.current + SKELETON_MIN_SHOW_MS - performance.now());
-      const timer = window.setTimeout(() => setPhase("exiting"), remain);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [active, phase]);
-
-  useEffect(() => {
-    if (phase === "waiting") {
-      const timer = window.setTimeout(() => {
-        shownAtRef.current = performance.now();
-        setPhase("shown");
-      }, delayMs);
-      return () => window.clearTimeout(timer);
-    }
-    if (phase === "exiting") {
-      const timer = window.setTimeout(() => setPhase("idle"), exitMs);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [phase, delayMs, exitMs]);
-
-  return phase;
 }
 
 function formatRelative(iso: string): string {

@@ -40,8 +40,8 @@ guestRouter.get(
     }
 
     const { rows: counts } = await pool.query<{ unarchived: number; created_24h: number }>(
-      `select count(*) filter (where archived_at is null)::int as unarchived,
-              count(*) filter (where created_at > now() - interval '24 hours')::int as created_24h
+      `select count(*) filter (where archived_at is null and deleted_at is null)::int as unarchived,
+              count(*) filter (where created_at > now() - interval '24 hours' and deleted_at is null)::int as created_24h
          from boards
         where owner_guest_id = $1`,
       [guestId],
@@ -79,7 +79,7 @@ guestRouter.get(
     const { rows } = await pool.query<GuestBoardRow>(
       `select id, title, last_edited_at
          from boards
-        where owner_guest_id = $1 and archived_at is null
+        where owner_guest_id = $1 and archived_at is null and deleted_at is null
         order by last_edited_at desc
         limit 50`,
       [identity.guestId],
@@ -126,7 +126,7 @@ guestRouter.post(
       const { rows: owned } = await client.query<GuestBoardRow>(
         `select id, title, last_edited_at
            from boards
-          where owner_guest_id = $1 and archived_at is null
+          where owner_guest_id = $1 and archived_at is null and deleted_at is null
           for update`,
         [guestId],
       );

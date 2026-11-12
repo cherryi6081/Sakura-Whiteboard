@@ -5,6 +5,7 @@ import { logger } from './infra/logger.js';
 import { closeDb, pingDb } from './infra/db.js';
 import { closeRedis, pingRedis } from './infra/redis.js';
 import { attachRealtime } from './realtime/board.js';
+import { startTrashGc } from './jobs/trashGc.js';
 
 const app = createApp();
 
@@ -13,6 +14,8 @@ const server = app.listen(config.PORT, () => {
 });
 
 const realtime = attachRealtime(server);
+// 回收站每日 03:00（Asia/Shanghai）清理 30 天前的软删除白板
+const stopTrashGc = startTrashGc();
 
 void (async () => {
   const [db, redis] = await Promise.all([pingDb(), pingRedis()]);
@@ -22,6 +25,7 @@ void (async () => {
 
 async function shutdown(signal: string) {
   logger.info({ signal }, 'shutting down');
+  stopTrashGc();
   await realtime.close().catch((err) => logger.warn({ err: String(err) }, 'realtime close failed'));
   server.close(() => undefined);
   await Promise.allSettled([closeDb(), closeRedis()]);
