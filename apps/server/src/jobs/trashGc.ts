@@ -21,6 +21,32 @@ export async function purgeExpiredBoards(): Promise<number> {
   return rowCount ?? 0;
 }
 
+/**
+ * 执行一次到期清理。进程内同一时刻只允许一轮（定时器与启动补跑不会重叠）；
+ * 多副本之间不做互斥——两边同时 DELETE 时 PostgreSQL 行锁会让后到者删到 0 行，
+ * 结果等价于只清理一次，不会重复删除或报错。
+ */
+let inFlight: Promise<number> | null = null;
+
+export function runTrashGcOnce(): Promise<number> {
+  if (inFlight) return inFlight;
+
+  inFlight = purgeExpiredBoards()
+    .then((purged) => {
+      logger.info({ purged, retentionDays: TRASH_RETENTION_DAYS }, 'trash gc finished');
+      return purged;
+    })
+    .catch((err: unknown) => {
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, 'trash gc failed');
+      throw err;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+
+  return inFlight;
+}
+
 /** 在 API 进程内注册每日清理；返回停止函数，供优雅退出时清理定时器。 */
 export function startTrashGc(): () => void {
   let timer: NodeJS.Timeout | null = null;
@@ -30,13 +56,8 @@ export function startTrashGc(): () => void {
     if (stopped) return;
     const delay = msUntilNextCleanup();
     timer = setTimeout(() => {
-      void purgeExpiredBoards()
-        .then((purged) => {
-          logger.info({ purged, retentionDays: TRASH_RETENTION_DAYS }, 'trash gc finished');
-        })
-        .catch((err: unknown) => {
-          logger.error({ err: err instanceof Error ? err.message : String(err) }, 'trash gc failed');
-        })
+      void runTrashGcOnce()
+        .catch(() => undefined)
         .finally(schedule);
     }, delay);
     // 不因为一个定时器把进程钉住（测试/CLI 里尤其重要）
@@ -44,7 +65,11 @@ export function startTrashGc(): () => void {
     logger.info({ inMs: delay, hour: '03:00+08:00' }, 'trash gc scheduled');
   };
 
+  // 启动补跑：如果 03:00 时进程不在（重启/发版），过期板不必再等一整天。
+  // 多副本同时启动时各跑一次，靠 DELETE 的行锁天然去重。
+  void runTrashGcOnce().catch(() => undefined);
   schedule();
+
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
