@@ -69,8 +69,13 @@ const TRAIL_WING_PHASE = 0.31;
 const LEAD_Z = 210;
 const TRAIL_Z = 60;
 
-const LEAD_ALPHA = 1;
-const TRAIL_ALPHA = 0.88;
+/**
+ * 两只鹤只在**尺寸与位置**上不同：同一套 role 色、同样的不透明、不叠雾色、不压墨线。
+ * 早先后鹤叠过一层「空气透视」（向雾色 lerp 0.16、整只 alpha 0.88、墨线 alpha 0.85），
+ * 实测（1440×900 / day）它让白羽的合成色掉 6.6 色阶（= 压了一层灰影）、墨羽与腿抬
+ * 30 色阶以上（= 发灰、丢对比）—— 用户看到的「后面那只更深」就是这三项之和。
+ * 远近感只由 z=60 的视差与略小的尺寸承担（尺寸走 CSS 的 --crane-h-trail）。
+ */
 /** 腿：并拢后拖，±2°，滞后 0.17 个振翅周期（只做一组，不拆远近腿） */
 const LEG_SWING_DEG = 2;
 const LEG_LAG_PHASE = 0.17;
@@ -116,7 +121,6 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform vec3 uFarFace;
   uniform vec3 uNearFace;
   uniform float uAlpha;
-  uniform float uInkAlpha;
 
   varying float vRole;
   varying float vAlpha;
@@ -128,7 +132,7 @@ const FRAGMENT_SHADER = /* glsl */ `
     if (vRole < 0.5) color = uWhite;
     else if (vRole < 1.5) color = uShade;
     else if (vRole < 2.5) color = uEdge;
-    else if (vRole < 3.5) { color = uInk; alpha *= uInkAlpha; }
+    else if (vRole < 3.5) color = uInk;
     else if (vRole < 4.5) color = uCrown;
     else if (vRole < 5.5) color = uBeak;
     else if (vRole < 6.5) color = uLeg;
@@ -218,8 +222,6 @@ type CraneRig = {
   cursor: number;
   phase: number;
   wingPhase: number;
-  alphaScale: number;
-  haze: number;
   z: number;
   hCss: number;
   unit: number;
@@ -267,7 +269,6 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
 
   const sunSrgb = new THREE.Color();
   const skySrgb = new THREE.Color();
-  const mistSrgb = new THREE.Color();
   const tint = new THREE.Color();
   const tintSoft = new THREE.Color();
   const paper = srgbToken("--paper", "#ffffff");
@@ -279,7 +280,6 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     const colors = baseColors.map((c) => c.clone());
     const uniforms: Record<string, THREE.IUniform> = {
       uAlpha: { value: 1 },
-      uInkAlpha: { value: 1 },
       uCssPxPerLocal: { value: 0.637 },
     };
     ROLE_UNIFORM_KEYS.forEach((key, index) => {
@@ -305,8 +305,6 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
   const makeRig = (options: {
     phase: number;
     wingPhase: number;
-    alphaScale: number;
-    haze: number;
     z: number;
     order: number;
   }): CraneRig => {
@@ -349,8 +347,6 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
       cursor: 0,
       phase: options.phase,
       wingPhase: options.wingPhase,
-      alphaScale: options.alphaScale,
-      haze: options.haze,
       z: options.z,
       hCss: 82.8,
       unit: 1,
@@ -360,16 +356,12 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
   const lead = makeRig({
     phase: 0,
     wingPhase: 0,
-    alphaScale: LEAD_ALPHA,
-    haze: 0,
     z: LEAD_Z,
     order: 2,
   });
   const trail = makeRig({
     phase: TRAIL_PHASE,
     wingPhase: TRAIL_WING_PHASE,
-    alphaScale: TRAIL_ALPHA,
-    haze: 0.16,
     z: TRAIL_Z,
     order: 1,
   });
@@ -379,7 +371,7 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
   let viewportW = 0;
   let viewportH = 0;
 
-  const applyTone = (rig: CraneRig, night: number, haze: number): void => {
+  const applyTone = (rig: CraneRig, night: number): void => {
     const colors = rig.colors;
     tint.copy(baseColors[0]).lerp(sunSrgb, 0.16);
     tintSoft.copy(baseColors[0]).lerp(sunSrgb, 0.1);
@@ -423,11 +415,6 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     const gap = backdropLuminance - luminance(colors[CRANE_ROLE.ink]);
     if (gap < 0.16) {
       colors[CRANE_ROLE.ink].lerp(paper, Math.min(0.3, (0.16 - gap) * 1.6));
-    }
-
-    // 空气透视：后鹤整体向雾色靠、明度抬一档；前鹤 haze = 0
-    if (haze > 0) {
-      for (const color of colors) color.lerp(mistSrgb, haze);
     }
   };
 
@@ -473,22 +460,18 @@ export function createCraneLayer(canvas: HTMLCanvasElement, palette: Palette): C
     const legPhase = wrap((time + rig.wingPhase) / CRANE_FLAP_SECONDS - LEG_LAG_PHASE, 1);
     rig.legs.rotation.z = Math.sin(legPhase * Math.PI * 2) * LEG_SWING_DEG * DEG2RAD;
 
-    rig.material.uniforms.uAlpha.value = opacity * rig.alphaScale;
+    rig.material.uniforms.uAlpha.value = opacity;
   };
 
   return {
     update(time: number, sun: SunState): void {
       sunSrgb.copy(sun.color).convertLinearToSRGB();
       skySrgb.copy(sun.sky).convertLinearToSRGB();
-      mistSrgb.copy(palette.mist).convertLinearToSRGB();
       const night = smoothstepInverse(sun.intensity, 2.5, 1.2);
 
       for (const rig of rigs) {
         updateRig(rig, time);
-        // 后鹤的空气透视强度随夜色略增（雾更厚），前鹤保持 0
-        const haze = rig.haze > 0 ? rig.haze + 0.06 * night : 0;
-        applyTone(rig, night, haze);
-        rig.material.uniforms.uInkAlpha.value = rig.haze > 0 ? 0.85 : 1;
+        applyTone(rig, night);
       }
     },
 
