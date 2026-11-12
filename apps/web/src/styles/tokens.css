@@ -129,6 +129,57 @@
      放大到 2px 描边后仍与湖面静态水纹同色系，不会变成纯白硬边 */
   --lake-ripple-hi: color-mix(in srgb, var(--paper) 92%, var(--sky-horizon));
 
+  /* ---------- 四档时辰的天空/湖面（运行期由 skyClock.ts 逐帧写内联变量接管） ---------- */
+  /* 这一组是「没有 JS / 首帧之前」的静态兜底，也是 SVG 分支（移动端 / reduce）的色源：
+     skyClock 在 .wb-home__scene 上写同名内联变量，优先级高于这里；卸载时移除，
+     自动退回这组值。day 与 :root 完全同值（一个字节都不许改），其它三档只补不改。 */
+  [data-period="dawn"] {
+    --sky-zenith: #adc2e0;
+    --sky-high: #b9cbe6;
+    --sky-mid: #cfd2e9;
+    --sky-rose: #e3d9e7;
+    --sky-peach: #f5e3e2;
+    --sky-glow: #fceade;
+    --sky-haze: #f8f0f0;
+    --sky-horizon: #edf3f9;
+    --lake-100: #c1d2e2;
+    --lake-300: #aec2d5;
+    --lake-500: #a4b9cf;
+    --lake-700: #acbdce;
+  }
+
+  [data-period="dusk"] {
+    --sky-zenith: #b1aed4;
+    --sky-high: #bfb2d2;
+    --sky-mid: #d3bccd;
+    --sky-rose: #e8c8c2;
+    --sky-peach: #f5d8bd;
+    --sky-glow: #fbdfc2;
+    --sky-haze: #f8e9de;
+    --sky-horizon: #f2eef0;
+    --lake-100: #c3d0de;
+    --lake-300: #b0c0d1;
+    --lake-500: #a5b8cc;
+    --lake-700: #aebaca;
+  }
+
+  /* 真夜空：天顶 L≈.037。湖面不再用白天那组配比（fuji 55% + 深地平线会把水拉回浅灰），
+     单独降到 20–30% 的山体权重，让水比月光下的山更暗，页脚白字才有 4.5 以上的底。 */
+  [data-period="night"] {
+    --sky-zenith: #2c3550;
+    --sky-high: #363f5c;
+    --sky-mid: #414a68;
+    --sky-rose: #4c5372;
+    --sky-peach: #575c7b;
+    --sky-glow: #5f6482;
+    --sky-haze: #606583;
+    --sky-horizon: #666d89;
+    --lake-100: #6d7c95;
+    --lake-300: #5d6b84;
+    --lake-500: #526076;
+    --lake-700: #465267;
+  }
+
   /* ---------- 字体 ---------- */
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
     "Source Han Sans SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;

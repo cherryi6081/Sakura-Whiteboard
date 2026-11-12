@@ -7,6 +7,7 @@ import { createPetals } from "./petals";
 import { createCraneLayer, type CraneLayer } from "./crane";
 import { layoutCamera } from "./stage";
 import type { Period } from "../usePeriod";
+import type { SkyClock } from "../skyClock";
 
 /**
  * WebGL 场景装配与生命周期。
@@ -34,6 +35,12 @@ type MountOptions = {
    * 这里把它并进同一条渲染循环：同一个 camera、同一个 rAF、同一份 currentSun。
    */
   craneCanvas?: HTMLCanvasElement;
+  /**
+   * 天空/湖面/雾共用的那盏钟。它和下面的 currentSun 用同一个阻尼常数，
+   * 且在本 tick 里先推进、再写 uniform，所以四路输出（天空渐变、湖面、雾、山/鹤的光）
+   * 永远停在同一帧，不会出现「山已经变完、天空还在旧色」。
+   */
+  skyClock?: SkyClock;
 };
 
 function cloneSun(source: SunState): SunState {
@@ -95,6 +102,29 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
   let targetSun = cloneSun(PERIOD_SUN[options.period]);
   applySun(currentSun, sun, hemi);
 
+  // 天空/湖面/雾：从同一盏钟取色，转成线性空间的 THREE.Color 再喂 uniform
+  const skyClock = options.skyClock;
+  const skyLake = [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()];
+  const skyHorizon = new THREE.Color();
+  const skyMist = new THREE.Color();
+  let skyRevision = -1;
+
+  const toLinear = (target: THREE.Color, rgb: readonly number[]) => {
+    target.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
+  };
+
+  const syncSky = () => {
+    if (!skyClock || skyClock.state.revision === skyRevision) return;
+    skyRevision = skyClock.state.revision;
+    for (let i = 0; i < skyLake.length; i += 1) toLinear(skyLake[i], skyClock.state.lake[i]);
+    toLinear(skyHorizon, skyClock.state.sky[skyClock.state.sky.length - 1]);
+    toLinear(skyMist, skyClock.state.mist);
+    water.setColors(skyLake, skyHorizon);
+    mist.setColor(skyMist);
+    mountain.setHaze(skyMist);
+  };
+  syncSky();
+
   const pointer = { x: 0, y: 0 };
   let yaw = 0;
   let pitch = 0;
@@ -150,6 +180,9 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
     petals.update(time);
 
     const lightDamping = 1 - Math.exp(-delta * 1.4);
+    // 同一帧、同一常数：天空/湖面/雾先跟进，再让光跟进，四路一起落在同一个进度上
+    skyClock?.tick(delta);
+    syncSky();
     currentSun.color.lerp(targetSun.color, lightDamping);
     currentSun.sky.lerp(targetSun.sky, lightDamping);
     currentSun.ground.lerp(targetSun.ground, lightDamping);
@@ -191,6 +224,7 @@ export function mountScene(canvas: HTMLCanvasElement, options: MountOptions): Sc
   return {
     setPeriod(period: Period) {
       targetSun = cloneSun(PERIOD_SUN[period]);
+      skyClock?.setPeriod(period);
     },
     dispose() {
       renderer.setAnimationLoop(null);

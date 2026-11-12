@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Period } from "../usePeriod";
 import type { SceneHandle } from "./renderer";
+import type { SkyClock } from "../skyClock";
 
 /**
  * 桌面端 3D 场景的挂载点。
@@ -76,9 +77,14 @@ type Props = {
   onModeChange?: (mode: "svg") => void;
   /** 首个 WebGL 帧画完：父组件据此把静态湖色衬底交接给 WebGL 水面 */
   onFirstFrame?: () => void;
+  /**
+   * 天空/湖面/雾的钟，由父组件在 `.wb-home__scene` 上创建后传进来。
+   * 没拿到之前不挂载 three：时钟写的是同一棵子树上的 CSS 变量，必须先有它。
+   */
+  skyClock: SkyClock | null;
 };
 
-export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) {
+export function WebglScene({ period, mode, onModeChange, onFirstFrame, skyClock }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const craneCanvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<SceneHandle | null>(null);
@@ -106,7 +112,7 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
   }, [mode, onModeChange]);
 
   useEffect(() => {
-    if (mode !== "webgl") return;
+    if (mode !== "webgl" || !skyClock) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -119,6 +125,7 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
           period: periodRef.current,
           onFirstFrame,
           craneCanvas: craneCanvasRef.current ?? undefined,
+          skyClock,
         });
       })
       .catch(() => {
@@ -131,7 +138,7 @@ export function WebglScene({ period, mode, onModeChange, onFirstFrame }: Props) 
       handleRef.current?.dispose();
       handleRef.current = null;
     };
-  }, [mode]);
+  }, [mode, skyClock]);
 
   // 时辰切换只推给已有场景，不重建（重建会闪一下）
   useEffect(() => {

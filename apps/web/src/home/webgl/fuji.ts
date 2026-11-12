@@ -283,6 +283,8 @@ function buildRidge(palette: Palette): StageMesh {
 export type MountainBuild = {
   group: THREE.Group;
   reflection: THREE.Group;
+  /** 倒影提浅用的雾色：随时辰走，与天空同一盏钟 */
+  setHaze(color: THREE.Color): void;
   /** 倒影波纹与渐隐需要每帧推进时间 */
   update(time: number): void;
   dispose(): void;
@@ -366,6 +368,7 @@ export function createMountain(palette: Palette): MountainBuild {
   });
 
   const reflectionMeshes: THREE.Mesh[] = [];
+  const hazeUniforms: Array<{ value: THREE.Color }> = [];
 
   const makeReflectionMaterial = () => {
     const material = new THREE.MeshToonMaterial({
@@ -375,12 +378,14 @@ export function createMountain(palette: Palette): MountainBuild {
       transparent: true,
       depthWrite: false,
     });
+    const haze = { value: palette.mist.clone() };
+    hazeUniforms.push(haze);
     const uniforms = {
       uTime: reflectionUniforms.uTime,
       uWater: reflectionUniforms.uWater,
       uOpacity: { value: REFLECT_OPACITY },
       uDepth: { value: REFLECT_DEPTH },
-      uHaze: { value: palette.mist.clone() },
+      uHaze: haze,
       uLift: { value: REFLECT_LIFT },
     };
     material.onBeforeCompile = (shader) => {
@@ -429,6 +434,9 @@ export function createMountain(palette: Palette): MountainBuild {
   return {
     group,
     reflection,
+    setHaze(color: THREE.Color) {
+      for (const uniform of hazeUniforms) uniform.value.copy(color);
+    },
     update(time: number) {
       reflectionUniforms.uTime.value = time;
     },

@@ -78,6 +78,8 @@ const BANDS: BandSpec[] = [
 
 export type MistBuild = {
   group: THREE.Group;
+  /** 雾色随时辰走，与天空同一盏钟 */
+  setColor(color: THREE.Color): void;
   update(time: number): void;
   dispose(): void;
 };
@@ -143,6 +145,9 @@ export function createMist(palette: Palette): MistBuild {
 
   return {
     group,
+    setColor(color: THREE.Color) {
+      for (const material of materials) material.uniforms.uColor.value = color;
+    },
     update(time: number) {
       timeUniform.value = time;
     },

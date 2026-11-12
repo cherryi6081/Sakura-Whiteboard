@@ -332,7 +332,12 @@
 /* ============ 时辰色温 ============ */
 /* 全屏色偏遮罩：只做色相/明度偏移，不改变任何元素的可读性。
    soft-light 让渐变只"染色"而不像一层塑料膜，底色本身仍由天空渐变决定。
-   默认（白天）完全透明，其余时段由 data-period 打开。 */
+   默认（白天）完全透明，其余时段由 data-period 打开。
+   自四档天空 token（tokens.css）接管后，这层只保留很轻的"空气感"：
+   原来 dawn .72 / dusk .8 / night .5 会把山体一起染色，等于天空在给山体上色，
+   违反"颜色只走各自色路"；收到 0.18 / 0.22 / 0.13 后，山体受光面被叠色影响的
+   ΔL 实测 ≤.02（night 用 .26 时雪面 ΔL .0325，.15 时 .0198，soft-light 在近白面上
+   增益最大，所以夜色那档单独收到 .13 留余量），时段氛围交给天空渐变与主光自己表达。 */
 .wb-home__tint {
   position: absolute;
   inset: 0;
@@ -340,12 +345,13 @@
   pointer-events: none;
   mix-blend-mode: soft-light;
   opacity: 0;
-  transition: opacity 1200ms linear;
+  /* 与主光同一条时间线（1 − exp(−delta × 1.4)，95% ≈ 2.1s），不再抢在天空前面变完 */
+  transition: opacity 2200ms linear;
 }
 
 /* 黎明：天顶冷蓝、地平线偏粉 */
 [data-period="dawn"] .wb-home__tint {
-  opacity: 0.72;
+  opacity: 0.18;
   background: linear-gradient(
     180deg,
     rgba(96, 128, 196, 0.9) 0%,
@@ -361,7 +367,7 @@
 
 /* 黄昏：上部偏紫、下部偏橙 */
 [data-period="dusk"] .wb-home__tint {
-  opacity: 0.8;
+  opacity: 0.22;
   background: linear-gradient(
     180deg,
     rgba(120, 96, 168, 0.85) 0%,
@@ -370,15 +376,74 @@
   );
 }
 
-/* 夜：靛蓝压暗。透明度刻意压低，黑字在浅湖底上仍要保持足够对比度 */
+/* 夜：靛蓝压暗。天空本身已经是深靛，这层只补一点冷空气感；
+   透明度上限由"山体不被天空染色"反推：.26 时雪面 ΔL .0325，.13 时 ≈.017 */
 [data-period="night"] .wb-home__tint {
-  opacity: 0.5;
+  opacity: 0.13;
   background: linear-gradient(
     180deg,
     rgba(44, 58, 108, 0.95) 0%,
     rgba(64, 76, 124, 0.7) 55%,
     rgba(96, 104, 140, 0.5) 100%
   );
+}
+
+/* ============ 夜间反白 ============ */
+/* 真夜空下黑字只有 1.1–1.3:1，必须整体反白。
+   这几组颜色的对比度都在实测里逐项核过（见提交说明）：
+   天顶 #2c3550 上 #eef2fb ≈ 10.8:1，湖底 #465267 上 ≈ 7.7:1。 */
+[data-period="night"] .wb-home__nav,
+[data-period="night"] .wb-home__nav a,
+[data-period="night"] .wb-home__wordmark,
+[data-period="night"] .wb-home__content,
+[data-period="night"] .wb-home__content h1,
+[data-period="night"] .wb-home__content em,
+[data-period="night"] .wb-home__content p,
+[data-period="night"] .wb-home__content strong,
+[data-period="night"] .wb-home__content span,
+[data-period="night"] .wb-home__foot,
+[data-period="night"] .wb-home__foot-note {
+  color: #eef2fb;
+}
+
+[data-period="night"] .wb-home__links a:hover {
+  border-bottom-color: #eef2fb;
+}
+
+/* 「浏览我的白板 →」是 <a>，不吃上面那条 .wb-home__content 的继承色，
+   后面（约 1680 行）还有一条同名规则把它压成 #000000，这里必须点名覆盖。
+   它正好落在月亮下的山体倒影上（实测底色 #83a1c7，L .34），白字只有 2.37:1，
+   所以和朱印一样自带一块深色衬底；内边距只加 2px/8px，行高不变。 */
+[data-period="night"] .wb-home__secondary {
+  color: #eef2fb;
+  border-bottom-color: rgba(238, 242, 251, 0.45);
+  background: rgba(10, 16, 34, 0.62);
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+/* 汉堡图标：原本是 --rose-900 的 1px 细线，深底上几乎看不见 */
+[data-period="night"] .wb-home__menu span {
+  background: #eef2fb;
+}
+
+/* 朱印：深底上换成浅朱，既保住"朱"的色相，又过 4.5。
+   页脚正好压在水线上方那层雾/倒影上，实测底色是 #7e8492（L .23），
+   任何前景色在这块底上最多只能到 2.7:1，所以必须自带一块深色印泥底：
+   rgba(10,16,34,.72) 压上去后底色实测 #292f40，浅朱实测 7.75:1。 */
+[data-period="night"] .wb-home__seal {
+  border-color: #f2b8aa;
+  color: #f2b8aa;
+  background: rgba(10, 16, 34, 0.72);
+}
+
+/* 云与雁群：SVG 分支夜间也在跑，白色云和近黑雁在深靛上分别会过亮/消失 */
+[data-period="night"] .wb-scene__cloud {
+  opacity: 0.26;
+}
+
+[data-period="night"] .wb-scene__geese path {
+  stroke: #cfd6e6;
 }
 
 /* ============ 和纸颗粒 ============ */

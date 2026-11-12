@@ -92,6 +92,8 @@ export type WaterBuild = {
   mesh: THREE.Mesh;
   /** 静态水纹：12 条 2.4 单位高的圆角横条（与 SVG 的 .wb-scene__lake-line 同一组坐标） */
   lines: THREE.Mesh;
+  /** 时辰切换时更新湖面四档与地平线：与天空共用一盏钟、同一帧 */
+  setColors(lake: THREE.Color[], horizon: THREE.Color): void;
   update(time: number): void;
   dispose(): void;
 };
@@ -257,6 +259,13 @@ export function createWater(palette: Palette): WaterBuild {
   return {
     mesh,
     lines,
+    setColors(lake: THREE.Color[], horizon: THREE.Color) {
+      uniforms.uTop.value.copy(lake[0]);
+      uniforms.uMid.value.copy(lake[1]);
+      uniforms.uDeep.value.copy(lake[2]);
+      uniforms.uBottom.value.copy(lake[3]);
+      uniforms.uSky.value.copy(horizon);
+    },
     update(time: number) {
       uniforms.uTime.value = time;
     },

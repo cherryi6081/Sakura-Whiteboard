@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Crane } from "./Crane";
 import { WebglScene, decideRenderMode } from "./webgl/WebglScene";
 import type { Period } from "./usePeriod";
+import { createSkyClock, type SkyClock } from "./skyClock";
 import {
   LEFT_FAR_PAINT,
   LEFT_FAR_TREE,
@@ -486,6 +487,46 @@ export function FujiScene({ period }: { period: Period }) {
   }, [renderMode]);
 
   /**
+   * 天空/湖面/雾的一盏钟。挂在这个 .wb-home__scene 上，变量只写这棵子树：
+   * 白天等值于 tokens.css 的现值（ΔL=0），换档时与主光同一条指数曲线。
+   * 建钟必须等 DOM 就绪，所以它晚一帧交付给 WebglScene —— 在拿到钟之前不挂载 three。
+   */
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const initialPeriod = useRef(period);
+  const [skyClock, setSkyClock] = useState<SkyClock | null>(null);
+  useEffect(() => {
+    const root = sceneRef.current;
+    if (!root) return;
+    const created = createSkyClock(root, initialPeriod.current);
+    setSkyClock(created);
+    return () => created.dispose();
+  }, []);
+
+  /**
+   * 时辰变化：先把目标推给钟，再决定谁来推进它。
+   * WebGL 模式由渲染器在自己那一帧里 tick（和主光同帧）；SVG 模式在这里用 rAF 推进，
+   * 收敛（全部通道落进同一个 8bit 值）后立刻停表，静止时不占帧。
+   * reduce 下 createSkyClock 内部直接跳到目标值，这个循环只会跑一帧。
+   */
+  useEffect(() => {
+    if (!skyClock) return;
+    skyClock.setPeriod(period);
+    if (renderMode === "webgl") return;
+    let raf = 0;
+    let last = 0;
+    const loop = (now: number) => {
+      const delta = last ? Math.min((now - last) / 1000, 0.05) : 1 / 60;
+      last = now;
+      skyClock.tick(delta);
+      raf = skyClock.state.settled ? 0 : requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [skyClock, renderMode, period]);
+
+  /**
    * 涟漪的排布。为什么放在 effect 里而不是渲染时算：
    * 入水时刻取决于水线，水线随视口宽高比变化（16:9 ≈ 66.6%、超宽屏 ≈ 62.9%、4:3 ≈ 72.2%、
    * 手机 ≈ 90.4%），只能在使用 `window.innerWidth / innerHeight` 时计算。
@@ -652,6 +693,7 @@ export function FujiScene({ period }: { period: Period }) {
     <div
       className="wb-home__scene"
       aria-hidden="true"
+      ref={sceneRef}
       data-render={renderMode}
       data-webgl-ready={webglReady ? "true" : "false"}
     >
@@ -660,6 +702,7 @@ export function FujiScene({ period }: { period: Period }) {
         mode={renderMode}
         onModeChange={setRenderMode}
         onFirstFrame={() => setWebglReady(true)}
+        skyClock={skyClock}
       />
       {/* 水天延展层：天空渐变已由 .wb-home__scene 的 CSS 背景铺满整个视口，
           但湖面渐变画在下面的 SVG 里，只能覆盖 16:9 内容宽。视口比 16:9 更宽时
