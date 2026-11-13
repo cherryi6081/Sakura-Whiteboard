@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: 64px;
+  height: 48px;
   padding: 0 var(--space-8);
   flex: none;
 }
@@ -1910,17 +1910,18 @@ body:has(.wb-home) {
 
 .wb-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-6);
+  /* 5 列：1440 与 1024 都是一行 5 张（卡片同步压到 16px 内边距、13px 标题） */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-4);
 }
 
-/* ---------- 卡片：缩略图 16:10 / 标题行 22 / 元信息行 24 ---------- */
+/* ---------- 卡片：缩略图 16:10 / 标题行 18 / 元信息行 22 ---------- */
 .wb-board-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-6);
+  gap: var(--space-2);
+  padding: var(--space-4);
   transition: box-shadow var(--dur-base) var(--ease-standard);
 }
 
@@ -1939,7 +1940,7 @@ body:has(.wb-home) {
   text-decoration: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .wb-board-card__thumb {
@@ -1991,9 +1992,9 @@ body:has(.wb-home) {
 
 .wb-board-card__title {
   display: block;
-  height: 22px;
-  font-size: var(--text-body);
-  line-height: 22px;
+  height: 18px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 500;
   color: var(--ink-strong);
   overflow: hidden;
@@ -2002,12 +2003,21 @@ body:has(.wb-home) {
   transition: color var(--dur-fast) var(--ease-standard);
 }
 
+/* 5 列后卡片变窄：徽标与「时间 + 置顶 + 更多」允许换到第二行，行高交给内容，
+   避免 12px 字号在 1024 宽度下挤成一条溢出 */
 .wb-board-card__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  height: 24px;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  row-gap: var(--space-1);
+  min-height: 22px;
+}
+
+.wb-board-card__meta .wb-badge {
+  height: 20px;
+  padding: 0 7px;
 }
 
 .wb-board-card__meta-right {
@@ -2015,6 +2025,7 @@ body:has(.wb-home) {
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
+  margin-left: auto;
 }
 
 .wb-board-card__time {
@@ -2137,10 +2148,10 @@ body:has(.wb-home) {
   }
 }
 
-/* ---------- 响应式：1024 两列、700 以下单列 ---------- */
-@media (max-width: 1439px) {
+/* ---------- 响应式：1024 及以上 5 列、701–1023 三列、700 以下单列 ---------- */
+@media (max-width: 1023px) {
   .wb-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2792,7 +2803,7 @@ body:has(.wb-home) {
 /* ---------- 响应式：≤700 单列双层行 ---------- */
 @media (max-width: 700px) {
   .wb-page--trash .wb-topbar {
-    height: 56px;
+    height: 48px;
     gap: 8px;
     padding: 0 var(--space-4);
   }
@@ -3962,7 +3973,7 @@ body:has(.wb-home) {
   }
 
   .wb-topbar {
-    height: 56px;
+    height: 48px;
     padding: 0 var(--space-4);
   }
 
@@ -5082,13 +5093,13 @@ button.wb-sortchip:hover {
 /* ---------- 抓手：悬停 / 键盘聚焦才显形，命中区 40×22 ---------- */
 .wb-board-card__handle {
   position: absolute;
-  top: 6px;
+  top: 4px;
   left: 50%;
   z-index: 3;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 22px;
+  width: 34px;
+  height: 18px;
   padding: 0;
   border: 1px solid var(--line-strong);
   border-radius: 999px;

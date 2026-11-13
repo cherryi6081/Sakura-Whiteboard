@@ -16,10 +16,10 @@ export type SelectableCard = {
 
 export type SelectionState = "none" | "some" | "all";
 
-/** 网格列数：与 pages.css 的断点一致（≥1440 三列、701–1439 两列、≤700 单列）。 */
+/** 网格列数：与 pages.css 的断点一致（≥1024 五列、701–1023 三列、≤700 单列）。 */
 export function gridColumnsForWidth(width: number): number {
-  if (width >= 1440) return 3;
-  if (width > 700) return 2;
+  if (width >= 1024) return 5;
+  if (width > 700) return 3;
   return 1;
 }
 

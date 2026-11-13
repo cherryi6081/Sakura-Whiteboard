@@ -18,10 +18,10 @@ const card = (id: string, extra: Partial<SelectableCard> = {}): SelectableCard =
 
 describe("gridColumnsForWidth", () => {
   it("与 CSS 断点一致", () => {
-    expect(gridColumnsForWidth(1440)).toBe(3);
-    expect(gridColumnsForWidth(1439)).toBe(2);
-    expect(gridColumnsForWidth(1024)).toBe(2);
-    expect(gridColumnsForWidth(701)).toBe(2);
+    expect(gridColumnsForWidth(1440)).toBe(5);
+    expect(gridColumnsForWidth(1024)).toBe(5);
+    expect(gridColumnsForWidth(1023)).toBe(3);
+    expect(gridColumnsForWidth(701)).toBe(3);
     expect(gridColumnsForWidth(700)).toBe(1);
     expect(gridColumnsForWidth(390)).toBe(1);
   });
