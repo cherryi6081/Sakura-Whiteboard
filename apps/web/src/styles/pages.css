@@ -470,7 +470,10 @@
      3) 第 2 列（自由表达）底衬正好是湖面反光 #e4ebed，黑字对比度 16:1，连夜改回近黑。
    夜间 canvas 仍在 features 之下，完全不动；日间配色零影响。 */
 [data-period="night"] .wb-home__features {
-  position: relative;
+  /* 必须保持绝对定位：白天版位由基础规则的 bottom 决定，改成 relative 会让整行
+     回到文档流、被 flex 推到 hero 下方（y≈437），与 CTA 挤在一起。
+     z-index 只负责压到 canvas 之上，不参与定位。 */
+  position: absolute;
   z-index: 2;
 }
 [data-period="night"] .wb-home__features article:nth-child(2) span,
