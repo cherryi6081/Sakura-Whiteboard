@@ -51,7 +51,7 @@ describe("rangeIds", () => {
 });
 
 describe("批量目标权限", () => {
-  it("删除只认 owner，editor/viewer/游客都跳过", () => {
+  it("删除认 owner（含游客临时板），editor/viewer 跳过", () => {
     const cards = [
       card("owner"),
       card("editor", { role: "editor" }),
@@ -59,8 +59,8 @@ describe("批量目标权限", () => {
       card("guest", { guest: true }),
     ];
     const result = trashTargets(cards, new Set(cards.map((item) => item.id)));
-    expect(result.targets.map((item) => item.id)).toEqual(["owner"]);
-    expect(result.skipped.map((item) => item.id)).toEqual(["editor", "viewer", "guest"]);
+    expect(result.targets.map((item) => item.id)).toEqual(["owner", "guest"]);
+    expect(result.skipped.map((item) => item.id)).toEqual(["editor", "viewer"]);
   });
 
   it("置顶认 owner/editor，viewer 跳过", () => {

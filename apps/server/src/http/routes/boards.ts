@@ -338,14 +338,34 @@ boardsRouter.post(
   }),
 );
 
-/** `POST /api/boards/batch/trash` —— 批量移入回收站（所有者任意；编辑者仅自己创建的）。 */
+/** `POST /api/boards/batch/trash` —— 批量删除。
+ *  登录成员移入回收站（所有者任意；编辑者仅自己创建的）；
+ *  游客的临时板没有回收站，按 cookie 归属物理删除。 */
 boardsRouter.post(
   '/boards/batch/trash',
   handle(async (req, res) => {
     const identity = identityOf(req);
-    if (!identity.userId) throw new AppError(401, 'UNAUTHORIZED', 'login required');
     const { ids: rawIds } = batchIdsSchema.parse(req.body ?? {});
     const ids = [...new Set(rawIds)];
+
+    // 游客分支：与单条 DELETE /boards/:id 同一条物理删除路径，只认 owner_guest_id
+    if (!identity.userId) {
+      if (!identity.guestId) throw new AppError(401, 'UNAUTHORIZED', 'login required');
+      const { rows } = await pool.query<{ id: string }>(
+        `delete from boards
+          where id = any($1::text[]) and owner_guest_id = $2 and deleted_at is null
+          returning id`,
+        [ids, identity.guestId],
+      );
+      const purged = new Set(rows.map((row) => row.id));
+      const items = ids.map((id) =>
+        purged.has(id)
+          ? { id, ok: true as const, purged: true as const }
+          : { id, ok: false as const, reason: 'not_found' as const },
+      );
+      res.json({ mode: 'purged', items, okCount: rows.length, skippedCount: ids.length - rows.length });
+      return;
+    }
 
     const { rows } = await pool.query<{ id: string; deleted_at: Date; purge_at: Date }>(
       `update boards b
@@ -373,7 +393,7 @@ boardsRouter.post(
       };
     });
 
-    res.json({ items, okCount: rows.length, skippedCount: ids.length - rows.length });
+    res.json({ mode: 'trash', items, okCount: rows.length, skippedCount: ids.length - rows.length });
   }),
 );
 

@@ -10,6 +10,8 @@ type Props = {
   targets: readonly SelectableCard[];
   skipped: readonly SelectableCard[];
   busy: boolean;
+  /** 游客：临时板物理删除，没有 30 天回收站 */
+  guest?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 };
@@ -20,7 +22,7 @@ type Props = {
  * - 只读 / 非 owner 的卡在列表里标「跳过」，并在下方单独说明；
  * - 全部无权限时退化为说明弹窗，不放危险按钮。
  */
-export function BatchTrashDialog({ rows, targets, skipped, busy, onCancel, onConfirm }: Props) {
+export function BatchTrashDialog({ rows, targets, skipped, busy, guest = false, onCancel, onConfirm }: Props) {
   const titleId = useId();
   const descId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -55,14 +57,24 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, onCancel, onCon
   };
 
   const title = allBlocked
-    ? `这 ${rows.length} 块都没有删除权限`
-    : targets.length === 1
-      ? `将「${targets[0]?.title ?? ""}」移入回收站？`
-      : `将 ${targets.length} 块白板移入回收站？`;
+    ? guest
+      ? `这 ${rows.length} 块不属于这台浏览器`
+      : `这 ${rows.length} 块都没有删除权限`
+    : guest
+      ? targets.length === 1
+        ? `删除「${targets[0]?.title ?? ""}」？`
+        : `删除 ${targets.length} 块临时板？`
+      : targets.length === 1
+        ? `将「${targets[0]?.title ?? ""}」移入回收站？`
+        : `将 ${targets.length} 块白板移入回收站？`;
 
   const desc = allBlocked
-    ? "只有白板所有者可以移入回收站，协作者和只读白板会保留在原处。"
-    : "回收站保留 30 天，期间可随时恢复。协作者会立即失去访问权限。";
+    ? guest
+      ? "只能删除这台浏览器创建的临时板，其余白板会保留在原处。"
+      : "只有白板所有者可以移入回收站，协作者和只读白板会保留在原处。"
+    : guest
+      ? "游客的临时板不进入回收站，删除后无法恢复；本机缩略图与最近打开记录会一起清掉。"
+      : "回收站保留 30 天，期间可随时恢复。协作者会立即失去访问权限。";
 
   return (
     <div className="wb-overlay wb-batch-confirm">
@@ -103,7 +115,9 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, onCancel, onCon
         {skipped.length > 0 && !allBlocked ? (
           <p className="wb-batch-dialog__note">
             <IconLock size={12} />
-            {skipped.length} 块无删除权限的白板不会删除，协作者权限保持不变。
+            {guest
+              ? `${skipped.length} 块不是本机创建的临时板，不会删除。`
+              : `${skipped.length} 块无删除权限的白板不会删除，协作者权限保持不变。`}
           </p>
         ) : null}
 
@@ -117,7 +131,7 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, onCancel, onCon
             </button>
           ) : (
             <button type="button" className="wb-btn wb-btn--danger" disabled={busy} onClick={onConfirm}>
-              {busy ? "处理中…" : "移入回收站"}
+              {busy ? "处理中…" : guest ? "删除" : "移入回收站"}
             </button>
           )}
         </div>

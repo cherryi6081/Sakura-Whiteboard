@@ -84,6 +84,8 @@ export type BatchItemResult = {
   pinnedAt?: string | null;
   deletedAt?: string;
   purgeAt?: string;
+  /** 游客物理删除的逐项标记 */
+  purged?: boolean;
 };
 
 export type BatchPinResult = {
@@ -102,12 +104,14 @@ export function batchPinBoards(boardIds: string[], pinned: boolean): Promise<Api
 }
 
 export type BatchTrashResult = {
+  /** purged = 游客物理删除，没有 30 天回收站 */
+  mode: "trash" | "purged";
   items: BatchItemResult[];
   okCount: number;
   skippedCount: number;
 };
 
-/** 批量移入回收站（仅 owner）；逐项返回，失败项由调用方提示。 */
+/** 批量删除：登录成员移入回收站，游客物理删除；逐项返回，失败项由调用方提示。 */
 export function batchTrashBoards(boardIds: string[]): Promise<ApiResult<BatchTrashResult>> {
   return request<BatchTrashResult>("/api/boards/batch/trash", {
     method: "POST",

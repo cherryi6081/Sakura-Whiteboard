@@ -408,8 +408,8 @@ export function BoardsPage() {
     : paged;
   const more = hasMoreBoards(cards.length, page);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
-  // 只读成员：能浏览、搜索、复制到个人空间，但不能批量选择（批量动作全是写操作）
-  const isSelectable = view.kind === "user" && !readOnly;
+  // 只读成员不能批量选择（批量动作全是写操作）；游客可以，但只保留物理删除
+  const isSelectable = isGuest || (view.kind === "user" && !readOnly);
   const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly;
   const groupsNow = splitGroups(visible);
   const groupIdsOf = (group: DragGroupKey): string[] =>
@@ -796,6 +796,22 @@ export function BoardsPage() {
     if (moved.length === 0) {
       setTrashConfirm(null);
       setToast("没删成功，再试一次。");
+      return;
+    }
+
+    // 游客：服务端物理删除，清本机最近记录与缩略图，不进回收站、不提供撤销
+    if (result.data.mode === "purged") {
+      await Promise.all(moved.map((id) => clearBoardCache(id)));
+      moved.forEach((id) => removeRecentBoard(id));
+      setView((current) =>
+        current.kind === "guest"
+          ? { ...current, items: current.items.filter((item) => !moved.includes(item.id)) }
+          : current,
+      );
+      const failed = ids.length - moved.length;
+      setTrashConfirm(null);
+      exitSelect(false);
+      setToast(failed > 0 ? `已删除 ${moved.length} 块临时板，${failed} 块未删除` : `已删除 ${moved.length} 块临时板`);
       return;
     }
 
@@ -1376,6 +1392,8 @@ export function BoardsPage() {
             selected={selected}
             allScope={allScope}
             busy={batchBusy}
+            guest={isGuest}
+            contextLabel={isGuest ? "最近打开" : "我的白板"}
             onToggleAll={toggleAll}
             onSelectAllLoaded={selectAllLoaded}
             onClearAll={clearAll}
@@ -1723,6 +1741,7 @@ export function BoardsPage() {
           targets={trashConfirm.targets}
           skipped={trashConfirm.skipped}
           busy={batchBusy}
+          guest={isGuest}
           onCancel={() => {
             if (!batchBusy) setTrashConfirm(null);
           }}

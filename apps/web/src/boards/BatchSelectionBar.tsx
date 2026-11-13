@@ -17,6 +17,9 @@ type Props = {
   selected: ReadonlySet<string>;
   allScope: boolean;
   busy: boolean;
+  /** 游客模式：临时板只能物理删除，隐藏置顶/移动等登录后能力 */
+  guest?: boolean;
+  contextLabel?: string;
   onToggleAll: () => void;
   onSelectAllLoaded: () => void;
   onClearAll: () => void;
@@ -75,6 +78,8 @@ export function BatchSelectionBar({
   selected,
   allScope,
   busy,
+  guest = false,
+  contextLabel = "我的白板",
   onToggleAll,
   onSelectAllLoaded,
   onClearAll,
@@ -179,7 +184,7 @@ export function BatchSelectionBar({
     selectedCount === 0 ? "先勾选白板" : pinnable.targets.length === 0 ? "只读不可置顶" : undefined;
 
   const items: MoreItem[] = [];
-  if (compact) {
+  if (compact && !guest) {
     items.push({
       key: "pin",
       label: pinnedAll ? "取消置顶" : "批量置顶",
@@ -188,13 +193,15 @@ export function BatchSelectionBar({
       onSelect: pinnedAll ? onUnpin : onPin,
     });
   }
-  items.push({
-    key: "move",
-    label: "移动到空间",
-    icon: <IconBoard size={16} />,
-    disabledReason: "暂无团队空间",
-    onSelect: () => {},
-  });
+  if (!guest) {
+    items.push({
+      key: "move",
+      label: "移动到空间",
+      icon: <IconBoard size={16} />,
+      disabledReason: "暂无团队空间",
+      onSelect: () => {},
+    });
+  }
   items.push({ key: "invert", label: "反选本页", icon: <IconCheck size={16} />, onSelect: onInvert });
   if (showSelectAll) {
     items.push({
@@ -248,7 +255,7 @@ export function BatchSelectionBar({
       <div className="wb-boards__head wb-selection-bar" role="toolbar" aria-label="批量操作">
         <div className="wb-selection-bar__lead">
           <CheckBox state={state} label="全选本页" onClick={onToggleAll} />
-          <span className="wb-selection-bar__ctx">我的白板</span>
+          <span className="wb-selection-bar__ctx">{contextLabel}</span>
           <span className="wb-selection-bar__div" aria-hidden />
           <span className="wb-selection-bar__count" aria-live="polite">
             <b>已选 {selectedCount}</b>
@@ -270,31 +277,39 @@ export function BatchSelectionBar({
           {selectedCount === 0 ? <span className="wb-selection-bar__hint">勾选卡片开始</span> : null}
         </div>
         <div className="wb-selection-bar__actions">
-          <button
-            type="button"
-            className="wb-selbtn wb-selbar__pin"
-            disabled={busy || Boolean(pinDisabledReason)}
-            title={pinTitle}
-            onClick={pinnedAll ? onUnpin : onPin}
-          >
-            {pinnedAll ? <IconPinOff size={16} /> : <IconPin size={16} />}
-            <span className="wb-selbar__label">{pinnedAll ? "取消置顶" : "批量置顶"}</span>
-          </button>
-          <button type="button" className="wb-selbtn wb-selbar__move" disabled title="暂无团队空间">
-            <IconBoard size={16} />
-            <span>移动到空间</span>
-          </button>
+          {!guest ? (
+            <button
+              type="button"
+              className="wb-selbtn wb-selbar__pin"
+              disabled={busy || Boolean(pinDisabledReason)}
+              title={pinTitle}
+              onClick={pinnedAll ? onUnpin : onPin}
+            >
+              {pinnedAll ? <IconPinOff size={16} /> : <IconPin size={16} />}
+              <span className="wb-selbar__label">{pinnedAll ? "取消置顶" : "批量置顶"}</span>
+            </button>
+          ) : null}
+          {!guest ? (
+            <button type="button" className="wb-selbtn wb-selbar__move" disabled title="暂无团队空间">
+              <IconBoard size={16} />
+              <span>移动到空间</span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="wb-selbtn wb-selbtn--danger"
             disabled={busy || selectedCount === 0 || trash.targets.length + trash.skipped.length === 0}
             title={
-              trash.targets.length === 0 && trash.skipped.length > 0 ? "所选白板都没有删除权限" : "移入回收站"
+              guest
+                ? "删除本机临时板（不可恢复）"
+                : trash.targets.length === 0 && trash.skipped.length > 0
+                  ? "所选白板都没有删除权限"
+                  : "移入回收站"
             }
             onClick={onTrash}
           >
             <IconTrash size={16} />
-            <span className="wb-selbar__label-long">移入回收站</span>
+            <span className="wb-selbar__label-long">{guest ? "删除临时板" : "移入回收站"}</span>
             <span className="wb-selbar__label-short">删除</span>
           </button>
           <button
@@ -316,7 +331,7 @@ export function BatchSelectionBar({
 
       <div className="wb-boards__head wb-selection-mobile-head">
         <div className="wb-boards__headline">
-          <h1 className="wb-display">我的白板</h1>
+          <h1 className="wb-display">{contextLabel}</h1>
           <span className="wb-boards__count">{cards.length} 块</span>
         </div>
         <button type="button" className="wb-selbtn wb-selbtn--done" onClick={onExit}>

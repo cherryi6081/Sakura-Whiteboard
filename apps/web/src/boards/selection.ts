@@ -59,14 +59,15 @@ function selectedCards(cards: readonly SelectableCard[], selected: ReadonlySet<s
 }
 
 /**
- * 批量删除：只有 owner 能进回收站（服务端 `DELETE /boards/:id` 只认 owner）。
+ * 批量删除：只有 owner 能删。游客的临时板 owner 也是 owner，
+ * 批量接口按 cookie 归属走物理删除，因此同样算可删目标。
  * editor / viewer 都算跳过，确认框据此显示实际删除数。
  */
 export function trashTargets(cards: readonly SelectableCard[], selected: ReadonlySet<string>): BatchTargets {
   const picked = selectedCards(cards, selected);
   return {
-    targets: picked.filter((card) => card.role === "owner" && !card.guest),
-    skipped: picked.filter((card) => card.role !== "owner" || card.guest),
+    targets: picked.filter((card) => card.role === "owner"),
+    skipped: picked.filter((card) => card.role !== "owner"),
   };
 }
 
