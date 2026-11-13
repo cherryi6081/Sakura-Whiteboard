@@ -189,8 +189,8 @@ trashRouter.post(
 
     const { rows } = await pool.query<{ id: string; title: string; space_id: string | null }>(
       `select b.id, b.title, b.space_id from boards b
-        where b.id = $1 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
-      [boardId, identity.userId],
+        where b.id = $2 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
+      [identity.userId, boardId],
     );
     const board = rows[0];
     if (!board) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
@@ -220,8 +220,8 @@ trashRouter.delete(
 
     const { rowCount } = await pool.query(
       `delete from boards b
-        where b.id = $1 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
-      [boardId, identity.userId],
+        where b.id = $2 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
+      [identity.userId, boardId],
     );
     if (!rowCount) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
     res.json({ id: boardId, purged: true });
