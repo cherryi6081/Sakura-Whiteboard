@@ -6034,6 +6034,14 @@ button.wb-sortchip:hover {
   box-shadow: var(--shadow-raised);
 }
 
+/* 深色档位里「面板 vs 背景」的亮度比有天花板：--surface-raised 对纯黑也只有 1.36，
+   单靠遮罩加深撑不开边界，改为 1px 描边承担：描边对面板 2.3:1、对遮罩后页面约 3:1。
+   弹窗与加入空间落地页同属「居中面板」，一起处理。 */
+:root[data-theme="night"] .wb-dialog,
+:root[data-theme="night"] .wb-join__card {
+  border: 1px solid var(--line-strong);
+}
+
 
 
 

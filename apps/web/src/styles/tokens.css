@@ -360,7 +360,9 @@
   --danger-bg: #2a1a1e;
   --danger-line: color-mix(in srgb, var(--danger-fg) 28%, var(--danger-bg));
 
-  --scrim: rgba(4, 7, 14, 0.68);
+  /* 夜间遮罩加深到 0.8：背景压得更沉，弹窗/床单的焦点更集中；
+     面板边界本身靠 1px --line-strong 描边（见 pages.css 夜间块） */
+  --scrim: rgba(4, 7, 14, 0.8);
   --shadow-raised: 0 12px 30px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --focus-ring: 0 0 0 2px #131a2b, 0 0 0 4px #d39ab1;
   --toast-bg: #2a3654;
