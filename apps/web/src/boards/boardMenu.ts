@@ -42,9 +42,10 @@ export function buildBoardMenu(options: {
   isOwn?: boolean;
 }): BoardMenuGroup[] {
   const canEdit = options.role === "owner" || options.role === "editor";
-  // 游客没有服务端回收站（删除即物理删除），「移到回收站」对它禁用
   const isOwner = options.role === "owner" && !options.guest;
-  const canDelete = isOwner || (options.role === "editor" && options.isOwn === true);
+  // 游客的临时板没有回收站，但服务端有游客物理删除路径（`mode: 'purged'`），所以照样可删
+  const canDelete =
+    options.guest === true || isOwner || (options.role === "editor" && options.isOwn === true);
 
   const members: BoardMenuItem = {
     key: "members",
@@ -103,16 +104,16 @@ export function buildBoardMenu(options: {
       items: [
         {
           key: "trash",
-          label: "移到回收站",
+          // 游客删除即物理删除，文案必须说清楚，不能写成「移到回收站」
+          label: options.guest ? "删除临时板" : "移到回收站",
           icon: "trash",
           danger: true,
+          tail: options.guest ? "不可恢复" : undefined,
           disabledReason: canDelete
             ? undefined
-            : options.guest
-              ? "登录后可用"
-              : options.role === "editor"
-                ? "仅自己创建的"
-                : "只读",
+            : options.role === "editor"
+              ? "仅自己创建的"
+              : "只读",
         },
       ],
     },

@@ -54,12 +54,20 @@ describe("buildBoardMenu", () => {
     expect(flat(groups)).toHaveLength(7);
   });
 
-  it("游客可置顶（本机），改名与回收站禁用", () => {
+  it("游客可置顶（本机）、可删除临时板（物理删除，不可恢复），改名禁用", () => {
     const groups = buildBoardMenu({ role: "owner", pinned: false, guest: true });
     expect(item(groups, "pin").disabledReason).toBeUndefined();
     expect(item(groups, "rename").disabledReason).toBe("登录后可用");
-    expect(item(groups, "trash").disabledReason).toBe("登录后可用");
+    expect(item(groups, "trash").disabledReason).toBeUndefined();
+    expect(item(groups, "trash").label).toBe("删除临时板");
+    expect(item(groups, "trash").tail).toBe("不可恢复");
     expect(flat(groups).some((entry) => entry.key === "members")).toBe(false);
+  });
+
+  it("登录用户仍然是移入回收站，而不是物理删除", () => {
+    const groups = buildBoardMenu({ role: "owner", pinned: false });
+    expect(item(groups, "trash").label).toBe("移到回收站");
+    expect(item(groups, "trash").tail).toBeUndefined();
   });
 
   it("创建副本本期统一禁用，协作者二级菜单移除项禁用", () => {

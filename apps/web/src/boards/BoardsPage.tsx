@@ -28,7 +28,7 @@ import { hasMoreBoards, isPinned, sortBoards, visibleBoards } from "./boardList"
 import { gridColumnsForWidth, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
 import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
 import { loadThumbUrls } from "./boardThumb";
-import { listRecentBoards, setRecentPinned, type RecentBoard } from "./recentBoards";
+import { listRecentBoards, removeRecentBoard, setRecentPinned, type RecentBoard } from "./recentBoards";
 import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
@@ -160,6 +160,9 @@ export function BoardsPage() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [trashConfirm, setTrashConfirm] = useState<TrashConfirm | null>(null);
+  /** 游客删除临时板：物理删除不可恢复，先确认再走接口 */
+  const [guestTrash, setGuestTrash] = useState<CardModel | null>(null);
+  const [guestTrashBusy, setGuestTrashBusy] = useState(false);
   const selectEntryRef = useRef<HTMLButtonElement>(null);
   // 拖拽排序：组内接管（方案 B），置顶组与普通组固定，不跨组
   const [sortMode, setSortModeState] = useState<BoardSortMode>("auto");
@@ -195,6 +198,7 @@ export function BoardsPage() {
     setAnchorId(null);
     setFocusedId(null);
     setTrashConfirm(null);
+    setGuestTrash(null);
     setMenu(null);
     setSettingsOpen(false);
     setPreviewIds(null);
@@ -656,13 +660,24 @@ export function BoardsPage() {
       setToast("没删成功，再试一次。");
       return;
     }
-    setView((current) =>
-      current.kind === "user"
-        ? { ...current, items: current.items.filter((item) => item.id !== board.id) }
-        : current,
-    );
-    setTrashCount((count) => count + 1);
-    setUndoToast({ kind: "trash", ids: [board.id], title: board.title, ttl: 5000 });
+    // 游客临时板是物理删除：不进回收站、没有 5 秒撤销，本机最近记录与缩略图一起清掉
+    if (result.mode === "purged") {
+      removeRecentBoard(board.id);
+      setView((current) =>
+        current.kind === "guest"
+          ? { ...current, items: current.items.filter((item) => item.id !== board.id) }
+          : current,
+      );
+      setToast(`已删除临时板「${board.title}」`);
+    } else {
+      setView((current) =>
+        current.kind === "user"
+          ? { ...current, items: current.items.filter((item) => item.id !== board.id) }
+          : current,
+      );
+      setTrashCount((count) => count + 1);
+      setUndoToast({ kind: "trash", ids: [board.id], title: board.title, ttl: 5000 });
+    }
     // 焦点落到原位置的下一条卡片，避免删除后焦点丢回 body
     window.requestAnimationFrame(() => {
       const links = Array.from(
@@ -670,6 +685,15 @@ export function BoardsPage() {
       );
       links[Math.min(index, links.length - 1)]?.focus({ preventScroll: true });
     });
+  };
+
+  const confirmGuestTrash = async () => {
+    const board = guestTrash;
+    if (!board || guestTrashBusy) return;
+    setGuestTrashBusy(true);
+    await trashBoard(board);
+    setGuestTrashBusy(false);
+    setGuestTrash(null);
   };
 
   const undoLast = async () => {
@@ -1248,7 +1272,9 @@ export function BoardsPage() {
         void inviteCollaborator(board);
         return;
       case "trash":
-        void trashBoard(board);
+        // 游客没有回收站：物理删除前先用确认框讲清后果
+        if (board.guest) setGuestTrash(board);
+        else void trashBoard(board);
         return;
       default:
         return;
@@ -1264,6 +1290,7 @@ export function BoardsPage() {
       menuOpen={menu?.board.id === board.id}
       selectMode={selectMode}
       readOnly={readOnly}
+      canSelect={isSelectable}
       selected={selected.has(board.id)}
       focused={focusedId === board.id}
       sortable={canSort}
@@ -1642,6 +1669,54 @@ export function BoardsPage() {
         </div>
       ) : null}
 
+      {guestTrash ? (
+        <div
+          className="wb-overlay"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && !guestTrashBusy) setGuestTrash(null);
+          }}
+        >
+          <div
+            className="wb-dialog wb-trash__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wb-guest-trash-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !guestTrashBusy) {
+                event.preventDefault();
+                setGuestTrash(null);
+              }
+            }}
+          >
+            <h2 className="wb-dialog__title" id="wb-guest-trash-title">
+              删除临时板「{guestTrash.title}」？
+            </h2>
+            <p className="wb-dialog__desc">
+              游客的临时板不进入回收站，删除后无法恢复；本机的缩略图与最近打开记录会一起清掉。
+            </p>
+            <div className="wb-dialog__actions">
+              <button
+                className="wb-btn wb-btn--ghost"
+                type="button"
+                autoFocus
+                disabled={guestTrashBusy}
+                onClick={() => setGuestTrash(null)}
+              >
+                取消
+              </button>
+              <button
+                className="wb-btn wb-btn--danger"
+                type="button"
+                disabled={guestTrashBusy}
+                onClick={() => void confirmGuestTrash()}
+              >
+                {guestTrashBusy ? "删除中…" : "删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {trashConfirm ? (
         <BatchTrashDialog
           rows={trashConfirm.rows}
@@ -1757,6 +1832,7 @@ function BoardCard({
   menuOpen,
   selectMode,
   readOnly,
+  canSelect,
   selected,
   focused,
   sortable,
@@ -1784,6 +1860,8 @@ function BoardCard({
   menuOpen: boolean;
   selectMode: boolean;
   readOnly: boolean;
+  /** 能否进入批量选择；游客与只读成员为 false，勾选热区不渲染 */
+  canSelect: boolean;
   selected: boolean;
   focused: boolean;
   sortable: boolean;
@@ -2000,7 +2078,7 @@ function BoardCard({
             {selected ? <IconCheck size={12} /> : null}
           </span>
         </button>
-      ) : (
+      ) : canSelect ? (
         <span
           className="wb-board-card__check-hint"
           aria-hidden
@@ -2012,7 +2090,7 @@ function BoardCard({
         >
           <span className="wb-check" />
         </span>
-      )}
+      ) : null}
       <div className="wb-board-card__meta">
         <span className={`wb-badge wb-badge--${board.badgeTone}`}>{board.badge}</span>
         <span className="wb-board-card__meta-right">
