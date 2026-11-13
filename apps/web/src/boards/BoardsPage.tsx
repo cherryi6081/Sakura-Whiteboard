@@ -24,7 +24,7 @@ import { BatchSelectionBar } from "./BatchSelectionBar";
 import { BatchTrashDialog } from "./BatchTrashDialog";
 import { BoardCardMenu, type BoardMenuTarget } from "./BoardCardMenu";
 import type { MenuAnchor } from "./boardMenu";
-import { hasMoreBoards, isPinned, sortBoards, visibleBoards } from "./boardList";
+import { BOARDS_CAPACITY, isPinned, sortBoards } from "./boardList";
 import { gridColumnsForWidth, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
 import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
 import { loadThumbUrls } from "./boardThumb";
@@ -45,7 +45,8 @@ import { SpaceSettings } from "./SpaceSettings";
  * - 卡片缩略图来自进板首帧快照（IndexedDB `wb-cache/thumbs`），没有快照时回退线稿图标。
  * - 骨架与真实卡片同盒模型（16:10 缩略图 / 22px 标题行 / 24px 元信息行）；
  *   加载超过 200ms 才显示骨架，数据到达时两者交叉淡出淡入，首屏不闪白、不位移。
- * - 每页 6 张，点「加载更多」累加，不做跨页跳转。
+ * - 一页最多 15 张（5 列 × 3 行），不翻页；服务端在创建第 16 块时淘汰一块，
+ *   所以正常情况下列表永远不超过 15。
  */
 
 type ViewState =
@@ -112,8 +113,8 @@ type TrashConfirm = {
 
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
-/** 列表一次取满 30 条（接口上限），页内再按 6 张/页加载更多 */
-const FETCH_LIMIT = 30;
+/** 列表容量 15（5 列 × 3 行），一次取满，不做翻页 */
+const FETCH_LIMIT = BOARDS_CAPACITY;
 const SPACE_ROLE_LABEL: Record<string, string> = {
   owner: "所有者",
   editor: "编辑者",
@@ -140,7 +141,6 @@ export function BoardsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [guestBannerVisible, setGuestBannerVisible] = useState(() => !readFlag(SAVE_BANNER_KEY));
   const [toast, setToast] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [thumbsReady, setThumbsReady] = useState(false);
   const [pinBusyId, setPinBusyId] = useState<string | null>(null);
@@ -191,7 +191,6 @@ export function BoardsPage() {
 
   const load = useCallback(async (targetSpace?: string) => {
     setView({ kind: "loading" });
-    setPage(1);
     setSelectMode(false);
     setSelected(new Set());
     setAllScope(false);
@@ -394,7 +393,8 @@ export function BoardsPage() {
   const skeletonActive = view.kind === "loading" || (listReady && cards.length > 0 && !thumbsReady);
   const skeletonPhase = useSkeletonPhase(skeletonActive);
 
-  const paged = visibleBoards(cards, page);
+  // 容量 15：服务端已按容量淘汰，这里再截一次兜底（脏数据/竞态时不渲染第 16 张）
+  const paged = cards.slice(0, BOARDS_CAPACITY);
   // 拖拽中的乐观顺序：只在预览里重排，松手保存成功后才回落到服务端顺序
   const visible = previewIds
     ? (() => {
@@ -406,7 +406,6 @@ export function BoardsPage() {
         return [...ordered, ...paged.filter((card) => !seen.has(card.id))];
       })()
     : paged;
-  const more = hasMoreBoards(cards.length, page);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
   // 只读成员不能批量选择（批量动作全是写操作）；游客可以，但只保留物理删除
   const isSelectable = isGuest || (view.kind === "user" && !readOnly);
@@ -601,7 +600,7 @@ export function BoardsPage() {
     const target = event.target as HTMLElement;
     if (
       target.closest(
-        '[data-testid="board-card"], .wb-boards__head, .wb-selection-mobile, .wb-batch-menu, .wb-sheet-layer, .wb-boards__more, .wb-toast, .wb-overlay',
+        '[data-testid="board-card"], .wb-boards__head, .wb-selection-mobile, .wb-batch-menu, .wb-sheet-layer, .wb-toast, .wb-overlay',
       )
     ) {
       return;
@@ -1585,17 +1584,6 @@ export function BoardsPage() {
             ) : null}
           </div>
         ) : null}
-
-        {cardsReady && more ? (
-          <div className="wb-boards__more">
-            <button className="wb-btn wb-btn--secondary" type="button" onClick={() => setPage((current) => current + 1)}>
-              加载更多
-              <span className="wb-boards__more-count wb-nums" aria-hidden>
-                还有 {cards.length - visible.length} 块
-              </span>
-            </button>
-          </div>
-        ) : null}
       </div>
 
       {/* 落点指示线：组内排序时贯穿卡片高度，换排时贯穿内容宽度 */}
@@ -2164,7 +2152,7 @@ function BoardCard({
 function SkeletonCards() {
   return (
     <>
-      {Array.from({ length: 6 }, (_, index) => (
+      {Array.from({ length: BOARDS_CAPACITY }, (_, index) => (
         <article className="wb-card wb-board-card wb-board-card--skeleton" key={index}>
           <span className="wb-board-card__thumb wb-skeleton" />
           <span className="wb-board-card__title">

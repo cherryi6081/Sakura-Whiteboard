@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BOARDS_PAGE_SIZE,
-  hasMoreBoards,
-  isPinned,
-  sortBoards,
-  visibleBoards,
-  type PinnableBoard,
-} from './boardList';
+import { BOARDS_CAPACITY, isPinned, sortBoards, type PinnableBoard } from './boardList';
 
 const board = (id: string, lastEditedAt: string, extra: Partial<PinnableBoard> = {}): PinnableBoard => ({
   id,
@@ -71,25 +64,8 @@ describe('isPinned', () => {
   });
 });
 
-describe('分页', () => {
-  const items = Array.from({ length: 14 }, (_, index) => index);
-
-  it('每页 6 张，逐页累加', () => {
-    expect(BOARDS_PAGE_SIZE).toBe(6);
-    expect(visibleBoards(items, 1)).toHaveLength(6);
-    expect(visibleBoards(items, 2)).toHaveLength(12);
-    expect(visibleBoards(items, 3)).toHaveLength(14);
-  });
-
-  it('页码非法时退回第一页', () => {
-    expect(visibleBoards(items, 0)).toHaveLength(6);
-    expect(visibleBoards(items, Number.NaN)).toHaveLength(6);
-  });
-
-  it('加载更多按钮只在还有剩余时出现', () => {
-    expect(hasMoreBoards(14, 1)).toBe(true);
-    expect(hasMoreBoards(14, 2)).toBe(true);
-    expect(hasMoreBoards(14, 3)).toBe(false);
-    expect(hasMoreBoards(6, 1)).toBe(false);
+describe('容量', () => {
+  it('一页 15 张（5 列 × 3 行），不做翻页', () => {
+    expect(BOARDS_CAPACITY).toBe(15);
   });
 });

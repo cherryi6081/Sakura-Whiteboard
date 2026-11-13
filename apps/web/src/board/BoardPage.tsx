@@ -5,6 +5,7 @@ import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
 import { recordRecentBoard, titleOf } from "../boards/recentBoards";
+import { markBoardOpened } from "../boards/boardsApi";
 import { scheduleThumbCapture } from "../boards/boardThumb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from "../ui/icons";
 import { ShareDrawer } from "./ShareDrawer";
@@ -171,6 +172,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   useEffect(() => {
     recordRecentBoard({ id: boardId, title });
+    // 打开次数：列表容量 15 的淘汰排序依据；fire-and-forget，不阻塞首帧
+    markBoardOpened(boardId);
   }, [boardId, title]);
 
   // 先让缓存/快照内容渲染出来，再创建 per-tab/per-board store（内部先做 tabId 握手，再连 Socket）

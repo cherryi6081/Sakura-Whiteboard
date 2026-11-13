@@ -119,13 +119,35 @@ export function batchTrashBoards(boardIds: string[]): Promise<ApiResult<BatchTra
   });
 }
 
-export function createBoard(title?: string, spaceId?: string): Promise<ApiResult<CreatedBoard>> {
-  const body: { title?: string; spaceId?: string } = {};
+export function createBoard(
+  title?: string,
+  spaceId?: string,
+  pinnedIds?: string[],
+): Promise<ApiResult<CreatedBoard>> {
+  const body: { title?: string; spaceId?: string; pinnedIds?: string[] } = {};
   if (title) body.title = title;
   if (spaceId) body.spaceId = spaceId;
+  // 游客的置顶只在本机：带上去让服务端淘汰时排除（登录用户服务端会忽略）
+  if (pinnedIds && pinnedIds.length > 0) body.pinnedIds = pinnedIds;
   return request<CreatedBoard>("/api/boards", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/**
+ * 进入白板时累加打开次数。
+ *
+ * fire-and-forget：不 await、不阻塞首帧；`keepalive` 保证跳转/关闭页面时也能发出。
+ * 服务端是一条主键单行 UPDATE，成本远低于一次 snapshot 读。
+ */
+export function markBoardOpened(boardId: string): void {
+  void fetch(`/api/boards/${encodeURIComponent(boardId)}/opened`, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+  }).catch(() => {
+    /* 统计失败不影响进板 */
   });
 }
 

@@ -5,10 +5,11 @@
  * 存储不可用（隐私模式 / 配额满）时静默降级为空列表，不能让页面白屏。
  */
 
-import { sortBoards } from "./boardList";
+import { BOARDS_CAPACITY, sortBoards } from "./boardList";
 
 const KEY = "wb:recentBoards";
-const MAX = 20;
+/** 与列表容量一致：游客本机也最多 15 条（服务端满 15 时同样会淘汰一块） */
+const MAX = BOARDS_CAPACITY;
 
 export type RecentBoard = { id: string; title: string; lastEditedAt: string; pinned?: boolean };
 
@@ -31,10 +32,28 @@ function readRaw(): RecentBoard[] {
 
 function write(list: RecentBoard[]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
+    localStorage.setItem(KEY, JSON.stringify(trimToCapacity(list)));
   } catch {
     /* 存储不可用时只影响本机列表，不阻断使用 */
   }
+}
+
+/** 超出 15 条时按写入顺序截断，但置顶项不丢：用它们挤掉末尾的非置顶项。 */
+function trimToCapacity(list: RecentBoard[]): RecentBoard[] {
+  if (list.length <= MAX) return list;
+  const kept = list.slice(0, MAX);
+  for (const pinned of list.slice(MAX).filter((item) => item.pinned)) {
+    let victim = -1;
+    for (let i = kept.length - 1; i >= 0; i -= 1) {
+      if (!kept[i]?.pinned) {
+        victim = i;
+        break;
+      }
+    }
+    if (victim < 0) break;
+    kept[victim] = pinned;
+  }
+  return kept;
 }
 
 export function listRecentBoards(): RecentBoard[] {

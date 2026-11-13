@@ -3,12 +3,11 @@
  *
  * 排序契约：置顶优先 → 最近打开倒序 → id 兜底（同一时间戳也不抖序）。
  * 手动模式（用户拖过某一组后）在同一分组内改为按 `rank` 升序，没排过的仍回落到时间。
- * 分页契约：每页 6 张，客户端按页累加。服务端一次最多取 30 条，
- * 排序在服务端已经做过一遍，这里再算一次是为了游客列表与刚置顶后的局部更新
- * 走同一套规则，不依赖服务端返回顺序。
+ * 容量契约：一页最多 15 张（5 列 × 3 行），不做翻页；服务端在创建第 16 块时
+ * 按「打开次数升序、创建时间升序」淘汰一块，列表本身永远不超过 15。
  */
 
-export const BOARDS_PAGE_SIZE = 6;
+export const BOARDS_CAPACITY = 15;
 
 export type SortMode = "auto" | "manual";
 
@@ -54,15 +53,4 @@ export function sortBoards<T extends PinnableBoard>(boards: readonly T[], mode: 
 
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-}
-
-/** 「加载更多」：第 page 页时展示前 page × 6 张。 */
-export function visibleBoards<T>(boards: readonly T[], page: number, pageSize = BOARDS_PAGE_SIZE): T[] {
-  const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
-  return boards.slice(0, safePage * pageSize);
-}
-
-export function hasMoreBoards(total: number, page: number, pageSize = BOARDS_PAGE_SIZE): boolean {
-  const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
-  return safePage * pageSize < total;
 }

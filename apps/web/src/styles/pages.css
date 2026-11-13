@@ -1902,7 +1902,7 @@ body:has(.wb-home) {
   height: 400px;
 }
 
-/* 1440 下内容区 1200（左右 120），三列 × 384 + 24 间距，和设计稿卡片宽度一致 */
+/* 1440 下内容区 1200（左右 120），5 列 × 3 行正好放下 15 张卡 */
 .wb-container--boards {
   max-width: 1440px;
   padding: var(--space-8) clamp(20px, 8.33vw, 120px);
@@ -2127,18 +2127,6 @@ body:has(.wb-home) {
   to {
     opacity: 0;
   }
-}
-
-.wb-boards__more {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--space-6);
-}
-
-.wb-boards__more-count {
-  margin-left: var(--space-2);
-  font-size: var(--text-micro);
-  color: var(--ink-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

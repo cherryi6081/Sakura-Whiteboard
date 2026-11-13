@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBoard } from "./boardsApi";
-import { recordRecentBoard } from "./recentBoards";
+import { listRecentBoards, recordRecentBoard } from "./recentBoards";
 
 /**
  * 「新建一块白板」的共用逻辑：调 `POST /api/boards` → 写入本机最近列表 → 整页跳到
@@ -90,7 +90,11 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(true);
     slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
 
-    const result = await createBoard(undefined, spaceId);
+    // 游客的置顶只存在本机；满 15 块淘汰时把本机置顶的板排除掉（登录用户由服务端忽略该字段）
+    const pinnedIds = listRecentBoards()
+      .filter((item) => item.pinned)
+      .map((item) => item.id);
+    const result = await createBoard(undefined, spaceId, pinnedIds);
 
     if (slowTimer.current !== null) {
       window.clearTimeout(slowTimer.current);
