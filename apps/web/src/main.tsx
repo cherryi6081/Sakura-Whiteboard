@@ -13,6 +13,7 @@ import { TrashPage } from "./boards/TrashPage";
 import { JoinSpacePage } from "./boards/JoinSpacePage";
 import { HomePage } from "./home/HomePage";
 import { SpikeApp } from "./spike/SpikeApp";
+import { ThemeClock } from "./theme/ThemeClock";
 import { purgeExpiredCache } from "./store/cacheDb";
 
 // M2-C5：启动时清掉 7 天未访问的本地缓存，避免 IndexedDB 永久泄漏
@@ -23,20 +24,22 @@ const route = parseBoardRoute(window.location.pathname, window.location.search);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {route.kind === "board" ? (
-      <BoardPage boardId={route.boardId} />
-    ) : route.kind === "auth" ? (
-      <AuthFlow mode={route.mode} next={route.next} />
-    ) : route.kind === "boards" ? (
-      <BoardsPage />
-    ) : route.kind === "trash" ? (
-      <TrashPage />
-    ) : route.kind === "join" ? (
-      <JoinSpacePage token={route.token} />
-    ) : route.kind === "spike" ? (
-      <SpikeApp />
-    ) : (
-      <HomePage />
-    )}
+    <ThemeClock>
+      {route.kind === "board" ? (
+        <BoardPage boardId={route.boardId} />
+      ) : route.kind === "auth" ? (
+        <AuthFlow mode={route.mode} next={route.next} />
+      ) : route.kind === "boards" ? (
+        <BoardsPage />
+      ) : route.kind === "trash" ? (
+        <TrashPage />
+      ) : route.kind === "join" ? (
+        <JoinSpacePage token={route.token} />
+      ) : route.kind === "spike" ? (
+        <SpikeApp />
+      ) : (
+        <HomePage />
+      )}
+    </ThemeClock>
   </StrictMode>,
 );

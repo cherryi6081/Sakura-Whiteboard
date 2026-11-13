@@ -9,7 +9,7 @@ import {
 import { login, register, type MePayload } from "./authApi";
 import { IconAlert, IconBack, IconEye, IconEyeOff } from "../ui/icons";
 import { FujiScene } from "../home/FujiScene";
-import { usePeriod } from "../home/usePeriod";
+import { useThemePeriod } from "../theme/ThemeClock";
 
 /**
  * 登录 / 注册页（M5，开发文档 §8.6.3；视觉方案 §4.4）。
@@ -39,7 +39,7 @@ export function AuthPage({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const period = usePeriod();
+  const period = useThemePeriod();
 
   // 注册时实时评估强度：只在输入非空时计算，避免空态就显示"弱"
   const assessment = mode === "register" && password ? assessPassword(password, { email: email.trim() }) : null;

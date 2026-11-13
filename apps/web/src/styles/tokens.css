@@ -236,6 +236,61 @@
   --shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px var(--rose-600);
   --overlay: rgba(58, 46, 51, 0.36);
 
+  /* ============================================================
+   * 语义表面层：全站主题跟随首页时辰（设计稿 app-theme-design 第 02 章）
+   *
+   * 只给「应用页」用（我的白板 / 回收站 / 编辑页 / 登录 / 注册 / 空间设置 / 加入空间）。
+   * 首页不读这一层：--lake-* 由 --paper 派生，改 --paper 会把湖面高光一起改暗，
+   * 所以上面那批旧 token 保持原值不动，这里另开一层别名。
+   *
+   * day 一律用 var() 指回旧 token，保证白天逐字节不变；只有 night 真正换板。
+   * dawn / dusk 的天空本身仍是浅色，纸面只做 1% 级别的温度偏移。
+   * ============================================================ */
+
+  /* 表面 */
+  --surface-page: var(--bg);
+  --surface-raised: var(--paper);
+  --surface-raised-hover: var(--paper);
+  --surface-sunken: var(--neutral-100);
+  --line-soft: var(--neutral-200);
+  --line-strong: var(--control-border);
+
+  /* 文字 */
+  --ink-strong: var(--text-primary);
+  --ink-muted: var(--text-secondary);
+  --ink-faint: var(--text-weak-readable);
+  --ink-link: var(--text-link);
+  --ink-link-hover: var(--rose-800);
+
+  /* 主色 / 状态 */
+  --accent: var(--rose-600);
+  --accent-hover: var(--rose-700);
+  --accent-active: var(--rose-800);
+  --danger: var(--danger-text);
+  --ok-fg: var(--success-text);
+  --ok-bg: var(--success-bg);
+  --ok-line: var(--success-border);
+  --warn-fg: var(--warning-text);
+  --warn-bg: var(--warning-bg);
+  --warn-line: var(--warning-border);
+  --danger-fg: var(--danger-text);
+  --danger-bg: var(--danger-bg);
+  --danger-line: var(--danger-border);
+
+  /* 浮层 / 骨架 / 缩略图 */
+  --scrim: var(--overlay);
+  --shadow-raised: var(--shadow-2);
+  --focus-ring: var(--shadow-focus);
+  --toast-bg: rgba(58, 46, 51, 0.92);
+  --toast-ink: #ffffff;
+  --skeleton: var(--neutral-200);
+  --thumb-frame: 1px solid var(--line-soft);
+  --thumb-shadow: none;
+
+  /* 主题切换曲线：与首页天空同一条阻尼的 CSS 近似（τ≈0.71s，2.8s 落定） */
+  --theme-dur: 2.8s;
+  --theme-ease: cubic-bezier(0.14, 0.68, 0.38, 1);
+
   /* ---------- 间距（4px 基准） ---------- */
   --space-1: 4px;
   --space-2: 8px;
@@ -258,6 +313,61 @@
   --control-h-lg: 44px;
   --control-h-xl: 48px;
   --topbar-h: 56px;
+}
+
+/* ============================================================
+ * 应用页主题四档：属性写在 <html> 上（src/theme/ThemeClock.tsx），
+ * 这样 toast / 遮罩 / Excalidraw 自己的 DOM 都能继承到。
+ * 必须放在 :root 之外——放进去会变成 :root 的后代选择器，匹配不到 <html> 自己。
+ * ============================================================ */
+
+/* dawn / dusk：天空仍是浅色，只做纸面温度偏移；字色与白天完全一致 */
+:root[data-period="dawn"] {
+  --surface-page: #fbf8f8;
+  --surface-raised-hover: #fdfbfb;
+  --surface-sunken: #f5eff0;
+}
+
+:root[data-period="dusk"] {
+  --surface-page: #fcf7f4;
+  --surface-raised-hover: #fefaf7;
+  --surface-sunken: #f6efec;
+  --line-soft: #f0e6e1;
+}
+
+/* night：唯一真正换板的一档。状态色的描边由 fg/bg 混出，不新增色相 */
+:root[data-theme="night"] {
+  --surface-page: #131a2b;
+  --surface-raised: #1c2438;
+  --surface-raised-hover: #232d45;
+  --surface-sunken: #0e1422;
+  --line-soft: #2b3552;
+  --line-strong: #4e5b84;
+
+  --ink-strong: #eef2fb;
+  --ink-muted: #bfc9de;
+  --ink-faint: #93a0ba;
+  --ink-link: #d39ab1;
+  --ink-link-hover: #e8c3d2;
+
+  --ok-fg: #9fd3bd;
+  --ok-bg: #14231e;
+  --ok-line: color-mix(in srgb, var(--ok-fg) 28%, var(--ok-bg));
+  --warn-fg: #f0cf9a;
+  --warn-bg: #29231a;
+  --warn-line: color-mix(in srgb, var(--warn-fg) 28%, var(--warn-bg));
+  --danger-fg: #f2a4a4;
+  --danger-bg: #2a1a1e;
+  --danger-line: color-mix(in srgb, var(--danger-fg) 28%, var(--danger-bg));
+
+  --scrim: rgba(4, 7, 14, 0.68);
+  --shadow-raised: 0 12px 30px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --focus-ring: 0 0 0 2px #131a2b, 0 0 0 4px #d39ab1;
+  --toast-bg: #2a3654;
+  --toast-ink: #eef2fb;
+  --skeleton: #34415f;
+  --thumb-frame: 1px solid #3a4666;
+  --thumb-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {

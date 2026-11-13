@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchMe, logout, type AuthUser } from "../auth/authApi";
 import { useCreateBoard } from "../boards/useCreateBoard";
 import { FujiScene } from "./FujiScene";
-import { usePeriod } from "./usePeriod";
+import { useThemePeriod } from "../theme/ThemeClock";
 
 /**
  * 导航账号区。`pending` 是 `/api/auth/me` 返回前的唯一状态：
@@ -22,7 +22,7 @@ export function HomePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const accountRef = useRef<HTMLDivElement | null>(null);
   const userButtonRef = useRef<HTMLButtonElement | null>(null);
-  const period = usePeriod();
+  const period = useThemePeriod();
 
   // 会话是 HttpOnly cookie，只能问服务端；判定就是 GET /api/auth/me
   useEffect(() => {

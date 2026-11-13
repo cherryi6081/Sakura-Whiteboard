@@ -45,3 +45,18 @@
   --border-radius-md: var(--radius-md);
   --border-radius-lg: var(--radius-lg);
 }
+
+/*
+ * 白底岛：画布本轮不跟随时辰（专项后续处理）。
+ * 页面根节点在夜间会把 --neutral-800 换成 --ink-muted、把玫瑰水洗底压深，
+ * 画布子树把受影响的变量钉回白天值，避免白底上出现浅字或暗粉块。
+ * 白天这条规则不生效（数值与原 token 相同）。
+ */
+:root[data-theme="night"] .wb-canvas .excalidraw {
+  --color-muted-darker: #4a3b41;
+  --color-primary-light: #f4e3e9;
+  --color-primary-light-darker: #edd2de;
+  --color-surface-high: #f4e3e9;
+  --color-surface-primary-container: #f4e3e9;
+  --select-highlight-color: #edd2de;
+}

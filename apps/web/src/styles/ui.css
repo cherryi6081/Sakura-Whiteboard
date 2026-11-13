@@ -17,8 +17,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text-primary);
+  background: var(--surface-page);
+  color: var(--ink-strong);
   font-family: var(--font-sans);
   font-size: var(--text-body);
   line-height: var(--lh-body);
@@ -27,7 +27,7 @@ body {
 
 :focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- 文字 ---------- */
@@ -38,7 +38,7 @@ body {
   line-height: var(--lh-display);
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-title {
@@ -46,7 +46,7 @@ body {
   font-size: var(--text-title);
   line-height: var(--lh-title);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-subtitle {
@@ -54,21 +54,21 @@ body {
   font-size: var(--text-subtitle);
   line-height: var(--lh-subtitle);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-caption {
   margin: 0;
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-micro {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-mono {
@@ -83,7 +83,7 @@ body {
 }
 
 .wb-link {
-  color: var(--text-link);
+  color: var(--ink-link);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
@@ -96,7 +96,7 @@ body {
 }
 
 .wb-link:hover {
-  color: var(--rose-800);
+  color: var(--ink-link-hover);
 }
 
 /* ---------- 按钮 ---------- */
@@ -110,7 +110,7 @@ body {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-family: inherit;
   font-size: var(--text-body);
   line-height: 20px;
@@ -128,7 +128,7 @@ body {
 }
 
 .wb-btn--primary {
-  background: var(--rose-600);
+  background: var(--accent);
   color: var(--text-on-primary);
 }
 
@@ -142,32 +142,32 @@ body {
 
 .wb-btn--primary:disabled {
   background: var(--neutral-300);
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
 }
 
 .wb-btn--secondary {
-  border-color: var(--control-border);
-  color: var(--text-secondary);
-  background: var(--paper);
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
+  background: var(--surface-raised);
 }
 
 .wb-btn--secondary:hover:not(:disabled) {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
 }
 
 .wb-btn--ghost {
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   padding: 0 var(--space-2);
 }
 
 .wb-btn--ghost:hover:not(:disabled) {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
 }
 
 .wb-btn--danger {
-  background: var(--danger-text);
+  background: var(--danger);
   color: #ffffff;
 }
 
@@ -176,7 +176,7 @@ body {
 }
 
 .wb-btn--danger-text {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-btn--danger-text:hover:not(:disabled) {
@@ -238,17 +238,17 @@ body {
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-input {
   width: 100%;
   height: var(--control-h-lg);
   padding: 0 var(--space-3);
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  background: var(--paper);
-  color: var(--text-primary);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
   font-family: inherit;
   font-size: var(--text-body);
   line-height: var(--lh-body);
@@ -262,17 +262,17 @@ body {
 .wb-input:focus {
   outline: none;
   border-color: var(--rose-500);
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-input[aria-invalid="true"] {
-  border-color: var(--danger-text);
+  border-color: var(--danger-fg);
 }
 
 .wb-help {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-error-text {
@@ -281,13 +281,13 @@ body {
   gap: var(--space-1);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 /* ---------- 卡片 ---------- */
 .wb-card {
-  background: var(--paper);
-  border: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-0);
 }
@@ -307,15 +307,15 @@ body {
 }
 
 .wb-badge--guest {
-  color: var(--text-secondary);
-  background: var(--neutral-100);
-  border: 1px solid var(--neutral-200);
+  color: var(--ink-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-soft);
 }
 
 .wb-badge--readonly {
-  color: var(--warning-text);
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
 }
 
 .wb-badge--role {
@@ -326,9 +326,9 @@ body {
 }
 
 .wb-badge--neutral {
-  color: var(--text-secondary);
-  background: var(--neutral-100);
-  border: 1px solid var(--neutral-200);
+  color: var(--ink-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-soft);
   font-weight: 500;
 }
 
@@ -347,19 +347,19 @@ body {
 .wb-banner--info {
   background: var(--rose-100);
   border-bottom-color: var(--rose-200);
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-banner--warning {
-  background: var(--warning-bg);
-  border-bottom-color: var(--warning-border);
-  color: var(--warning-text);
+  background: var(--warn-bg);
+  border-bottom-color: var(--warn-line);
+  color: var(--warn-fg);
 }
 
 .wb-banner--danger {
   background: var(--danger-bg);
-  border-bottom-color: var(--danger-border);
-  color: var(--danger-text);
+  border-bottom-color: var(--danger-line);
+  color: var(--danger-fg);
 }
 
 .wb-banner__spacer {
@@ -379,15 +379,15 @@ body {
 }
 
 .wb-inline-note--warning {
-  background: var(--warning-bg);
-  border-color: var(--warning-border);
-  color: var(--warning-text);
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-fg);
 }
 
 .wb-inline-note--danger {
   background: var(--danger-bg);
-  border-color: var(--danger-border);
-  color: var(--danger-text);
+  border-color: var(--danger-line);
+  color: var(--danger-fg);
 }
 
 .wb-inline-note--info {
@@ -404,7 +404,7 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 2px solid var(--paper);
+  border: 2px solid var(--surface-raised);
   color: #ffffff;
   font-size: var(--text-micro);
   font-weight: 600;
@@ -422,14 +422,14 @@ body {
 }
 
 .wb-avatar--more {
-  background: var(--neutral-100);
-  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
 }
 
 /* ---------- 骨架 ---------- */
 .wb-skeleton {
-  /* neutral-200 在纸面上能看出形状（neutral-100 几乎与白同色，骨架会“消失”） */
-  background: var(--neutral-200);
+  /* 白天 #efe4e8 在纸面上能看出形状（--neutral-100 几乎与白同色，骨架会“消失”） */
+  background: var(--skeleton);
   border-radius: var(--radius-sm);
   animation: wb-pulse 1.4s ease-in-out infinite;
 }
@@ -452,7 +452,7 @@ body {
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: var(--overlay);
+  background: var(--scrim);
   animation: wb-fade var(--dur-base) var(--ease-standard);
 }
 
@@ -465,7 +465,7 @@ body {
   max-height: 90vh;
   overflow: auto;
   padding: var(--space-6);
-  background: var(--paper);
+  background: var(--surface-raised);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-3);
   animation: wb-pop var(--dur-base) var(--ease-standard);
@@ -514,11 +514,11 @@ body {
   min-height: 40px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-lg);
-  background: rgba(58, 46, 51, 0.92);
-  color: #ffffff;
+  background: var(--toast-bg);
+  color: var(--toast-ink);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-raised);
   animation: wb-toast-in var(--dur-base) var(--ease-standard);
 }
 
@@ -554,7 +554,7 @@ body {
   align-items: flex-start;
   gap: var(--space-3);
   padding: var(--space-8);
-  border: 1px solid var(--danger-border);
+  border: 1px solid var(--danger-line);
   border-radius: var(--radius-lg);
   background: var(--danger-bg);
 }
@@ -569,4 +569,67 @@ body {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* ============================================================
+ * 夜间：少数写死白天配色的基础件（设计稿第 02 章没单列取值，
+ * 只做「在深底上不刺眼/不消失」的最低修正，不改变白天任何像素）
+ * ============================================================ */
+:root[data-theme="night"] .wb-btn--primary:disabled {
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+}
+
+:root[data-theme="night"] .wb-badge--role {
+  color: var(--ink-link);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--surface-raised));
+}
+
+:root[data-theme="night"] .wb-empty__icon {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised));
+  color: var(--ink-link);
+}
+
+:root[data-theme="night"] .wb-banner--info,
+:root[data-theme="night"] .wb-boards__banner {
+  background: var(--surface-raised);
+  border-color: var(--line-soft);
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-inline-note--info {
+  background: var(--surface-raised);
+  border-color: var(--line-soft);
+  color: var(--ink-muted);
+}
+
+:root[data-theme="night"] .wb-spinner--dark {
+  border-color: rgba(238, 242, 251, 0.22);
+  border-top-color: var(--ink-link);
+}
+
+/* ============================================================
+ * 主题切换过渡：只在 ThemeClock 开的 3s 窗口内生效。
+ * 曲线与首页天空的 1 − exp(−Δ×1.4) 阻尼对齐（cubic-bezier + 2.8s，最大偏差≈4.4%）。
+ * 平时不加 transition，避免把 120–200ms 的 hover/焦点微动效一起拖慢。
+ * 首页（.wb-home）不在此列：它的天空由 skyClock 逐帧写内联变量，保持原样。
+ * ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-shift] .wb-page,
+  :root[data-theme-shift] .wb-page *,
+  :root[data-theme-shift] .wb-board,
+  :root[data-theme-shift] .wb-board *,
+  :root[data-theme-shift] .wb-join,
+  :root[data-theme-shift] .wb-join *,
+  :root[data-theme-shift] .wb-auth,
+  :root[data-theme-shift] .wb-auth * {
+    transition:
+      background-color var(--theme-dur) var(--theme-ease),
+      border-color var(--theme-dur) var(--theme-ease),
+      color var(--theme-dur) var(--theme-ease),
+      box-shadow var(--theme-dur) var(--theme-ease),
+      fill var(--theme-dur) var(--theme-ease),
+      stroke var(--theme-dur) var(--theme-ease);
+  }
 }

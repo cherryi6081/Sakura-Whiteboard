@@ -5,7 +5,7 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: var(--surface-page);
 }
 
 .wb-topbar {
@@ -1809,7 +1809,7 @@ body:has(.wb-home) {
   border: 1px solid var(--rose-200);
   border-radius: var(--radius-md);
   background: var(--rose-100);
-  color: var(--text-primary);
+  color: var(--ink-strong);
   border-bottom: 1px solid var(--rose-200);
 }
 
@@ -1819,14 +1819,14 @@ body:has(.wb-home) {
 .wb-page--boards {
   position: relative;
   isolation: isolate;
-  background-color: var(--bg);
+  background-color: var(--surface-page);
   background-image: linear-gradient(
     180deg,
     var(--sky-zenith) 0,
     var(--sky-high) 96px,
     var(--sky-mid) 232px,
     var(--sky-rose) 340px,
-    var(--bg) 420px
+    var(--surface-page) 420px
   );
   background-repeat: no-repeat;
   background-size: 100% 420px;
@@ -1835,6 +1835,32 @@ body:has(.wb-home) {
 .wb-page--boards > * {
   position: relative;
   z-index: 1;
+}
+
+/* 夜间天空带：渐变无法插值，单独铺一层盖在上面做透明度过渡。
+   颜色取自 tokens.css 的 night 四档（--sky-zenith #2c3550 / --sky-high #363f5c /
+   --sky-mid #414a68 / --surface-page #131a2b），这里写定值是为了避免
+   html[data-period] 换档时这一层自己瞬跳——它必须由 opacity 单独驱动。
+   高度盖满 420px 的白天渐变，夜间天空带按设计稿收在 300px。 */
+.wb-page--boards::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 420px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(180deg, #2c3550 0, #363f5c 72px, #414a68 174px, #131a2b 300px);
+  opacity: 0;
+}
+
+:root[data-theme="night"] .wb-page--boards::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wb-page--boards::before {
+    transition: opacity var(--theme-dur) var(--theme-ease);
+  }
 }
 
 /* 顶栏里的空间切换器下拉是普通绝对定位，z-index 只在顶栏自己的层叠上下文里生效。
@@ -1899,11 +1925,11 @@ body:has(.wb-home) {
 }
 
 .wb-board-card:hover {
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-raised);
 }
 
 .wb-board-card:hover .wb-board-card__title {
-  color: var(--text-link);
+  color: var(--ink-link);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1923,7 +1949,7 @@ body:has(.wb-home) {
   width: 100%;
   aspect-ratio: 16 / 10;
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--surface-page);
   overflow: hidden;
 }
 
@@ -1954,7 +1980,7 @@ body:has(.wb-home) {
   padding: 0 var(--space-2) 0 6px;
   border: 1px solid var(--rose-200);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 92%, var(--rose-100));
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--rose-100));
   box-shadow: var(--shadow-1);
   color: var(--rose-700);
   font-size: var(--text-micro);
@@ -1969,7 +1995,7 @@ body:has(.wb-home) {
   font-size: var(--text-body);
   line-height: 22px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1994,7 +2020,7 @@ body:has(.wb-home) {
 .wb-board-card__time {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   white-space: nowrap;
 }
 
@@ -2008,7 +2034,7 @@ body:has(.wb-home) {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
   cursor: pointer;
   transition:
     color var(--dur-fast) var(--ease-standard),
@@ -2035,7 +2061,7 @@ body:has(.wb-home) {
 }
 
 .wb-board-card--skeleton .wb-board-card__thumb {
-  background: var(--neutral-200);
+  background: var(--line-soft);
 }
 
 .wb-board-card__sk-title {
@@ -2101,7 +2127,7 @@ body:has(.wb-home) {
 .wb-boards__more-count {
   margin-left: var(--space-2);
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2166,18 +2192,18 @@ body:has(.wb-home) {
 }
 
 .wb-trash__nav:hover {
-  background: color-mix(in srgb, var(--paper) 62%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
 }
 
 .wb-trash__nav.is-active {
   border-color: var(--rose-200);
-  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
   color: var(--rose-800);
   font-weight: 500;
 }
 
 .wb-trash__nav:focus-visible {
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-trash__badge {
@@ -2187,8 +2213,8 @@ body:has(.wb-home) {
   height: 18px;
   padding: 0 5px;
   border-radius: var(--radius-pill);
-  background: var(--rose-600);
-  color: var(--paper);
+  background: var(--accent);
+  color: #ffffff;
   font-size: var(--text-footer);
   line-height: 1;
   font-weight: 600;
@@ -2197,7 +2223,7 @@ body:has(.wb-home) {
 
 .wb-trash__sub {
   margin: 6px 0 0;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
 }
@@ -2209,10 +2235,10 @@ body:has(.wb-home) {
   height: 40px;
   margin-top: 14px;
   padding: 0 14px;
-  border: 1px solid var(--warning-border);
+  border: 1px solid var(--warn-line);
   border-radius: var(--radius-md);
-  background: var(--warning-bg);
-  color: var(--warning-text);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
 }
@@ -2231,7 +2257,7 @@ body:has(.wb-home) {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--warning-text);
+  color: var(--warn-fg);
   font-family: inherit;
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
@@ -2258,9 +2284,9 @@ body:has(.wb-home) {
   gap: 6px;
   height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
   color: var(--neutral-800);
   font-family: inherit;
   font-size: var(--text-caption);
@@ -2274,7 +2300,7 @@ body:has(.wb-home) {
 
 .wb-trash__chip:hover {
   border-color: var(--rose-200);
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 .wb-trash__chip.is-on {
@@ -2285,7 +2311,7 @@ body:has(.wb-home) {
 }
 
 .wb-trash__chip-count {
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   font-variant-numeric: tabular-nums;
@@ -2297,9 +2323,9 @@ body:has(.wb-home) {
 
 .wb-trash__list {
   margin-top: 14px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-1);
   overflow: hidden;
   transition: opacity var(--dur-base) var(--ease-standard);
@@ -2321,9 +2347,9 @@ body:has(.wb-home) {
 
 .wb-trash__head {
   height: 40px;
-  border-bottom: 1px solid var(--neutral-200);
-  background: var(--neutral-100);
-  color: var(--neutral-700);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   font-weight: 500;
@@ -2337,7 +2363,7 @@ body:has(.wb-home) {
   min-height: 72px;
   padding-top: 12px;
   padding-bottom: 12px;
-  border-top: 1px solid var(--neutral-100);
+  border-top: 1px solid var(--surface-sunken);
   transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
@@ -2346,7 +2372,7 @@ body:has(.wb-home) {
 }
 
 .wb-trash__row:hover {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-trash__tile {
@@ -2354,7 +2380,7 @@ body:has(.wb-home) {
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   background-color: var(--rose-50);
   background-image: repeating-linear-gradient(
@@ -2375,7 +2401,7 @@ body:has(.wb-home) {
 .wb-trash__title {
   min-width: 0;
   overflow: hidden;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-size: var(--text-body);
   line-height: var(--lh-body);
   font-weight: 500;
@@ -2388,13 +2414,13 @@ body:has(.wb-home) {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
 }
 
 .wb-trash__time {
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   font-variant-numeric: tabular-nums;
@@ -2414,8 +2440,8 @@ body:has(.wb-home) {
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: var(--neutral-100);
-  color: var(--neutral-700);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   font-variant-numeric: tabular-nums;
@@ -2423,15 +2449,15 @@ body:has(.wb-home) {
 }
 
 .wb-trash__pill.is-warn {
-  border-color: var(--warning-border);
-  background: var(--warning-bg);
-  color: var(--warning-text);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 
 .wb-trash__pill.is-danger {
-  border-color: var(--danger-border);
+  border-color: var(--danger-line);
   background: var(--danger-bg);
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-trash__acts {
@@ -2465,7 +2491,7 @@ body:has(.wb-home) {
 
 .wb-trash__act:first-child {
   border-color: var(--rose-200);
-  background: var(--paper);
+  background: var(--surface-raised);
   color: var(--rose-700);
 }
 
@@ -2474,7 +2500,7 @@ body:has(.wb-home) {
 }
 
 .wb-trash__act--danger {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-trash__act--danger:hover:not(:disabled) {
@@ -2523,7 +2549,7 @@ body:has(.wb-home) {
   justify-content: space-between;
   gap: 16px;
   margin-top: 20px;
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
 }
@@ -2567,9 +2593,9 @@ body:has(.wb-home) {
 
 /* 危险描边按钮：只在回收站使用，不扩散到全局按钮体系 */
 .wb-btn--danger-outline {
-  border-color: var(--danger-border);
-  background: var(--paper);
-  color: var(--danger-text);
+  border-color: var(--danger-line);
+  background: var(--surface-raised);
+  color: var(--danger-fg);
 }
 
 .wb-btn--danger-outline:hover:not(:disabled) {
@@ -2613,7 +2639,7 @@ body:has(.wb-home) {
 }
 
 .wb-trash__toast.is-error {
-  background: var(--danger-text);
+  background: var(--danger);
 }
 
 .wb-spinner--sm {
@@ -2632,7 +2658,7 @@ body:has(.wb-home) {
 
 .wb-dialog__title {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-size: var(--text-title);
   line-height: var(--lh-title);
   font-weight: 600;
@@ -2640,7 +2666,7 @@ body:has(.wb-home) {
 
 .wb-dialog__desc {
   margin: 0;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-body);
   line-height: var(--lh-body);
 }
@@ -2654,7 +2680,7 @@ body:has(.wb-home) {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   cursor: pointer;
@@ -2664,7 +2690,7 @@ body:has(.wb-home) {
   width: 18px;
   height: 18px;
   margin: 1px 0 0;
-  accent-color: var(--rose-600);
+  accent-color: var(--accent);
   flex: none;
 }
 
@@ -2676,7 +2702,7 @@ body:has(.wb-home) {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: var(--overlay);
+  background: var(--scrim);
   animation: wb-fade var(--dur-base) var(--ease-standard);
 }
 
@@ -2688,7 +2714,7 @@ body:has(.wb-home) {
   max-width: 520px;
   padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
   animation: wb-sheet-up var(--dur-base) var(--ease-standard);
 }
@@ -2704,7 +2730,7 @@ body:has(.wb-home) {
 .wb-sheet__title {
   margin: 0 0 8px;
   overflow: hidden;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   text-align: center;
@@ -2722,7 +2748,7 @@ body:has(.wb-home) {
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-family: inherit;
   font-size: var(--text-body);
   line-height: var(--lh-body);
@@ -2731,11 +2757,11 @@ body:has(.wb-home) {
 }
 
 .wb-sheet__item:hover {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-sheet__item--danger {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-sheet__item--danger:hover {
@@ -2745,8 +2771,8 @@ body:has(.wb-home) {
 .wb-sheet__item--cancel {
   justify-content: center;
   margin-top: 4px;
-  background: var(--neutral-100);
-  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
 }
 
 @keyframes wb-sheet-up {
@@ -2804,7 +2830,7 @@ body:has(.wb-home) {
     height: 6px;
     padding: 0;
     font-size: 0;
-    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--paper) 90%, transparent);
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--surface-raised) 90%, transparent);
   }
 
   .wb-container--boards.wb-trash {
@@ -2881,7 +2907,7 @@ body:has(.wb-home) {
     gap: 10px;
     min-height: 68px;
     padding: 10px 12px;
-    border-top: 1px solid var(--neutral-100);
+    border-top: 1px solid var(--surface-sunken);
   }
 
   .wb-trash__row:first-child {
@@ -2905,7 +2931,7 @@ body:has(.wb-home) {
     align-items: center;
     gap: 4px;
     overflow: hidden;
-    color: var(--neutral-700);
+    color: var(--ink-muted);
     font-size: var(--text-footer);
     line-height: var(--lh-footer);
     white-space: nowrap;
@@ -2921,12 +2947,12 @@ body:has(.wb-home) {
   }
 
   .wb-trash__meta-pill.is-warn {
-    color: var(--warning-text);
+    color: var(--warn-fg);
     font-weight: 500;
   }
 
   .wb-trash__meta-pill.is-danger {
-    color: var(--danger-text);
+    color: var(--danger-fg);
     font-weight: 500;
   }
 
@@ -2952,14 +2978,14 @@ body:has(.wb-home) {
     padding: 0;
     border: 1px solid var(--rose-200);
     border-radius: 8px;
-    background: var(--paper);
+    background: var(--surface-raised);
     color: var(--rose-700);
     cursor: pointer;
   }
 
   .wb-trash__icon-btn:last-child {
     border-color: transparent;
-    color: var(--neutral-700);
+    color: var(--ink-muted);
   }
 
   .wb-trash__icon-btn:disabled {
@@ -3015,7 +3041,7 @@ body:has(.wb-home) {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--bg);
+  background: var(--surface-page);
 }
 
 .wb-board__topbar {
@@ -3025,8 +3051,8 @@ body:has(.wb-home) {
   height: var(--topbar-h);
   padding: 0 var(--space-4);
   flex: none;
-  background: var(--paper);
-  border-bottom: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .wb-board__back {
@@ -3038,13 +3064,13 @@ body:has(.wb-home) {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   text-decoration: none;
 }
 
 .wb-board__back:hover {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
 }
 
 .wb-board__name {
@@ -3052,7 +3078,7 @@ body:has(.wb-home) {
   font-size: var(--text-body);
   line-height: var(--lh-body);
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3061,7 +3087,7 @@ body:has(.wb-home) {
 .wb-board__name-sub {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-board__spacer {
@@ -3074,7 +3100,7 @@ body:has(.wb-home) {
   gap: var(--space-1);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-board__dot {
@@ -3120,13 +3146,13 @@ body:has(.wb-home) {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--warning-border);
+  border: 1px solid var(--warn-line);
   border-radius: var(--radius-pill);
-  background: var(--warning-bg);
-  color: var(--warning-text);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-raised);
 }
 
 .wb-board__dropzone {
@@ -3166,16 +3192,16 @@ body:has(.wb-home) {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--paper);
-  border: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-raised);
 }
 
 .wb-upload-item[data-state="error"] {
   background: var(--danger-bg);
-  border-color: var(--danger-border);
-  color: var(--danger-text);
+  border-color: var(--danger-line);
+  color: var(--danger-fg);
 }
 
 .wb-upload-item__body {
@@ -3189,13 +3215,13 @@ body:has(.wb-home) {
   text-overflow: ellipsis;
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-upload-item__meta {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-upload-item[data-state="error"] .wb-upload-item__name,
@@ -3210,11 +3236,11 @@ body:has(.wb-home) {
   height: 24px;
   padding: 0 var(--space-4);
   flex: none;
-  background: var(--bg);
-  border-top: 1px solid var(--neutral-200);
+  background: var(--surface-page);
+  border-top: 1px solid var(--line-soft);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-board__statusbar-right {
@@ -3234,11 +3260,11 @@ body:has(.wb-home) {
 .wb-board__debug-item {
   font-size: 11px;
   line-height: 16px;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   border: 1px dashed var(--neutral-300);
   border-radius: var(--radius-sm);
   padding: 1px 6px;
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 /* ============ 分享抽屉 ============ */
@@ -3246,7 +3272,7 @@ body:has(.wb-home) {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: var(--overlay);
+  background: var(--scrim);
   animation: wb-fade var(--dur-base) var(--ease-standard);
 }
 
@@ -3263,7 +3289,7 @@ body:has(.wb-home) {
   max-width: 100%;
   padding: var(--space-6);
   overflow: auto;
-  background: var(--paper);
+  background: var(--surface-raised);
   border-radius: var(--radius-xl) 0 0 var(--radius-xl);
   box-shadow: var(--shadow-3);
   animation: wb-slide-in var(--dur-base) var(--ease-standard);
@@ -3289,15 +3315,15 @@ body:has(.wb-home) {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
 }
 
 .wb-drawer__close:hover {
-  background: var(--neutral-100);
-  color: var(--text-primary);
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
 }
 
 .wb-segmented {
@@ -3305,16 +3331,16 @@ body:has(.wb-home) {
   grid-template-columns: 1fr 1fr;
   height: 32px;
   padding: 2px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 .wb-segmented__item {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font: inherit;
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
@@ -3331,10 +3357,10 @@ body:has(.wb-home) {
   width: 100%;
   height: var(--control-h);
   padding: 0 var(--space-3);
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  background: var(--paper);
-  color: var(--text-primary);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
   font: inherit;
   font-size: var(--text-body);
 }
@@ -3345,9 +3371,9 @@ body:has(.wb-home) {
   gap: var(--space-2);
   height: var(--control-h);
   padding: 0 var(--space-1) 0 var(--space-3);
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 .wb-linkbox__value {
@@ -3355,7 +3381,7 @@ body:has(.wb-home) {
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
-  color: var(--text-primary);
+  color: var(--ink-strong);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3368,7 +3394,7 @@ body:has(.wb-home) {
   gap: var(--space-2);
   min-height: 48px;
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--neutral-200);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .wb-share-row:last-child {
@@ -3386,7 +3412,7 @@ body:has(.wb-home) {
 .wb-share-row__time {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-share-row--revoked .wb-share-row__time {
@@ -3878,7 +3904,7 @@ body:has(.wb-home) {
   list-style: none;
   max-height: 240px;
   overflow: auto;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
 }
 
@@ -3892,17 +3918,17 @@ body:has(.wb-home) {
 }
 
 .wb-claim-item + .wb-claim-item {
-  border-top: 1px solid var(--neutral-200);
+  border-top: 1px solid var(--line-soft);
 }
 
 .wb-claim-item:hover {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-claim-item input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: var(--rose-600);
+  accent-color: var(--accent);
   flex: none;
 }
 
@@ -3920,7 +3946,7 @@ body:has(.wb-home) {
 .wb-claim-item__time {
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 /* ============ 响应式 ============ */
@@ -4137,9 +4163,9 @@ body:has(.wb-home) {
 .wb-board-menu {
   width: 232px;
   padding: 6px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -4154,7 +4180,7 @@ body:has(.wb-home) {
   gap: var(--space-2);
   height: 36px;
   padding: 0 10px;
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 .wb-board-menu__title {
@@ -4164,7 +4190,7 @@ body:has(.wb-home) {
   white-space: nowrap;
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-board-menu__role {
@@ -4194,7 +4220,7 @@ body:has(.wb-home) {
   width: 100%;
   border: 0;
   background: none;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -4210,7 +4236,7 @@ body:has(.wb-home) {
 
 .wb-board-menu__item .wb-icon {
   flex: none;
-  color: var(--neutral-600);
+  color: var(--ink-faint);
 }
 
 .wb-board-menu__label {
@@ -4226,7 +4252,7 @@ body:has(.wb-home) {
   gap: 2px;
   margin-left: auto;
   flex: none;
-  color: var(--neutral-600);
+  color: var(--ink-faint);
   font-family: var(--font-mono);
   font-size: var(--text-footer);
   line-height: var(--lh-footer);
@@ -4239,7 +4265,7 @@ body:has(.wb-home) {
 @media (hover: hover) {
   .wb-board-menu__item:not(.is-disabled):hover,
   .wb-board-menu__item:not(.is-disabled):focus-visible {
-    background: var(--neutral-100);
+    background: var(--surface-sunken);
   }
 
   .wb-board-menu__item:not(.is-disabled):hover .wb-icon,
@@ -4250,11 +4276,11 @@ body:has(.wb-home) {
 
 .wb-board-menu__item:not(.is-disabled):focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--rose-600);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .wb-board-menu__item:not(.is-disabled):active {
-  background: var(--neutral-200);
+  background: var(--line-soft);
 }
 
 .wb-board-menu__item.is-disabled {
@@ -4271,11 +4297,11 @@ body:has(.wb-home) {
 }
 
 .wb-board-menu__item--danger {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-board-menu__item--danger .wb-icon {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 @media (hover: hover) {
@@ -4286,18 +4312,18 @@ body:has(.wb-home) {
 
   .wb-board-menu__item--danger:not(.is-disabled):hover .wb-icon,
   .wb-board-menu__item--danger:not(.is-disabled):focus-visible .wb-icon {
-    color: var(--danger-text);
+    color: var(--danger-fg);
   }
 }
 
 .wb-board-menu__item--danger:not(.is-disabled):focus-visible {
-  box-shadow: inset 0 0 0 2px var(--danger-text);
+  box-shadow: inset 0 0 0 2px var(--danger-fg);
 }
 
 .wb-board-menu__sep {
   height: 1px;
   margin: 4px 6px;
-  background: var(--neutral-200);
+  background: var(--line-soft);
 }
 
 .wb-board-menu__sep--danger {
@@ -4324,7 +4350,7 @@ body:has(.wb-home) {
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
-  color: var(--neutral-600);
+  color: var(--ink-faint);
   cursor: pointer;
 }
 
@@ -4336,19 +4362,19 @@ body:has(.wb-home) {
 
 @media (hover: hover) {
   .wb-board-card__more:hover {
-    background: var(--neutral-100);
-    color: var(--neutral-900);
+    background: var(--surface-sunken);
+    color: var(--ink-strong);
   }
 }
 
 .wb-board-card__more:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-board-card__more[aria-expanded="true"] {
-  background: var(--neutral-200);
-  color: var(--neutral-900);
+  background: var(--line-soft);
+  color: var(--ink-strong);
 }
 
 /* 重命名弹窗 */
@@ -4357,7 +4383,7 @@ body:has(.wb-home) {
   max-width: calc(100vw - 32px);
   padding: var(--space-6);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
 }
 
@@ -4374,7 +4400,7 @@ body:has(.wb-home) {
 
 .wb-rename__error {
   margin: var(--space-2) 0 0;
-  color: var(--danger-text);
+  color: var(--danger-fg);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
 }
@@ -4427,15 +4453,15 @@ body:has(.wb-home) {
 
 .wb-board-sheet .wb-sheet__item .wb-icon {
   flex: none;
-  color: var(--neutral-600);
+  color: var(--ink-faint);
 }
 
 .wb-board-sheet .wb-sheet__item--danger {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-board-sheet .wb-sheet__item--danger .wb-icon {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 .wb-board-sheet .wb-sheet__item.is-disabled {
@@ -4449,7 +4475,7 @@ body:has(.wb-home) {
 
 .wb-board-sheet .wb-sheet__item:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--rose-600);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .wb-board-sheet__group > .wb-board-menu__sep {
@@ -4523,7 +4549,7 @@ body:has(.wb-home) {
 
 .wb-checkhit:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-check {
@@ -4531,24 +4557,24 @@ body:has(.wb-home) {
   place-items: center;
   width: 18px;
   height: 18px;
-  border: 1.5px solid var(--control-border);
+  border: 1.5px solid var(--line-strong);
   border-radius: 4px;
-  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 96%, transparent);
   box-shadow: var(--shadow-1);
-  color: var(--paper);
+  color: #ffffff;
   transition:
     background var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
 }
 
 .wb-checkhit:hover .wb-check {
-  border-color: var(--rose-600);
+  border-color: var(--accent);
 }
 
 .wb-check.is-checked,
 .wb-check.is-mixed {
-  border-color: var(--rose-600);
-  background: var(--rose-600);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 .wb-check.is-mixed::after {
@@ -4556,7 +4582,7 @@ body:has(.wb-home) {
   width: 10px;
   height: 2px;
   border-radius: 1px;
-  background: var(--paper);
+  background: var(--surface-raised);
 }
 
 /* 卡片右上角：悬停 / 聚焦时露出；选择态常驻 */
@@ -4590,8 +4616,8 @@ body:has(.wb-home) {
 /* 选中环：不改变盒尺寸，hover 也保持 */
 .wb-board-card.is-selected,
 .wb-board-card.is-selected:hover {
-  border-color: var(--rose-600);
-  box-shadow: 0 0 0 2px var(--rose-600);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .wb-board-card.is-selecting {
@@ -4616,7 +4642,7 @@ body:has(.wb-home) {
 }
 
 .wb-selection-bar__ctx {
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   white-space: nowrap;
 }
@@ -4624,7 +4650,7 @@ body:has(.wb-home) {
 .wb-selection-bar__div {
   width: 1px;
   height: 20px;
-  background: var(--neutral-200);
+  background: var(--line-soft);
   flex: none;
 }
 
@@ -4635,7 +4661,7 @@ body:has(.wb-home) {
 }
 
 .wb-selection-bar__count b {
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-weight: 600;
 }
 
@@ -4643,7 +4669,7 @@ body:has(.wb-home) {
   height: 22px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
   color: var(--neutral-800);
   font-size: var(--text-micro);
   line-height: 22px;
@@ -4671,12 +4697,12 @@ body:has(.wb-home) {
 
 .wb-selection-bar__link:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
   border-radius: var(--radius-sm);
 }
 
 .wb-selection-bar__hint {
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   white-space: nowrap;
 }
@@ -4694,10 +4720,10 @@ body:has(.wb-home) {
   gap: 6px;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--text-primary);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
   font: inherit;
   font-size: var(--text-caption);
   cursor: pointer;
@@ -4705,23 +4731,23 @@ body:has(.wb-home) {
 }
 
 .wb-selbtn:hover:not(:disabled) {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-selbtn:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-selbtn:disabled {
-  background: var(--paper);
+  background: var(--surface-raised);
   color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .wb-selbtn--danger {
-  border-color: color-mix(in srgb, var(--danger-text) 35%, var(--neutral-200));
-  color: var(--danger-text);
+  border-color: color-mix(in srgb, var(--danger-fg) 35%, var(--line-soft));
+  color: var(--danger-fg);
 }
 
 .wb-selbtn--danger:hover:not(:disabled) {
@@ -4729,7 +4755,7 @@ body:has(.wb-home) {
 }
 
 .wb-selbtn--danger:disabled {
-  border-color: var(--neutral-200);
+  border-color: var(--line-soft);
   color: var(--text-disabled);
 }
 
@@ -4807,9 +4833,9 @@ body:has(.wb-home) {
     gap: var(--space-2);
     height: calc(64px + env(safe-area-inset-bottom));
     padding: 0 var(--space-4) env(safe-area-inset-bottom);
-    border-top: 1px solid var(--neutral-200);
-    background: var(--paper);
-    box-shadow: var(--shadow-2);
+    border-top: 1px solid var(--line-soft);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
   }
 
   .wb-selection-mobile .wb-checkhit {
@@ -4831,7 +4857,7 @@ body:has(.wb-home) {
   }
 
   .wb-selection-mobile__count b {
-    color: var(--text-primary);
+    color: var(--ink-strong);
     font-weight: 600;
   }
 
@@ -4895,7 +4921,7 @@ body:has(.wb-home) {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -4906,8 +4932,8 @@ body:has(.wb-home) {
   gap: var(--space-3);
   min-height: 40px;
   padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--neutral-200);
-  color: var(--text-primary);
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-strong);
   font-size: var(--text-caption);
 }
 
@@ -4916,8 +4942,8 @@ body:has(.wb-home) {
 }
 
 .wb-batch-dialog__list li.is-skipped {
-  background: var(--neutral-100);
-  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
 }
 
 .wb-batch-dialog__name {
@@ -4932,13 +4958,13 @@ body:has(.wb-home) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   white-space: nowrap;
 }
 
 .wb-batch-dialog__more {
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-batch-dialog__note {
@@ -4946,7 +4972,7 @@ body:has(.wb-home) {
   align-items: flex-start;
   gap: 6px;
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: 1.6;
 }
@@ -4984,10 +5010,10 @@ body.wb-sorting {
   gap: 6px;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--paper);
-  color: var(--text-secondary);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: 1;
   white-space: nowrap;
@@ -5005,7 +5031,7 @@ button.wb-sortchip {
 }
 
 .wb-sortchip__hint {
-  color: var(--text-link);
+  color: var(--ink-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -5016,7 +5042,7 @@ button.wb-sortchip {
 }
 
 .wb-sortchip--manual .wb-sortchip__dot {
-  background: var(--rose-600);
+  background: var(--accent);
 }
 
 button.wb-sortchip:hover {
@@ -5033,24 +5059,24 @@ button.wb-sortchip:hover {
   margin-top: calc(var(--space-2) * -1);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--neutral-300);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: 1.4;
 }
 
 .wb-boards__group-title > span:first-child {
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-weight: 600;
 }
 
 .wb-boards__group-count {
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
 
 .wb-boards__group-note {
   margin-left: auto;
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
 }
 
 /* ---------- 抓手：悬停 / 键盘聚焦才显形，命中区 40×22 ---------- */
@@ -5064,10 +5090,10 @@ button.wb-sortchip:hover {
   width: 40px;
   height: 22px;
   padding: 0;
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--paper);
-  color: var(--neutral-600);
+  background: var(--surface-raised);
+  color: var(--ink-faint);
   opacity: 0;
   cursor: grab;
   transform: translateX(-50%);
@@ -5085,7 +5111,7 @@ button.wb-sortchip:hover {
 .wb-board-card__handle:focus-visible {
   opacity: 1;
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-board-card__grip {
@@ -5134,7 +5160,7 @@ button.wb-sortchip:hover {
   margin: 0 0 2px;
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   letter-spacing: 0.02em;
 }
 
@@ -5152,8 +5178,8 @@ button.wb-sortchip:hover {
   padding: 0 8px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--neutral-300);
-  background: var(--neutral-100);
-  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
   font-size: var(--text-micro);
   line-height: 1;
   white-space: nowrap;
@@ -5173,13 +5199,13 @@ button.wb-sortchip:hover {
 
 .wb-boards__readonly {
   font-size: var(--text-caption);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-badge--member {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
   border-color: var(--neutral-300);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 /* ---------- 空间切换器：顶栏胶囊 + 下拉 ---------- */
@@ -5197,7 +5223,7 @@ button.wb-sortchip:hover {
   padding: 4px 10px;
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-pill);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-1);
   cursor: pointer;
   text-align: left;
@@ -5210,7 +5236,7 @@ button.wb-sortchip:hover {
 
 .wb-space-pill:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-space-pill__text {
@@ -5223,7 +5249,7 @@ button.wb-sortchip:hover {
 .wb-space-pill__name {
   font-size: var(--text-caption);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5231,7 +5257,7 @@ button.wb-sortchip:hover {
 
 .wb-space-pill__meta {
   font-size: var(--text-footer);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5241,8 +5267,8 @@ button.wb-sortchip:hover {
   width: 6px;
   height: 6px;
   margin-left: 2px;
-  border-right: 1.5px solid var(--text-secondary);
-  border-bottom: 1.5px solid var(--text-secondary);
+  border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted);
   transform: rotate(45deg) translateY(-1px);
   flex: none;
 }
@@ -5273,9 +5299,9 @@ button.wb-sortchip:hover {
   z-index: 60;
   width: 360px;
   padding: var(--space-2);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
 }
 
@@ -5295,7 +5321,7 @@ button.wb-sortchip:hover {
   justify-content: space-between;
   padding: 6px 8px;
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-space-menu__new {
@@ -5306,7 +5332,7 @@ button.wb-sortchip:hover {
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   background: transparent;
-  color: var(--text-link);
+  color: var(--ink-link);
   font-size: var(--text-micro);
   cursor: pointer;
 }
@@ -5330,12 +5356,12 @@ button.wb-sortchip:hover {
 }
 
 .wb-space-menu__item:hover {
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-space-menu__item:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-space-menu__item.is-active {
@@ -5351,7 +5377,7 @@ button.wb-sortchip:hover {
 
 .wb-space-menu__title {
   font-size: var(--text-body);
-  color: var(--text-primary);
+  color: var(--ink-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5359,7 +5385,7 @@ button.wb-sortchip:hover {
 
 .wb-space-menu__meta {
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-space-menu__empty {
@@ -5368,7 +5394,7 @@ button.wb-sortchip:hover {
   border: 1px dashed var(--neutral-300);
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   font-size: var(--text-caption);
   cursor: pointer;
 }
@@ -5376,7 +5402,7 @@ button.wb-sortchip:hover {
 .wb-space-menu__sep {
   height: 1px;
   margin: var(--space-2) 0;
-  background: var(--neutral-200);
+  background: var(--line-soft);
 }
 
 .wb-space-menu__foot {
@@ -5390,14 +5416,14 @@ button.wb-sortchip:hover {
   border: 0;
   background: transparent;
   padding: 4px 0;
-  color: var(--text-link);
+  color: var(--ink-link);
   font-size: var(--text-caption);
   cursor: pointer;
 }
 
 .wb-space-menu__footnote {
   font-size: var(--text-footer);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 /* 390：顶栏下 48px 空间条，点开 80vh 底部床单 */
@@ -5420,7 +5446,7 @@ button.wb-sortchip:hover {
     border-right: 0;
     border-top: 0;
     box-shadow: none;
-    background: var(--paper);
+    background: var(--surface-raised);
   }
 
   .wb-space-pill--mobile .wb-space-pill__text {
@@ -5439,7 +5465,7 @@ button.wb-sortchip:hover {
     max-height: 80vh;
     padding: var(--space-4) var(--space-4) var(--space-6);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    background: var(--paper);
+    background: var(--surface-raised);
     box-shadow: var(--shadow-3);
     display: flex;
     flex-direction: column;
@@ -5461,14 +5487,14 @@ button.wb-sortchip:hover {
 
   .wb-space-sheet__current {
     font-size: var(--text-micro);
-    color: var(--text-secondary);
+    color: var(--ink-muted);
   }
 
   .wb-space-sheet__done {
     align-self: flex-end;
     border: 0;
     background: transparent;
-    color: var(--text-link);
+    color: var(--ink-link);
     font-size: var(--text-caption);
     padding: 4px 8px;
     cursor: pointer;
@@ -5488,7 +5514,7 @@ button.wb-sortchip:hover {
   overflow-y: auto;
   padding: var(--space-6);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
@@ -5505,7 +5531,7 @@ button.wb-sortchip:hover {
 .wb-space-settings__eyebrow {
   margin: 0 0 2px;
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
 }
 
 .wb-space-settings__section {
@@ -5513,14 +5539,14 @@ button.wb-sortchip:hover {
   flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--neutral-200);
+  border-top: 1px solid var(--line-soft);
 }
 
 .wb-space-settings__subtitle {
   margin: 0;
   font-size: var(--text-caption);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-space-members {
@@ -5561,12 +5587,12 @@ button.wb-sortchip:hover {
 
 .wb-space-members__name {
   font-size: var(--text-body);
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 .wb-space-members__meta {
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5587,9 +5613,9 @@ button.wb-sortchip:hover {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
 }
 
 .wb-space-invite__link code {
@@ -5597,7 +5623,7 @@ button.wb-sortchip:hover {
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
-  color: var(--text-secondary);
+  color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5605,7 +5631,7 @@ button.wb-sortchip:hover {
 
 .wb-space-invite__copied {
   font-size: var(--text-micro);
-  color: var(--success-text);
+  color: var(--ok-fg);
   white-space: nowrap;
 }
 
@@ -5614,7 +5640,7 @@ button.wb-sortchip:hover {
   max-width: calc(100vw - 32px);
   padding: var(--space-6);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
@@ -5627,17 +5653,17 @@ button.wb-sortchip:hover {
   display: grid;
   place-items: center;
   padding: var(--space-6);
-  background: var(--bg);
+  background: var(--surface-page);
 }
 
 .wb-join__card {
   width: 420px;
   max-width: 100%;
   padding: var(--space-8);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-xl);
-  background: var(--paper);
-  box-shadow: var(--shadow-2);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -5658,7 +5684,7 @@ button.wb-sortchip:hover {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-title);
-  color: var(--text-primary);
+  color: var(--ink-strong);
 }
 
 /* 1024：胶囊只留单行，避免和右侧「回收站 / 用户名」抢宽度 */
@@ -5682,7 +5708,7 @@ button.wb-sortchip:hover {
 }
 
 .wb-board-card.is-picked {
-  box-shadow: 0 0 0 2px var(--rose-600), var(--shadow-focus);
+  box-shadow: 0 0 0 2px var(--accent), var(--focus-ring);
 }
 
 .wb-board-card.is-just-moved {
@@ -5708,7 +5734,7 @@ button.wb-sortchip:hover {
   position: fixed;
   z-index: 45;
   border-radius: 2px;
-  background: var(--rose-600);
+  background: var(--accent);
   pointer-events: none;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
@@ -5741,7 +5767,7 @@ button.wb-sortchip:hover {
   padding: 12px 14px;
   border: 1px solid var(--rose-300);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: 0 18px 40px rgba(90, 42, 63, 0.18);
   transform: rotate(1.2deg);
   pointer-events: none;
@@ -5749,7 +5775,7 @@ button.wb-sortchip:hover {
 
 .wb-drag-ghost__title {
   overflow: hidden;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5766,7 +5792,7 @@ button.wb-sortchip:hover {
 }
 
 .wb-drag-ghost.is-blocked .wb-drag-ghost__note {
-  color: var(--danger-text);
+  color: var(--danger-fg);
 }
 
 /* ---------- 移动到… 底部弹层 ---------- */
@@ -5813,7 +5839,7 @@ button.wb-sortchip:hover {
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--ink-strong);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -5830,13 +5856,13 @@ button.wb-sortchip:hover {
 
 .wb-move-sheet__item:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .wb-move-sheet__index {
   flex: none;
   width: 18px;
-  color: var(--text-weak-readable);
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5869,6 +5895,76 @@ button.wb-sortchip:hover {
   .wb-boards__group-note {
     display: none;
   }
+}
+
+/* ============================================================
+ * 应用页夜间：第一步只做「可读、不刺眼」的补齐。
+ * 卡片是否整块变深、缩略图框、Excalidraw 白底岛都留给后续步骤，
+ * 这里只处理第一步必须不坏的几处，且全部是 night-only，白天零变化。
+ * ============================================================ */
+
+/* 顶栏「登录 / 注册」白天用 rose-800 压在浅天空上，夜间这条会掉到 1.8:1；
+   夜间按 4.4 的「顶栏反白」走 --ink-strong（实测 8.2:1），hover 才回到链接的暖色 */
+:root[data-theme="night"] .wb-page--boards .wb-link {
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-page--boards .wb-link:hover {
+  color: var(--ink-link);
+  border-bottom-color: currentColor;
+}
+
+/* 顶栏品牌在白天的 rose-900 深底上是几乎看不见的暗紫，夜间整体反白 */
+:root[data-theme="night"] .wb-brand {
+  color: var(--ink-strong);
+}
+
+/* 12px 深色正文（计数、用户名、回收站入口、筛选 chip、批量条）白天靠 neutral-800
+   压在天空渐变上过 4.5；夜间把这一档整体换成 --ink-muted，白天不生效 */
+:root[data-theme="night"] .wb-page,
+:root[data-theme="night"] .wb-board,
+:root[data-theme="night"] .wb-join {
+  --neutral-800: var(--ink-muted);
+  /* 玫瑰色淡淡的水洗底（角色 chip、图标底、提示条）在深底上会变成一块亮斑，
+     用主色与深纸面混出低饱和版本；白天不生效 */
+  --rose-50: color-mix(in srgb, var(--accent) 12%, var(--surface-raised));
+  --rose-100: color-mix(in srgb, var(--accent) 18%, var(--surface-raised));
+  --rose-200: color-mix(in srgb, var(--accent) 28%, var(--surface-raised));
+}
+
+/* 登录/注册：卡片内部按设计稿 C 保持羊皮纸暖白（不跟随），
+   卡片外的返回按钮与底部入口压在夜 sky 上，必须反白 */
+:root[data-theme="night"] .wb-auth__back {
+  color: var(--ink-muted);
+}
+
+/* 底部入口落在夜雾/水线附近，底色本身偏亮，反白后加一层极淡的暗影保证可读 */
+:root[data-theme="night"] .wb-auth__aside {
+  color: var(--ink-strong);
+  text-shadow: 0 1px 2px rgba(4, 7, 14, 0.55);
+}
+
+:root[data-theme="night"] .wb-auth__aside .wb-link {
+  color: var(--ink-strong);
+  /* 白天这条是 0.72 透明度的暗墨，压在水线亮雾上过不了 4.5，夜间不做减淡 */
+  opacity: 1;
+  /* 它正好落在登录页那块不随档变暗的水面/倒影亮面上（实测底色约 #8fa0bb），
+     纯反白只有 2.5:1；垫一层极淡的夜色底保证可读，白天不生效 */
+  background: rgba(4, 7, 14, 0.42);
+  border-radius: 999px;
+  padding: 3px 10px;
+  border-bottom-color: transparent;
+}
+
+:root[data-theme="night"] .wb-auth__aside .wb-link:hover {
+  color: var(--ink-link);
+  border-bottom-color: currentColor;
+}
+
+/* 加入空间落地页的图标底：rose-50 在夜里会变成一块亮斑 */
+:root[data-theme="night"] .wb-join__icon {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-page));
+  color: var(--ink-link);
 }
 
 
