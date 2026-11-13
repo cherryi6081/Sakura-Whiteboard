@@ -3738,22 +3738,40 @@ body:has(.wb-home) {
   transform: translateY(0);
 }
 
-/* 主按钮：朱色实底，字距拉开来充当「按下印章」的动作 */
+/* 主按钮：墨色实底，字距拉开来充当「按下印章」的动作。
+   底色用 --auth-ink（#2f2a26），与卡片左上角品牌章的墨色同一支；
+   悬停提亮到 --neutral-800、按下压到 --neutral-950，四态都在既有色阶里。 */
 .wb-auth .wb-btn--primary {
   height: 44px;
   border-radius: 2px;
-  background: var(--auth-vermilion);
+  background: var(--auth-ink);
   color: #fdfaf5;
   letter-spacing: 0.18em;
-  box-shadow: 0 8px 20px rgba(180, 64, 44, 0.2);
+  box-shadow: 0 8px 20px rgba(47, 42, 38, 0.22);
 }
 
 .wb-auth .wb-btn--primary:hover:not(:disabled) {
-  background: #9c3226;
+  background: var(--neutral-800);
 }
 
 .wb-auth .wb-btn--primary:active:not(:disabled) {
-  background: #8a2b21;
+  background: var(--neutral-950);
+}
+
+/* 禁用/加载：回到全局的浅灰底。pages.css 在 ui.css 之后，
+   必须点名覆盖，否则会继续沿用上面的墨色底色，看不出不可点。
+   和纸卡本身接近白色，浅灰底只靠颜色分不出来，补一圈中性描边。 */
+.wb-auth .wb-btn--primary:disabled {
+  border-color: var(--neutral-500);
+  background: var(--neutral-300);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+/* 加载环是白环，浅灰底上会消失，这里换成墨色环 */
+.wb-auth .wb-btn--primary:disabled .wb-spinner {
+  border-color: rgba(47, 42, 38, 0.2);
+  border-top-color: var(--auth-ink);
 }
 
 .wb-auth__switch {
