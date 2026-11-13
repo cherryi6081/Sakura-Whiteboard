@@ -24,7 +24,9 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       proxy: {
-        "/api": { target: apiTarget, changeOrigin: true },
+        // 不能 changeOrigin：服务端 sameOriginOnly 比较 Origin 与 Host，
+        // 改写 Host 会把所有 POST（注册/登录等）判成跨站并返回 403。
+        "/api": { target: apiTarget, changeOrigin: false },
         // Socket.IO 走同源，开发期由 Vite 代理 websocket
         "/socket.io": { target: apiTarget, changeOrigin: true, ws: true },
       },

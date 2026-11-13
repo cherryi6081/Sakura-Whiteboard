@@ -60,7 +60,7 @@ export function AuthPage({
     setBusy(false);
 
     if (!result.ok) {
-      setError(messageOf(result.code));
+      setError(messageOf(result.code, result.status));
       return;
     }
     onDone(result.data);
@@ -242,15 +242,28 @@ export function AuthPage({
   );
 }
 
-function messageOf(code: string): string {
+/**
+ * 把接口错误翻成用户能据此行动的文案。
+ * 密码规则与 `@whiteboard/shared` 的 `assessPassword` 保持一致，
+ * 服务端阻塞项（过短/过长/常见密码/邮箱前缀）都会落到 `INVALID_INPUT`。
+ */
+function messageOf(code: string, status: number): string {
   switch (code) {
     case "INVALID_CREDENTIALS":
       return "邮箱或密码不正确";
     case "EMAIL_TAKEN":
       return "该邮箱已注册，可直接登录";
     case "INVALID_INPUT":
-      return `请检查邮箱格式与密码（${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} 位，且不能是常见密码）`;
+      return `请检查昵称（2–24 字）、邮箱格式与密码（${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} 位，不能是常见密码或与邮箱前缀相同）`;
+    case "UNAUTHENTICATED":
+      return "登录已失效，请重新登录";
+    case "FORBIDDEN":
+      return "请求被拒绝：页面来源与接口不一致，请刷新页面后重试";
+    case "MALFORMED_JSON":
+      return "提交内容格式有误，请刷新页面后重试";
     default:
+      if (status === 0) return "网络异常，请检查网络后重试";
+      if (status >= 500 || code === "INTERNAL") return `服务异常（${status || code}），请稍后再试`;
       return `请求失败（${code}）`;
   }
 }

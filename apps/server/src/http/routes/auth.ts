@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { assessPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@whiteboard/shared';
 import { pool } from '../../infra/db.js';
+import { logger } from '../../infra/logger.js';
 import { hashPassword, verifyPassword } from '../../auth/password.js';
 import { clearSessionCookie, createSession, destroySession } from '../../auth/session.js';
 import { identityOf, requireUser } from '../../auth/identity.js';
@@ -40,6 +41,7 @@ const handle =
 
 /**
  * 浏览器跨站 POST 防护：有 Origin 时必须与 Host 同源；非浏览器客户端（无 Origin）放行。
+ * 反向代理（如 Vite dev server 改写了 Host）会优先参考 `x-forwarded-host`。
  */
 function sameOriginOnly(req: Request, _res: Response, next: NextFunction): void {
   const origin = req.get('origin');
@@ -49,7 +51,10 @@ function sameOriginOnly(req: Request, _res: Response, next: NextFunction): void 
   }
   try {
     const parsed = new URL(origin);
-    if (parsed.host !== req.get('host')) {
+    const forwarded = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+    const host = forwarded || req.get('host');
+    if (parsed.host !== host) {
+      logger.warn({ origin, host, forwardedHost: forwarded ?? null }, 'cross-origin request rejected');
       next(new AppError(403, 'FORBIDDEN', 'cross-origin request rejected'));
       return;
     }
