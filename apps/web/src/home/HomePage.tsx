@@ -1,13 +1,71 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { fetchMe, logout, type AuthUser } from "../auth/authApi";
 import { useCreateBoard } from "../boards/useCreateBoard";
 import { FujiScene } from "./FujiScene";
 import { usePeriod } from "./usePeriod";
+
+/**
+ * 导航账号区。`pending` 是 `/api/auth/me` 返回前的唯一状态：
+ * 只占位、不写字，避免先闪「登录」再跳用户名（或反过来）。
+ */
+type AccountState =
+  | { status: "pending" }
+  | { status: "anon" }
+  | { status: "authed"; user: AuthUser };
 
 /** 首页：富士山场景中的实时协作入口。 */
 export function HomePage() {
   const { busy, slow, error, start } = useCreateBoard();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [account, setAccount] = useState<AccountState>({ status: "pending" });
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const accountRef = useRef<HTMLDivElement | null>(null);
+  const userButtonRef = useRef<HTMLButtonElement | null>(null);
   const period = usePeriod();
+
+  // 会话是 HttpOnly cookie，只能问服务端；判定就是 GET /api/auth/me
+  useEffect(() => {
+    let alive = true;
+    void fetchMe().then((result) => {
+      if (!alive) return;
+      setAccount(result.ok ? { status: "authed", user: result.data.user } : { status: "anon" });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 菜单打开期间的全局退出路径：点外部或 Esc；Esc 只把焦点还给按钮，不抢别处的焦点
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) setUserMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const hadFocusInside = accountRef.current?.contains(document.activeElement) ?? false;
+      setUserMenuOpen(false);
+      if (hadFocusInside) userButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [userMenuOpen]);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const result = await logout();
+    setLoggingOut(false);
+    if (result.ok) {
+      setAccount({ status: "anon" });
+      setUserMenuOpen(false);
+    }
+  };
 
   return (
     <div className="wb-home" data-period={period}>
@@ -27,7 +85,54 @@ export function HomePage() {
           <a href="#concept">产品理念</a>
           <a href="#how-to">使用方式</a>
           <a href="/boards">我的白板</a>
-          <a href="/login?next=%2Fboards">登录</a>
+          {account.status === "authed" ? (
+            <div
+              className="wb-home__account"
+              ref={accountRef}
+              onPointerEnter={(event) => {
+                // 触屏 tap 结束会补发 mouseleave，会把刚打开的菜单立刻关掉；只认真鼠标
+                if (event.pointerType === "mouse") setUserMenuOpen(true);
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse") setUserMenuOpen(false);
+              }}
+              onFocus={() => setUserMenuOpen(true)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setUserMenuOpen(false);
+              }}
+            >
+              <button
+                ref={userButtonRef}
+                type="button"
+                className="wb-home__user"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                title={account.user.displayName}
+                data-testid="home-user"
+                onClick={() => setUserMenuOpen(true)}
+              >
+                {account.user.displayName}
+              </button>
+              {userMenuOpen ? (
+                <div className="wb-home__user-menu" role="menu" aria-label="账号">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wb-home__user-menu-item"
+                    onClick={() => void handleLogout()}
+                    disabled={loggingOut}
+                    data-testid="home-logout"
+                  >
+                    {loggingOut ? "正在退出…" : "退出登录"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : account.status === "anon" ? (
+            <a href="/login?next=%2Fboards" data-testid="home-login">登录</a>
+          ) : (
+            <span className="wb-home__account-pending" aria-hidden data-testid="home-auth-pending" />
+          )}
         </nav>
         <button className="wb-home__menu" type="button" aria-label="打开菜单" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
           <span /><span /><span />
