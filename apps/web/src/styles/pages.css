@@ -5967,6 +5967,73 @@ button.wb-sortchip:hover {
   color: var(--ink-link);
 }
 
+/* ---------- 回收站：实测夜间的四处不达标 ---------- */
+/* 导航「回收站」白天是 rose-800（#743551），夜间压在 #131a2b 上只有 1.96:1 */
+:root[data-theme="night"] .wb-trash__nav,
+:root[data-theme="night"] .wb-trash__nav.is-active {
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-trash__nav.is-active {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+}
+
+:root[data-theme="night"] .wb-trash__nav:hover {
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+}
+
+/* 筛选 chip 选中态白天是 rose-100 底 + rose-700 字（#8e4568），夜间 2.64:1 */
+:root[data-theme="night"] .wb-trash__chip:hover {
+  border-color: var(--line-strong);
+}
+
+:root[data-theme="night"] .wb-trash__chip.is-on {
+  border-color: var(--line-strong);
+  background: var(--surface-raised-hover);
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-trash__chip.is-on .wb-trash__chip-count {
+  color: var(--ink-muted);
+}
+
+/* 行内「恢复」按钮：rose-700 压在卡片 #1c2438 上 2.36:1 */
+:root[data-theme="night"] .wb-trash__act:first-child {
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-trash__act:first-child:hover:not(:disabled) {
+  background: var(--surface-raised-hover);
+}
+
+/* ---------- 空间设置弹窗 ---------- */
+/* 角色 chip：白天 rose-50/fuji-snow 底 + 深字，夜间两块都是亮斑 */
+:root[data-theme="night"] .wb-space-role {
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+}
+
+:root[data-theme="night"] .wb-space-role--owner {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--surface-raised));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised));
+  color: var(--ink-link);
+}
+
+:root[data-theme="night"] .wb-space-role--editor {
+  border-color: color-mix(in srgb, var(--fuji-300) 34%, var(--surface-raised));
+  background: color-mix(in srgb, var(--fuji-300) 16%, var(--surface-raised));
+  color: var(--ink-muted);
+}
+
+/* 弹窗默认用 --shadow-3（16/40/.12 的浅影），深底上几乎不可见，夜间换用带内高光的深影 */
+:root[data-theme="night"] .wb-dialog {
+  box-shadow: var(--shadow-raised);
+}
+
 
 
 
