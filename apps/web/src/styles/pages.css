@@ -1834,6 +1834,14 @@ body:has(.wb-home) {
   z-index: 1;
 }
 
+/* 顶栏里的空间切换器下拉是普通绝对定位，z-index 只在顶栏自己的层叠上下文里生效。
+   `.wb-page--boards > *` 给每个直接子元素都建了 z-index:1 的上下文，
+   后渲染的列表容器会整块盖住顶栏子树里的浮层（曾出现「我的白板」压在空间菜单上）。
+   顶栏单独抬到 2；弹窗/菜单/toast 仍是页面根下的直接子元素，48+ 的层级不受影响。 */
+.wb-page--boards > .wb-topbar {
+  z-index: 2;
+}
+
 /* 顶栏文字直接压在天空渐变上：12px 用户名与登录链接都要比纸面多用一档深色 */
 .wb-page--boards .wb-topbar .wb-caption {
   color: var(--neutral-800);
