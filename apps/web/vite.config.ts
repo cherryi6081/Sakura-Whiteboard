@@ -23,6 +23,11 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5173,
       strictPort: true,
+      watch: {
+        // 跳过历史调试产物目录：.spike 下残留 700MB 的 puppeteer Chrome 配置，
+        // 逐个文件建 watcher 会让启动后长时间占满 CPU、请求排队
+        ignored: ["**/.spike/**", "**/.verify/**", "**/_preview/**"],
+      },
       proxy: {
         // 不能 changeOrigin：服务端 sameOriginOnly 比较 Origin 与 Host，
         // 改写 Host 会把所有 POST（注册/登录等）判成跨站并返回 403。
