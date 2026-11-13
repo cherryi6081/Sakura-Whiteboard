@@ -13,6 +13,7 @@ import { resolveBoardAccess } from '../../domain/access.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
 import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
+import { BOARD_CAPACITY, evictForCapacity } from '../../domain/boardCapacity.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -33,7 +34,7 @@ const handle =
   };
 
 const GUEST_BOARDS_PER_24H = 3;
-const GUEST_UNARCHIVED_MAX = 6;
+const GUEST_UNARCHIVED_MAX = BOARD_CAPACITY;
 
 const spaceIdSchema = z.string().regex(/^sp_[A-Za-z0-9_-]{10,32}$/);
 
@@ -41,10 +42,15 @@ const createBoardSchema = z.object({
   title: z.string().trim().min(1).max(80).optional(),
   /** 建到哪个空间；缺省为个人空间 */
   spaceId: spaceIdSchema.optional(),
+  /**
+   * 游客的置顶只存在本机 localStorage，服务端拿不到；
+   * 建板时把本机置顶的 id 带上来，淘汰时排除它们。只作用于自己的游客板，安全。
+   */
+  pinnedIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{12}$/)).max(50).optional(),
 });
 
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(30).default(20),
+  limit: z.coerce.number().int().min(1).max(30).default(BOARD_CAPACITY),
   /** 手动排序与时间解耦后游标不再可靠（会把已排到前面的板重复取回），统一用 offset 分页 */
   offset: z.coerce.number().int().min(0).default(0),
   /** 空间 id；缺省为个人空间 */
@@ -106,11 +112,27 @@ async function enforceGuestQuota(guestId: string): Promise<void> {
   }
 }
 
+/**
+ * 游客建板前的额度检查。
+ *
+ * 已经满 15 块时交给事务内的淘汰逻辑处理（先淘汰再建），此时不再套 24h 限流，
+ * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由 15 的容量上限兜住。
+ */
+async function enforceGuestCreation(guestId: string): Promise<void> {
+  const { rows } = await pool.query<{ used: number }>(
+    `select count(*)::int as used from boards
+      where owner_guest_id = $1 and archived_at is null and deleted_at is null`,
+    [guestId],
+  );
+  if ((rows[0]?.used ?? 0) >= BOARD_CAPACITY) return;
+  await enforceGuestQuota(guestId);
+}
+
 /** `POST /api/boards` —— 无会话按游客建板（必要时签发 `wb_gid`）。 */
 boardsRouter.post(
   '/boards',
   handle(async (req, res) => {
-    const { title, spaceId } = createBoardSchema.parse(req.body ?? {});
+    const { title, spaceId, pinnedIds } = createBoardSchema.parse(req.body ?? {});
     const identity = identityOf(req);
     const boardTitle = title ?? '未命名白板';
 
@@ -132,29 +154,84 @@ boardsRouter.post(
     } else {
       let guestId = identity.guestId;
       if (!guestId) guestId = issueGuestCookie(res);
-      await enforceGuestQuota(guestId);
+      await enforceGuestCreation(guestId);
       ownerGuestId = guestId;
     }
 
     const boardId = nanoid(12);
-    const { rows } = await pool.query<{ id: string; title: string; created_at: Date }>(
-      `insert into boards (id, title, owner_id, owner_guest_id, share_mode, space_id)
-       values ($1, $2, $3, $4, 'private', $5)
-       returning id, title, created_at`,
-      [boardId, boardTitle, ownerId, ownerGuestId, targetSpaceId],
-    );
-    const row = rows[0];
-    if (!row) throw new AppError(500, 'INTERNAL', 'board insert returned no row');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // 同一 owner 的创建串行：避免并发请求基于同一份旧计数各自淘汰一块
+      const lockKey = ownerId
+        ? `board-create:user:${ownerId}:${targetSpaceId}`
+        : `board-create:guest:${ownerGuestId}`;
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [lockKey]);
 
-    res.status(201).json({
-      id: row.id,
-      title: row.title,
-      ownerType: ownerId ? 'user' : 'guest',
-      quota: ownerGuestId
-        ? { per24h: GUEST_BOARDS_PER_24H, unarchivedMax: GUEST_UNARCHIVED_MAX }
-        : null,
-      createdAt: row.created_at.toISOString(),
-    });
+      // 满 15 块时先淘汰一块（登录→回收站；游客→物理删除），审计写在同一事务里
+      const eviction = await evictForCapacity(
+        client,
+        ownerId
+          ? { kind: 'user', userId: ownerId, spaceId: targetSpaceId ?? '', mode: 'trash' }
+          : { kind: 'guest', guestId: ownerGuestId ?? '', pinnedIds: pinnedIds ?? [], mode: 'purged' },
+        boardId,
+      );
+      if (eviction.kind === 'blocked') {
+        throw new AppError(
+          429,
+          'CAPACITY_ALL_PROTECTED',
+          `${BOARD_CAPACITY} 块白板都在置顶或最近使用中，先整理掉一块再新建`,
+        );
+      }
+
+      const { rows } = await client.query<{ id: string; title: string; created_at: Date }>(
+        `insert into boards (id, title, owner_id, owner_guest_id, share_mode, space_id)
+         values ($1, $2, $3, $4, 'private', $5)
+         returning id, title, created_at`,
+        [boardId, boardTitle, ownerId, ownerGuestId, targetSpaceId],
+      );
+      const row = rows[0];
+      if (!row) throw new AppError(500, 'INTERNAL', 'board insert returned no row');
+      await client.query('commit');
+
+      res.status(201).json({
+        id: row.id,
+        title: row.title,
+        ownerType: ownerId ? 'user' : 'guest',
+        quota: ownerGuestId
+          ? { per24h: GUEST_BOARDS_PER_24H, unarchivedMax: GUEST_UNARCHIVED_MAX }
+          : null,
+        createdAt: row.created_at.toISOString(),
+      });
+    } catch (err) {
+      await client.query('rollback').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+/**
+ * `POST /api/boards/:id/opened` —— 进入白板时累加打开次数（列表淘汰的排序依据）。
+ *
+ * 单行主键 UPDATE：不做读改写、不写 ops、不碰 `last_edited_at`，因此不会触发
+ * 列表重新排序，也不会进入编辑回写的热点路径。前端每次进板 fire-and-forget 调一次。
+ */
+boardsRouter.post(
+  '/boards/:id/opened',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const access = await resolveBoardAccess(boardId, identityOf(req), shareTokenOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+
+    await pool.query(
+      `update boards
+          set opened_count = opened_count + 1, last_opened_at = now()
+        where id = $1 and deleted_at is null`,
+      [boardId],
+    );
+    res.status(204).end();
   }),
 );
 
