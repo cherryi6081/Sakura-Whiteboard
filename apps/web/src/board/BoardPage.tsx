@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
@@ -6,7 +7,7 @@ import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
 import { recordRecentBoard, titleOf } from "../boards/recentBoards";
 import { markBoardOpened } from "../boards/boardsApi";
-import { scheduleThumbCapture } from "../boards/boardThumb";
+import { captureBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from "../ui/icons";
 import { ShareDrawer } from "./ShareDrawer";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
@@ -89,6 +90,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const bridgeRef = useRef<BoardCanvasHandle | null>(null);
   /** 首帧缩略图每次进板只排一次（画布 API 可能因 StrictMode 重放两次） */
   const thumbScheduledRef = useRef(false);
+  /** 编辑后的重拍防抖：连续落笔只在停笔后导出一次 */
+  const thumbRefreshTimerRef = useRef<number | null>(null);
   const storeRef = useRef<BoardStore | null>(null);
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
@@ -197,6 +200,67 @@ export function BoardPage({ boardId }: { boardId: string }) {
       storeRef.current = null;
     };
   }, [boardId, queryViewOnly, shareToken]);
+
+  /**
+   * 编辑后重拍缩略图：本地改动落盘成 op 后防抖一次再导出。
+   * 只拍首帧的话，用户画的这一笔永远进不了卡片——下次进板拍到的才是上次的内容，
+   * 列表里就总是"上次进入前"的旧图。
+   */
+  const refreshThumbSoon = useCallback(() => {
+    if (thumbRefreshTimerRef.current !== null) window.clearTimeout(thumbRefreshTimerRef.current);
+    thumbRefreshTimerRef.current = window.setTimeout(() => {
+      thumbRefreshTimerRef.current = null;
+      const api = apiRef.current;
+      if (api) scheduleThumbCapture(api, boardId, { fast: true });
+    }, 50);
+  }, [boardId]);
+
+  useEffect(
+    () => () => {
+      if (thumbRefreshTimerRef.current !== null) {
+        window.clearTimeout(thumbRefreshTimerRef.current);
+        thumbRefreshTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  // 页面隐藏/离开（点返回、切标签、刷新）再兜一次：导出是异步的，尽力而为，
+  // 正常路径由 refreshThumbSoon 的防抖保证已经写完。
+  useEffect(() => {
+    const flush = () => {
+      const api = apiRef.current;
+      if (api) void captureBoardThumb(api, boardId);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [boardId]);
+
+  /**
+   * 返回列表前把最新画面写进缩略图再跳转。
+   * 只靠编辑后的防抖重拍时，画完立刻点返回会在导出完成前卸载页面，列表还是旧图；
+   * 这里等一次拍摄（内容没变时只是一次指纹比对），再走原来的整页导航。
+   */
+  const leavingRef = useRef(false);
+  const handleBack = async (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    const api = apiRef.current;
+    if (!api || leavingRef.current) return;
+    event.preventDefault();
+    leavingRef.current = true;
+    try {
+      await captureBoardThumb(api, boardId);
+    } finally {
+      window.location.href = "/boards";
+    }
+  };
 
   useEffect(() => {
     const hook: BoardWindow = {
@@ -471,6 +535,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
             onOps={(ops) => {
               window.__board?.opBatches.push(ops);
               storeRef.current?.submit(ops);
+              // 本地改动才需要更新卡片缩略图；远端回放不产生 op，不会触发
+              refreshThumbSoon();
             }}
           />
         </div>
