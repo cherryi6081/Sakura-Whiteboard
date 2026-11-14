@@ -18,6 +18,7 @@
     "typecheck": "npm run build -w @whiteboard/shared && npm run typecheck -w @whiteboard/server && npm run typecheck -w @whiteboard/web",
     "check:overlays": "node scripts/check-overlay-hit.mjs",
     "test": "npm run test -w @whiteboard/server && npm run test -w @whiteboard/web",
+    "e2e": "node test/run.mjs",
     "build": "npm run build -w @whiteboard/shared && npm run build -w @whiteboard/server && npm run build -w @whiteboard/web"
   }
 }
