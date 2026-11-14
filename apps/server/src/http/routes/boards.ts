@@ -491,23 +491,29 @@ const orderSchema = z.object({
 
 const sortModeSchema = z.object({ mode: z.enum(['auto', 'manual']) });
 
-/** 当前用户在**同一空间**内可见、且与目标同组的白板 id，按视觉顺序。 */
-async function groupBoardIds(userId: string, pinned: boolean, spaceId: string): Promise<string[]> {
+/**
+ * 同一空间内、与目标同组的白板 id，按视觉顺序。
+ *
+ * 可见性由空间决定（空间是唯一权限来源），所以这里不需要 userId；
+ * 早先版本按成员表过滤时留下的 `$1` 已移除——保留它会让 pg 报
+ * `42P18 could not determine data type of parameter $1`，导致排序接口 500。
+ */
+async function groupBoardIds(pinned: boolean, spaceId: string): Promise<string[]> {
   const { rows } = await pool.query<{ id: string }>(
     `select b.id
        from boards b
-      where b.space_id = $3 and b.archived_at is null and b.deleted_at is null
-        and (($2::boolean and b.pinned_at is not null) or (not $2::boolean and b.pinned_at is null))
-      order by case when $2::boolean then b.pinned_at end desc nulls last,
+      where b.space_id = $2 and b.archived_at is null and b.deleted_at is null
+        and (($1::boolean and b.pinned_at is not null) or (not $1::boolean and b.pinned_at is null))
+      order by case when $1::boolean then b.pinned_at end desc nulls last,
                b.last_edited_at desc, b.id desc`,
-    [userId, pinned, spaceId],
+    [pinned, spaceId],
   );
   return rows.map((row) => row.id);
 }
 
 /** 把某一组的当前顺序整体落成 rank = 1024, 2048…（首次拖动 / 间隙不足时调用）。 */
 async function materializeGroup(userId: string, pinned: boolean, spaceId: string): Promise<void> {
-  const ranks = materializeRanks(await groupBoardIds(userId, pinned, spaceId));
+  const ranks = materializeRanks(await groupBoardIds(pinned, spaceId));
   if (ranks.size === 0) return;
   const ids = [...ranks.keys()];
   await pool.query(
@@ -556,7 +562,7 @@ boardsRouter.patch(
 
     // 邻居失效（被删 / 被置顶换了组）时返回 409：客户端重拉一次再算落点
     const neighbors = [beforeId, afterId].filter((id): id is string => Boolean(id));
-    const visibleIds = new Set(await groupBoardIds(identity.userId, pinned, spaceId));
+    const visibleIds = new Set(await groupBoardIds(pinned, spaceId));
     if (neighbors.some((id) => !visibleIds.has(id))) {
       throw new AppError(409, 'STALE_NEIGHBOR', '落点附近的顺序已变化，请刷新后重试');
     }
