@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { fetchClaimPreview, fetchMe, type ClaimPreview } from "../auth/authApi";
 import { ClaimDialog, claimSnoozed } from "../auth/ClaimDialog";
@@ -25,7 +25,7 @@ import { BatchTrashDialog } from "./BatchTrashDialog";
 import { BoardCardMenu, type BoardMenuTarget } from "./BoardCardMenu";
 import type { MenuAnchor } from "./boardMenu";
 import { BOARDS_CAPACITY, isPinned, sortBoards } from "./boardList";
-import { gridColumnsForWidth, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
+import { boardsLayout, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
 import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
 import { loadThumbUrls } from "./boardThumb";
 import { listRecentBoards, removeRecentBoard, setRecentPinned, type RecentBoard } from "./recentBoards";
@@ -113,8 +113,10 @@ type TrashConfirm = {
 
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
-/** 列表容量 15（5 列 × 3 行），一次取满，不做翻页 */
+/** 列表容量 15（桌面 4 列 × 3 行只能完整显示 12 张，多出的续到第 4 行、页面可滚动） */
 const FETCH_LIMIT = BOARDS_CAPACITY;
+/** 700 以下交给 CSS 单列滚动，不再按宽度均分 */
+const MOBILE_BREAKPOINT = 700;
 const SPACE_ROLE_LABEL: Record<string, string> = {
   owner: "所有者",
   editor: "编辑者",
@@ -414,6 +416,49 @@ export function BoardsPage() {
   const groupIdsOf = (group: DragGroupKey): string[] =>
     (group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card) => card.id);
 
+  /**
+   * 桌面端宽度优先：卡片宽度只由列宽决定，四列均分内容区并铺满，不因高度不足而缩小。
+   * 页头留白收一档（上下 16、网格上边距 8）当作软预算；三行仍放不下时让页面滚动。
+   */
+  const cardCount = groupsNow.pinned.length + groupsNow.others.length;
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const container = grid.closest<HTMLElement>(".wb-container");
+    const wrapper = grid.parentElement;
+
+    const reset = () => {
+      grid.style.removeProperty("--wb-card-w");
+      grid.style.removeProperty("--wb-cols");
+      container?.style.removeProperty("padding-top");
+      container?.style.removeProperty("padding-bottom");
+      wrapper?.style.removeProperty("margin-top");
+    };
+
+    const apply = () => {
+      if (window.innerWidth <= MOBILE_BREAKPOINT) {
+        reset();
+        return;
+      }
+      const width = grid.clientWidth;
+      if (!(width > 0)) return;
+      container?.style.setProperty("padding-top", "16px");
+      container?.style.setProperty("padding-bottom", "16px");
+      wrapper?.style.setProperty("margin-top", "8px");
+      const { cardWidth, columns } = boardsLayout({ width });
+      grid.style.setProperty("--wb-card-w", `${cardWidth}px`);
+      grid.style.setProperty("--wb-cols", String(columns));
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(apply) : null;
+    observer?.observe(grid);
+    return () => {
+      window.removeEventListener("resize", apply);
+      observer?.disconnect();
+    };
+  }, [cardCount, cardsReady]);
+
   // 翻页 / 列表变化后，焦点卡不在当前页时回落到第一张
   useEffect(() => {
     if (!selectMode) return;
@@ -568,7 +613,7 @@ export function BoardsPage() {
     if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (index < 0) return;
       event.preventDefault();
-      const columns = gridColumnsForWidth(window.innerWidth);
+      const columns = gridColumnsNow();
       const delta =
         event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : event.key === "ArrowDown" ? columns : -columns;
       const next = Math.min(order.length - 1, Math.max(0, index + delta));
@@ -942,7 +987,7 @@ export function BoardsPage() {
       height: source.height,
     };
     const center = { x: ghost.left + ghost.width / 2, y: ghost.top + ghost.height / 2 };
-    const horizontal = gridColumnsForWidth(window.innerWidth) > 1;
+    const horizontal = gridColumnsNow() > 1;
 
     const mine = groupRects(groupIdsOf(session.group));
     const otherGroup: DragGroupKey = session.group === "pinned" ? "others" : "pinned";
@@ -990,7 +1035,15 @@ export function BoardsPage() {
     setDrag(next);
 
     if (to !== session.to) {
-      applyPreview(session.group, moveItem(groupIdsOf(session.group), session.from, to));
+      // 预览必须始终从「拖起时的组顺序」重排：当前的 groupIdsOf 已经含上一次预览，
+      // 再套用原下标 from 会把别的卡当成源卡，连续拖动时预览会错位。
+      const original = dragOriginalRef.current;
+      const base = original
+        ? session.group === "pinned"
+          ? original.pinned
+          : original.others
+        : groupIdsOf(session.group);
+      applyPreview(session.group, moveItem(base, session.from, to));
       setLiveText(`第 ${to + 1} 位，共 ${mine.length} 位。`);
     }
   };
@@ -1940,7 +1993,7 @@ function BoardCard({
     // Ctrl/⌘ + ↑ ↓：不用拿起也能挪一位，适合只想微调的场景
     if (sortable && (event.ctrlKey || event.metaKey) && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
-      const step = gridColumnsForWidth(window.innerWidth);
+      const step = gridColumnsNow();
       onPickUp(board.id);
       onKeyboardMove(board.id, event.key === "ArrowUp" ? -step : step);
       onKeyboardDrop(board.id);
@@ -1965,7 +2018,7 @@ function BoardCard({
       onKeyboardCancel();
       return;
     }
-    const step = gridColumnsForWidth(window.innerWidth);
+    const step = gridColumnsNow();
     const delta = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
     if (delta !== 0) {
       event.preventDefault();
@@ -2166,6 +2219,18 @@ function SkeletonCards() {
       ))}
     </>
   );
+}
+
+/**
+ * 当前实际列数：直接读网格容器算好的 column tracks（`--wb-cols` 的结果）。
+ * 用 DOM 实测而不是 window.innerWidth，宽屏 4 列、变窄 3/2/1 列都能拿到真实值，
+ * 拖拽落点、键盘换行、框选都按它走。
+ */
+function gridColumnsNow(): number {
+  const grid = document.querySelector<HTMLElement>('[data-testid="boards-grid"]');
+  if (!grid) return 1;
+  const tracks = getComputedStyle(grid).gridTemplateColumns;
+  return tracks.split(" ").filter(Boolean).length || 1;
 }
 
 function EmptyState({

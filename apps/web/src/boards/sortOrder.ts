@@ -45,7 +45,8 @@ export function neighborsAt<T extends { id: string }>(
  * 指针 / 焦点在某一组里的落点下标（0…len）。
  *
  * 用目标卡中线判定而不是「指针到卡片的距离」：手一抖不会在两张卡之间来回跳。
- * `horizontal` 为 true 时比较 X（多列横排），否则比较 Y（单列竖排）。
+ * 单列（mobile）比较 Y；多列网格是**二维**判定：先按 Y 选行（行间隙取更近的一行），
+ * 再在行内按 X 定位。只比较 X 会把所有行都算成第一行，导致纵向拖拽不生效。
  * 判定前先排除源卡自身，返回的下标已是「移除源卡之后」的位置。
  */
 export function dropIndex(
@@ -54,13 +55,48 @@ export function dropIndex(
   sourceId: string,
   horizontal: boolean,
 ): number {
-  const rest = rects.filter((rect) => rect.id !== sourceId);
-  let index = 0;
+  type Rect = { id: string; left: number; top: number; width: number; height: number };
+  const rest: Rect[] = rects.filter((rect) => rect.id !== sourceId);
+  if (rest.length === 0) return 0;
+
+  if (!horizontal) {
+    let index = 0;
+    for (const rect of rest) {
+      if (pointer.y > rect.top + rect.height / 2) index += 1;
+      else break;
+    }
+    return index;
+  }
+
+  // 卡片按视觉顺序（行优先）传入，把相邻且 top 相同的归为一行
+  type Row = { top: number; bottom: number; start: number; items: Rect[] };
+  const rows: Row[] = [];
   for (const rect of rest) {
-    const center = horizontal ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
-    const value = horizontal ? pointer.x : pointer.y;
-    if (value > center) index += 1;
+    const current = rows[rows.length - 1];
+    if (current && Math.abs(current.top - rect.top) <= 2) {
+      current.items.push(rect);
+      current.bottom = Math.max(current.bottom, rect.top + rect.height);
+    } else {
+      const start = current ? current.start + current.items.length : 0;
+      rows.push({ top: rect.top, bottom: rect.top + rect.height, start, items: [rect] });
+    }
+  }
+
+  // 指针落在某一行带内则直接选它；落在行间隙时取纵向更近的一行
+  let picked = rows[0]!;
+  let best = Number.POSITIVE_INFINITY;
+  for (const row of rows) {
+    const distance = pointer.y < row.top ? row.top - pointer.y : pointer.y > row.bottom ? pointer.y - row.bottom : 0;
+    if (distance < best) {
+      best = distance;
+      picked = row;
+    }
+  }
+
+  let within = 0;
+  for (const rect of picked.items) {
+    if (pointer.x > rect.left + rect.width / 2) within += 1;
     else break;
   }
-  return index;
+  return picked.start + within;
 }

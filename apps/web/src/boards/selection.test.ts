@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allPinned,
-  gridColumnsForWidth,
+  boardsLayout,
   pinTargets,
   rangeIds,
   selectionState,
@@ -16,14 +16,35 @@ const card = (id: string, extra: Partial<SelectableCard> = {}): SelectableCard =
   ...extra,
 });
 
-describe("gridColumnsForWidth", () => {
-  it("与 CSS 断点一致", () => {
-    expect(gridColumnsForWidth(1440)).toBe(5);
-    expect(gridColumnsForWidth(1024)).toBe(5);
-    expect(gridColumnsForWidth(1023)).toBe(3);
-    expect(gridColumnsForWidth(701)).toBe(3);
-    expect(gridColumnsForWidth(700)).toBe(1);
-    expect(gridColumnsForWidth(390)).toBe(1);
+describe("boardsLayout", () => {
+  it("宽度优先：四列均分内容区并铺满（1440×950 内容区 1200 → 每列 288）", () => {
+    expect(boardsLayout({ width: 1200 })).toEqual({ cardWidth: 288, columns: 4 });
+    expect(boardsLayout({ width: 853 })).toEqual({ cardWidth: 201, columns: 4 });
+  });
+
+  it("宽度不够 4 列时减少列数，卡片仍铺满", () => {
+    expect(boardsLayout({ width: 600 })).toEqual({ cardWidth: 189, columns: 3 });
+    expect(boardsLayout({ width: 400 })).toEqual({ cardWidth: 192, columns: 2 });
+    expect(boardsLayout({ width: 200 })).toEqual({ cardWidth: 200, columns: 1 });
+  });
+
+  it("列数断点：608/452/296 是各档的第一档宽度", () => {
+    expect(boardsLayout({ width: 608 })).toEqual({ cardWidth: 140, columns: 4 });
+    expect(boardsLayout({ width: 607 })).toEqual({ cardWidth: 191, columns: 3 });
+    expect(boardsLayout({ width: 452 })).toEqual({ cardWidth: 140, columns: 3 });
+    expect(boardsLayout({ width: 451 })).toEqual({ cardWidth: 217, columns: 2 });
+    expect(boardsLayout({ width: 296 })).toEqual({ cardWidth: 140, columns: 2 });
+    expect(boardsLayout({ width: 295 })).toEqual({ cardWidth: 295, columns: 1 });
+  });
+
+  it("卡片铺满内容区：整除余数小于列数（居中均分，不压卡宽）", () => {
+    for (const width of [1200, 853, 607, 451, 295]) {
+      const { cardWidth, columns } = boardsLayout({ width });
+      const used = cardWidth * columns + (columns - 1) * 16;
+      const rest = width - used;
+      expect(rest).toBeGreaterThanOrEqual(0);
+      expect(rest).toBeLessThan(columns);
+    }
   });
 });
 

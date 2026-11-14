@@ -81,4 +81,25 @@ describe('dropIndex', () => {
     expect(dropIndex(vertical, { x: 10, y: 180 }, 'a', false)).toBe(1);
     expect(dropIndex(vertical, { x: 10, y: 40 }, 'a', false)).toBe(0);
   });
+
+  it('多列时按二维落点：先选行、再在行内按 X 定位', () => {
+    const grid = [
+      { id: 'a', left: 0, top: 0, width: 100, height: 100 },
+      { id: 'b', left: 120, top: 0, width: 100, height: 100 },
+      { id: 'c', left: 240, top: 0, width: 100, height: 100 },
+      { id: 'd', left: 0, top: 120, width: 100, height: 100 },
+      { id: 'e', left: 120, top: 120, width: 100, height: 100 },
+      { id: 'f', left: 240, top: 120, width: 100, height: 100 },
+    ];
+    // 第一行拖到第二行中间（d 的中线右侧、e 的中线左侧 → d/e 之间）
+    expect(dropIndex(grid, { x: 90, y: 170 }, 'a', true)).toBe(3);
+    // 第一行拖到第二行最左
+    expect(dropIndex(grid, { x: 20, y: 170 }, 'a', true)).toBe(2);
+    // 第一行拖到第二行最右（组尾）
+    expect(dropIndex(grid, { x: 400, y: 170 }, 'a', true)).toBe(5);
+    // 第三行拖回第一行左侧
+    expect(dropIndex(grid, { x: 10, y: 50 }, 'f', true)).toBe(0);
+    // 指针在行间隙：取纵向更近的一行
+    expect(dropIndex(grid, { x: 190, y: 105 }, 'a', true)).toBe(1);
+  });
 });

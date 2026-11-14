@@ -1902,16 +1902,20 @@ body:has(.wb-home) {
   height: 400px;
 }
 
-/* 1440 下内容区 1200（左右 120），5 列 × 3 行正好放下 15 张卡 */
+/* 1440 下内容区 1200（左右 120），4 列 × 3 行一屏放完 12 张 */
 .wb-container--boards {
   max-width: 1440px;
   padding: var(--space-8) clamp(20px, 8.33vw, 120px);
 }
 
+/* 桌面端固定 4 列 × 3 行 = 12 张一屏放完：
+   卡片宽高由 BoardsPage 按可视高度反算后写进 --wb-card-w / --wb-cols，
+   缩略图 16:10，列表区吃满顶栏与页头之外的剩余高度。
+   宽度不够 4 列时 --wb-cols 降到 3/2/1，行数随之增加、页面允许纵向滚动。 */
 .wb-grid {
   display: grid;
-  /* 5 列：1440 与 1024 都是一行 5 张（卡片同步压到 16px 内边距、13px 标题） */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--wb-cols, 4), var(--wb-card-w, 288px));
+  justify-content: center;
   gap: var(--space-4);
 }
 
@@ -2003,16 +2007,16 @@ body:has(.wb-home) {
   transition: color var(--dur-fast) var(--ease-standard);
 }
 
-/* 5 列后卡片变窄：徽标与「时间 + 置顶 + 更多」允许换到第二行，行高交给内容，
-   避免 12px 字号在 1024 宽度下挤成一条溢出 */
+/* 桌面 4 列时卡片宽度由行高反推，可能比旧的 227 窄；
+   元信息固定单行，时间允许省略，避免换行把卡片撑出三行高度 */
 .wb-board-card__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-1);
-  row-gap: var(--space-1);
   min-height: 22px;
+  overflow: hidden;
 }
 
 .wb-board-card__meta .wb-badge {
@@ -2033,6 +2037,9 @@ body:has(.wb-home) {
   line-height: var(--lh-micro);
   color: var(--ink-muted);
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wb-board-card__pinbtn {
@@ -2136,21 +2143,14 @@ body:has(.wb-home) {
   }
 }
 
-/* ---------- 响应式：1024 及以上 5 列、701–1023 三列、700 以下单列 ---------- */
-@media (max-width: 1023px) {
-  .wb-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
+/* ---------- 响应式：700 以下单列滚动，卡片尺寸交给默认值 ---------- */
 @media (max-width: 700px) {
   .wb-container--boards {
     padding: var(--space-4);
   }
 
   .wb-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-4);
+    grid-template-columns: min(100%, 420px);
   }
 
   .wb-boards__deco {

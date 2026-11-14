@@ -16,11 +16,31 @@ export type SelectableCard = {
 
 export type SelectionState = "none" | "some" | "all";
 
-/** 网格列数：与 pages.css 的断点一致（≥1024 五列、701–1023 三列、≤700 单列）。 */
-export function gridColumnsForWidth(width: number): number {
-  if (width >= 1024) return 5;
-  if (width > 700) return 3;
-  return 1;
+/**
+ * 宽度优先：卡片宽度只由列宽决定，四列直接均分内容区（扣掉列间距）并铺满，不因高度不足而缩小。
+ * 缩略图 16:10，卡片高度随之确定；三行放不下时由页面出现纵向滚动，而不是压小卡片。
+ * 宽度不够 4 列时按最小卡宽 140 减少列数，卡片仍铺满。
+ */
+export const BOARD_GRID_GAP = 16;
+export const BOARD_MAX_COLUMNS = 4;
+const CARD_MIN_WIDTH = 140;
+
+export type BoardsLayout = { cardWidth: number; columns: number };
+
+/** @param width 网格容器内容宽度 */
+export function boardsLayout({
+  width,
+  gap = BOARD_GRID_GAP,
+}: {
+  width: number;
+  gap?: number;
+}): BoardsLayout {
+  const columns = Math.max(
+    1,
+    Math.min(BOARD_MAX_COLUMNS, Math.floor((width + gap) / (CARD_MIN_WIDTH + gap))),
+  );
+  const cardWidth = Math.max(CARD_MIN_WIDTH, Math.floor((width - (columns - 1) * gap) / columns));
+  return { cardWidth, columns };
 }
 
 /** 全选框三态：只看当前页；0 张 = none，满页 = all，其余 = some。 */
