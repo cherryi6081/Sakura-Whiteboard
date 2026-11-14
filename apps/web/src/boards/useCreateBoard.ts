@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBoard } from "./boardsApi";
+import { boardHref, currentListHref } from "../board/backTarget";
 import { listRecentBoards, recordRecentBoard } from "./recentBoards";
 
 /**
@@ -106,7 +107,7 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
 
     if (result.ok) {
       recordRecentBoard({ id: result.data.id, title: result.data.title });
-      window.location.href = `/board/${result.data.id}`;
+      window.location.href = boardHref(result.data.id, currentListHref());
       return;
     }
     if (result.status === 429 && result.code === "QUOTA_EXCEEDED") {

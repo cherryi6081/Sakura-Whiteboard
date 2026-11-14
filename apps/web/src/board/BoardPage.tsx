@@ -12,6 +12,7 @@ import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from ".
 import { ShareDrawer } from "./ShareDrawer";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
+import { resolveBackHref } from "./backTarget";
 import { useImageUpload } from "./useImageUpload";
 
 type SceneElementSummary = {
@@ -249,6 +250,15 @@ export function BoardPage({ boardId }: { boardId: string }) {
    * 这里等一次拍摄（内容没变时只是一次指纹比对），再走原来的整页导航。
    */
   const leavingRef = useRef(false);
+  /**
+   * 返回到进入本板时的上一级页面：`?from` → 同源 referrer → `/boards`。
+   * 团队空间列表带 `?space=` 进板时会被完整带回；分享链接/直接打开回 `/boards`。
+   */
+  const backHref = resolveBackHref({
+    search: window.location.search,
+    referrer: document.referrer,
+    origin: window.location.origin,
+  });
   const handleBack = async (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     const api = apiRef.current;
@@ -258,7 +268,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
     try {
       await captureBoardThumb(api, boardId);
     } finally {
-      window.location.href = "/boards";
+      // 用 replace 而不是 push：返回是"上移一层"，不该在历史里再留一条白板页，
+      // 否则返回列表后再按浏览器后退键会又回到白板，与页面内返回的行为不一致。
+      window.location.replace(backHref);
     }
   };
 
@@ -328,7 +340,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
     return (
       <div className="wb-board">
         <div className="wb-board__topbar">
-          <a className="wb-board__back" href="/boards" aria-label="返回我的白板">
+          <a className="wb-board__back" href={backHref} aria-label="返回上一级" onClick={handleBack}>
             <IconBack />
           </a>
           <span className="wb-board__name">正在加载白板…</span>
@@ -363,7 +375,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   return (
     <div className="wb-board">
       <header className="wb-board__topbar">
-        <a className="wb-board__back" href="/boards" aria-label="返回我的白板" data-testid="board-back">
+        <a className="wb-board__back" href={backHref} aria-label="返回上一级" data-testid="board-back" onClick={handleBack}>
           <IconBack />
         </a>
 

@@ -19,6 +19,7 @@ import {
   type BoardSortMode,
 } from "./boardsApi";
 import { moveBoardToTrash } from "./boardActions";
+import { boardHref, currentListHref } from "../board/backTarget";
 import { clearBoardCache } from "../store/cacheDb";
 import { BatchSelectionBar } from "./BatchSelectionBar";
 import { BatchTrashDialog } from "./BatchTrashDialog";
@@ -1320,7 +1321,8 @@ export function BoardsPage() {
 
     switch (key) {
       case "open":
-        window.location.href = `/board/${board.id}`;
+        // 带上当前列表地址（团队空间会含 ?space=），返回按钮据此回到本层
+        window.location.href = boardHref(board.id, currentListHref());
         return;
       case "rename":
         setRename({ board, trigger });
@@ -2074,7 +2076,7 @@ function BoardCard({
       ) : null}
       <a
         className="wb-board-card__link"
-        href={`/board/${board.id}`}
+        href={boardHref(board.id, currentListHref())}
         // 链接默认可原生拖拽，会抢走 pointermove：排序必须关掉
         draggable={false}
         tabIndex={selectMode ? -1 : undefined}

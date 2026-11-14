@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { fetchMe, type AuthUser } from "../auth/authApi";
+import { boardHref } from "../board/backTarget";
 import { SakuraBranch } from "./SakuraBranch";
 import {
   emptyTrash,
@@ -329,7 +330,7 @@ export function TrashPage() {
             </span>
             <h2 className="wb-subtitle">登录后才能使用回收站</h2>
             <p className="wb-caption">临时白板没有回收站，删除后无法恢复。</p>
-            <a className="wb-btn wb-btn--primary" href="/login?next=%2Fboards%2Ftrash">
+            <a className="wb-btn wb-btn--primary" href="/login?returnTo=%2Fboards%2Ftrash">
               登录 / 注册
             </a>
           </div>
@@ -562,7 +563,7 @@ export function TrashPage() {
         <div className={`wb-toast wb-trash__toast is-${toast.tone}`} role="status" aria-live="polite">
           <span>{toast.text}</span>
           {toast.boardId ? (
-            <a className="wb-toast__link" href={`/board/${toast.boardId}`}>
+            <a className="wb-toast__link" href={boardHref(toast.boardId, "/boards/trash")}>
               打开
             </a>
           ) : null}
