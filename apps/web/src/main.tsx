@@ -6,6 +6,7 @@ import "./styles/ui.css";
 import "./styles/pages.css";
 import "./styles/excalidraw-theme.css";
 import { AuthFlow } from "./auth/AuthFlow";
+import { RequireLogin } from "./auth/RequireLogin";
 import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
 import { BoardsPage } from "./boards/BoardsPage";
@@ -32,7 +33,10 @@ createRoot(document.getElementById("root")!).render(
       ) : route.kind === "boards" ? (
         <BoardsPage />
       ) : route.kind === "trash" ? (
-        <TrashPage />
+        // 回收站是受限页：未登录跳到 /login 并带 returnTo；/boards 仍对游客开放
+        <RequireLogin>
+          <TrashPage />
+        </RequireLogin>
       ) : route.kind === "join" ? (
         <JoinSpacePage token={route.token} />
       ) : route.kind === "spike" ? (

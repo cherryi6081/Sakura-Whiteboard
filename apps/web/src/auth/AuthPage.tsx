@@ -7,6 +7,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "@whiteboard/shared";
 import { login, register, type MePayload } from "./authApi";
+import { isRestrictedPath } from "../board/route";
 import { IconAlert, IconBack, IconEye, IconEyeOff } from "../ui/icons";
 import { FujiScene } from "../home/FujiScene";
 import { useThemePeriod } from "../theme/ThemeClock";
@@ -66,7 +67,8 @@ export function AuthPage({
     onDone(result.data);
   };
 
-  const guestHref = next ?? "/";
+  // 受限页的 returnTo 不回给游客：否则点「继续以游客身份」会立刻被守卫弹回登录页
+  const guestHref = next && !isRestrictedPath(next) ? next : "/";
 
   return (
     <div className="wb-auth" data-period={period}>
