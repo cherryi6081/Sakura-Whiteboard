@@ -31,6 +31,13 @@ function full(overrides: Record<string, Partial<EvictionCandidate>> = {}): Evict
 }
 
 describe('pickEvictionCandidate', () => {
+  it('容量边界 0 / 1 / 14 块都不淘汰，15 块才开始挑', () => {
+    expect(pickEvictionCandidate([], { now: NOW })).toBeNull();
+    expect(pickEvictionCandidate(full().slice(0, 1), { now: NOW })).toBeNull();
+    expect(pickEvictionCandidate(full().slice(0, BOARD_CAPACITY - 1), { now: NOW })).toBeNull();
+    expect(pickEvictionCandidate(full(), { now: NOW })?.id).toBe('b00');
+  });
+
   it('未满 15 块时不淘汰', () => {
     expect(pickEvictionCandidate(full().slice(0, BOARD_CAPACITY - 1), { now: NOW })).toBeNull();
   });
