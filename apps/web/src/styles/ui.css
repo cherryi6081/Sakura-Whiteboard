@@ -390,6 +390,21 @@ body {
   color: var(--danger-fg);
 }
 
+/* 提示文字可以折行让位，但内嵌的操作（如「去整理」）必须保持单行：
+   否则会被长文案挤成「去整/理」两行。操作按自身宽度「刚好容纳」，不被压缩。 */
+.wb-inline-note__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.wb-inline-note__action {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
 .wb-inline-note--info {
   background: var(--info-bg);
   border-color: var(--info-border);
@@ -424,6 +439,30 @@ body {
 .wb-avatar--more {
   background: var(--surface-sunken);
   color: var(--ink-muted);
+}
+
+/* 用户标识（导航/顶栏用户名前的线性图标）：16px，与「回收站」「退出登录」图标同源同色，不撑高 */
+.wb-user-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+.wb-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-width: 0;
+  color: var(--neutral-800);
+}
+
+:root[data-theme="night"] .wb-user-chip {
+  color: var(--ink-strong);
 }
 
 /* ---------- 骨架 ---------- */
@@ -469,6 +508,44 @@ body {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-3);
   animation: wb-pop var(--dur-base) var(--ease-standard);
+}
+
+/*
+ * 弹窗滚动条公共修正：
+ * 经典滚动条的轨道会铺满滚动容器右侧，盖住 dialog 的右上/右下圆角，看起来像缺角。
+ * 这里把轨道设为透明、两端留出圆角半径的空间，缩略条内缩并用圆角绘制；
+ * 同时覆盖 dialog 内部的滚动区（成员列表、认领列表等），避免逐个小窗打补丁。
+ */
+.wb-dialog::-webkit-scrollbar,
+.wb-dialog ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.wb-dialog::-webkit-scrollbar-track,
+.wb-dialog ::-webkit-scrollbar-track {
+  margin: 14px 0;
+  background: transparent;
+}
+
+.wb-dialog::-webkit-scrollbar-thumb,
+.wb-dialog ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--ink-muted) 42%, transparent);
+  background-clip: content-box;
+}
+
+.wb-dialog::-webkit-scrollbar-corner,
+.wb-dialog ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.wb-dialog::-webkit-scrollbar-button,
+.wb-dialog ::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .wb-dialog__head {
@@ -546,6 +623,14 @@ body {
   border-radius: var(--radius-md);
   background: var(--rose-50);
   color: var(--rose-500);
+}
+
+/* 空态动作组：主按钮 + 可选的次要入口（游客的「登录 / 注册」） */
+.wb-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .wb-panel--error {

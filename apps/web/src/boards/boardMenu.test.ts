@@ -54,10 +54,10 @@ describe("buildBoardMenu", () => {
     expect(flat(groups)).toHaveLength(7);
   });
 
-  it("游客可置顶（本机）、可删除临时板（物理删除，不可恢复），改名禁用", () => {
+  it("游客可置顶（本机）、可改名（同步本机记录）、可删除临时板（物理删除，不可恢复）", () => {
     const groups = buildBoardMenu({ role: "owner", pinned: false, guest: true });
     expect(item(groups, "pin").disabledReason).toBeUndefined();
-    expect(item(groups, "rename").disabledReason).toBe("登录后可用");
+    expect(item(groups, "rename").disabledReason).toBeUndefined();
     expect(item(groups, "trash").disabledReason).toBeUndefined();
     expect(item(groups, "trash").label).toBe("删除临时板");
     expect(item(groups, "trash").tail).toBe("不可恢复");

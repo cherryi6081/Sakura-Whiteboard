@@ -22,7 +22,7 @@ async function main() {
     });
     await emptyPage.close();
 
-    const user = await registerUser("list-15");
+    const user = await registerUser("list-12");
     for (let i = 0; i < 12; i += 1) await user.api.createBoard({ title: `L-${i + 1}` });
     const { page } = await newPage(browser, { cookie: user.api.sessionCookie, width: 1440, height: 950 });
 
@@ -101,25 +101,17 @@ async function main() {
       }, { label: "恢复到 1024 档" });
     });
 
-    await test("13 张：第 4 行出现，1440×950 允许滚动", async () => {
+    await test("第 13 块：服务端先淘汰一块，界面仍是 12 张 3 行不滚动", async () => {
       await user.api.createBoard({ title: "L-13" });
       await page.setViewport({ width: 1440, height: 950, deviceScaleFactor: 1 });
       await openBoards(page);
       const m = await layoutMetrics(page);
-      eq(m.cardCount, 13, "卡片数");
+      eq(m.cardCount, 12, "卡片数（第 13 块触发淘汰）");
       eq(m.columns, 4, "列数");
-      eq(m.rows, 4, "行数");
-      eq(m.verticalScroll, true, "13 张时页高超过视口");
-      await page.screenshot({ path: screenshotPath("boards-13-1440x950") });
-    });
-
-    await test("15 张：15 张全部渲染、仍 4 列", async () => {
-      for (let i = 0; i < 2; i += 1) await user.api.createBoard({ title: `L-${14 + i}` });
-      await openBoards(page);
-      const m = await layoutMetrics(page);
-      eq(m.cardCount, 15, "卡片数");
-      eq(m.columns, 4, "列数");
-      eq(m.verticalScroll, true, "15 张时页面可滚");
+      eq(m.rows, 3, "行数");
+      eq(m.verticalScroll, false, "12 张仍不滚动");
+      const count = await page.$eval(".wb-boards__count", (node) => node.textContent.replace(/\s+/g, " ").trim());
+      eq(count, "12 / 12", "容量计数");
     });
 
     await test("置顶分组：出现「置顶 / 其余白板」两个分组，置顶在前", async () => {
@@ -159,7 +151,7 @@ async function main() {
       const order = await page.$$eval("[data-select-check]", (nodes) =>
         nodes.map((node) => node.getAttribute("data-select-check")),
       );
-      eq(order.length, 15, "选择态卡片数");
+      eq(order.length, 12, "选择态卡片数");
       const activeCheck = () =>
         page.evaluate(() => document.activeElement?.getAttribute("data-select-check") ?? null);
       await page.focus(`[data-select-check="${order[0]}"]`);

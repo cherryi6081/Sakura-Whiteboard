@@ -25,7 +25,7 @@ async function createMany(api, count, { spaceId, startIndex = 0 } = {}) {
 }
 
 async function main() {
-  await test("容量 0 / 1 / 15：不满 15 不淘汰", async () => {
+  await test("容量 0 / 1 / 12：不满 12 不淘汰", async () => {
     const { api, email } = await registerUser("cap0");
     const empty = await api.list();
     eq(empty.status, 200, "列表状态");
@@ -34,25 +34,25 @@ async function main() {
     await createMany(api, 1);
     eq((await api.list()).json.boards.length, 1, "1 块");
 
-    await createMany(api, 14, { startIndex: 1 });
+    await createMany(api, 11, { startIndex: 1 });
     const list = await api.list();
-    eq(list.json.boards.length, 15, "15 块");
+    eq(list.json.boards.length, 12, "12 块");
     const userId = await userIdByEmail(email);
-    eq((await evictions(userId)).length, 0, "15 块不应有淘汰");
+    eq((await evictions(userId)).length, 0, "12 块不应有淘汰");
   });
 
-  await test("15 块都处于保护期：第 16 块 429 CAPACITY_ALL_PROTECTED", async () => {
+  await test("12 块都处于保护期：第 13 块 429 CAPACITY_ALL_PROTECTED", async () => {
     const { api } = await registerUser("cap-protected");
-    await createMany(api, 15);
-    const res = await api.createBoard({ title: "第 16 块" });
+    await createMany(api, 12);
+    const res = await api.createBoard({ title: "第 13 块" });
     eq(res.status, 429, "全保护时建板状态");
     eq(res.json?.error?.code, "CAPACITY_ALL_PROTECTED", "错误码");
-    eq((await api.list()).json.boards.length, 15, "被拒绝后仍是 15 块");
+    eq((await api.list()).json.boards.length, 12, "被拒绝后仍是 12 块");
   });
 
-  await test("第 16 块淘汰：最旧、零打开；进回收站可恢复；审计行齐全", async () => {
+  await test("第 13 块淘汰：最旧、零打开；进回收站；审计 trigger=create", async () => {
     const { api, email } = await registerUser("cap-evict");
-    const created = await createMany(api, 15, { startIndex: 100 });
+    const created = await createMany(api, 12, { startIndex: 100 });
     const userId = await userIdByEmail(email);
     // 逐块错开 1 秒并整体推到保护期外，让「最旧」可判定（同一时间戳会退化到按 id 排序）
     await query(
@@ -72,15 +72,16 @@ async function main() {
     eq(row4.opened_count, 2, "opened_count");
     assert(row4.last_opened_at !== null, "last_opened_at 应写入");
 
-    const res = await api.createBoard({ title: "第 16 块" });
-    eq(res.status, 201, `第 16 块建板状态：${JSON.stringify(res.json)}`);
+    const res = await api.createBoard({ title: "第 13 块" });
+    eq(res.status, 201, `第 13 块建板状态：${JSON.stringify(res.json)}`);
     const list = await api.list();
-    eq(list.json.boards.length, 15, "淘汰后仍 15 块");
+    eq(list.json.boards.length, 12, "淘汰后仍 12 块");
 
     const audits = await evictions(userId);
     eq(audits.length, 1, "审计行数");
     const audit = audits[0];
     eq(audit.mode, "trash", "登录用户淘汰进回收站");
+    eq(audit.trigger, "create", "新建触发的审计来源");
     eq(audit.policy, "opened_count asc, created_at asc, id asc", "淘汰策略");
     eq(audit.trigger_board_id, res.json.id, "触发板 id");
     eq(audit.board_id, created[0].id, "淘汰最旧且零打开的板");
@@ -91,14 +92,12 @@ async function main() {
     const trash = await api.trash();
     eq(trash.status, 200, "回收站状态");
     eq(trash.json.boards.some((item) => item.id === created[0].id), true, "回收站可见被淘汰板");
-    const restored = await api.restore(created[0].id);
-    eq(restored.status, 200, `恢复状态：${JSON.stringify(restored.json)}`);
-    eq((await api.list()).json.boards.length, 16, "恢复后 16 块（容量只在建板时检查）");
+    eq(trash.json.boards.find((item) => item.id === created[0].id)?.activeInScope, 12, "回收站行带活跃计数");
   });
 
   await test("并发创建两块：advisory lock 串行，两次各淘汰一块且不重复", async () => {
     const { api, email } = await registerUser("cap-race");
-    await createMany(api, 15, { startIndex: 200 });
+    await createMany(api, 12, { startIndex: 200 });
     const userId = await userIdByEmail(email);
     await ageBoards(userId, 11);
 
@@ -111,17 +110,17 @@ async function main() {
     eq(audits.length, 2, "两次淘汰各留一行审计");
     eq(new Set(audits.map((item) => item.board_id)).size, 2, "两次淘汰不是同一块板");
     const live = (await boardsOfOwner(userId)).filter((row) => row.deleted_at === null);
-    eq(live.length, 15, "并发后仍是 15 块");
+    eq(live.length, 12, "并发后仍是 12 块");
   });
 
-  await test("游客口径：满 15 且置顶（pinnedIds）→ 429；不置顶 → 淘汰并物理删除", async () => {
+  await test("游客口径：满 12 且置顶（pinnedIds）→ 429；不置顶 → 淘汰并物理删除", async () => {
     const { api, firstBoard } = await registerGuest();
     const guestId = await guestIdOfBoard(firstBoard.id);
     assert(guestId, "游客 cookie 应落 owner_guest_id");
 
-    // 游客 3/24h 限流下拿不到 15 块：用 SQL 补齐边界数据（仍由真实接口触发淘汰）
+    // 游客 3/24h 限流下拿不到 12 块：用 SQL 补齐边界数据（仍由真实接口触发淘汰）
     // id 是应用侧 nanoid(12)，库表没有默认值，这里补 12 位十六进制
-    for (let i = 0; i < 14; i += 1) {
+    for (let i = 0; i < 11; i += 1) {
       await query(
         `insert into boards (id, title, owner_guest_id, created_at, last_edited_at)
          values (substr(md5(random()::text || $3), 1, 12), $1, $2, now() - interval '20 minutes', now() - interval '20 minutes')`,
@@ -129,17 +128,18 @@ async function main() {
       );
     }
     const { rows: guestBoards } = await query("select id from boards where owner_guest_id = $1 and deleted_at is null", [guestId]);
-    eq(guestBoards.length, 15, "游客 15 块");
+    eq(guestBoards.length, 12, "游客 12 块");
 
     const blocked = await api.createBoard({ title: "全置顶", pinnedIds: guestBoards.map((row) => row.id) });
     eq(blocked.status, 429, "全置顶游客建板状态");
     eq(blocked.json?.error?.code, "CAPACITY_ALL_PROTECTED", "游客全保护错误码");
 
-    const ok = await api.createBoard({ title: "游客第 16 块", pinnedIds: [guestBoards[0].id] });
-    eq(ok.status, 201, `游客第 16 块状态：${JSON.stringify(ok.json)}`);
+    const ok = await api.createBoard({ title: "游客第 13 块", pinnedIds: [guestBoards[0].id] });
+    eq(ok.status, 201, `游客第 13 块状态：${JSON.stringify(ok.json)}`);
     const audits = await evictionsForGuest(guestId);
     eq(audits.length, 1, "游客淘汰审计");
     eq(audits[0].mode, "purged", "游客物理删除");
+    eq(audits[0].trigger, "create", "游客淘汰也标 trigger=create");
     assert(audits[0].board_id !== guestBoards[0].id, "置顶的板不被淘汰");
     const purged = await boardRow(audits[0].board_id);
     eq(purged, null, "游客被淘汰板物理删除");
@@ -152,7 +152,7 @@ async function main() {
     eq(space.status, 201, `建空间：${JSON.stringify(space.json)}`);
     const spaceId = space.json.id;
 
-    await createMany(owner.api, 15, { spaceId, startIndex: 300 });
+    await createMany(owner.api, 12, { spaceId, startIndex: 300 });
     const ownerId = await userIdByEmail(owner.email);
     await query(
       `update boards set created_at = now() - interval '20 minutes', last_edited_at = now() - interval '20 minutes'
@@ -171,9 +171,9 @@ async function main() {
     eq((await evictions(ownerId)).length, 0, "不应淘汰所有者的板");
 
     const list = await owner.api.list(spaceId, 30);
-    eq(list.json.boards.length, 16, "空间内共 16 块");
+    eq(list.json.boards.length, 13, "空间内共 13 块");
     const ownerRows = (await boardsOfOwner(ownerId)).filter((row) => row.deleted_at === null);
-    eq(ownerRows.length, 15, "所有者的 15 块原样保留");
+    eq(ownerRows.length, 12, "所有者的 12 块原样保留");
   });
 
   await closePool();

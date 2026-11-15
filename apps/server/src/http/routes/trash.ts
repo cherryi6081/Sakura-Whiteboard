@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { pool } from '../../infra/db.js';
 import { AppError } from '../middlewares/error.js';
@@ -7,6 +8,14 @@ import { boardIdSchema } from '../../domain/opPage.js';
 import { identityOf } from '../../auth/identity.js';
 import { uniqueBoardTitle } from '../../domain/boardTitle.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
+import {
+  BOARD_CAPACITY,
+  evictSpecificBoard,
+  listEvictionCandidates,
+  loadScopeBoards,
+  type EvictionResult,
+  type EvictionScope,
+} from '../../domain/boardCapacity.js';
 
 /**
  * 回收站（「我的白板」v1.2 第 1 步）。
@@ -39,30 +48,43 @@ const trashQuerySchema = z.object({
 type TrashRow = {
   id: string;
   title: string;
+  space_id: string | null;
   space_name: string | null;
   deleted_at: Date;
   purge_at: Date;
+  /** 同 owner + 同空间的活跃板数量：满 12 时前端把「恢复」改成「恢复并替换…」 */
+  active_in_scope: number;
 };
 
 function toTrashItem(row: TrashRow) {
   return {
     id: row.id,
     title: row.title,
+    spaceId: row.space_id,
     spaceName: row.space_name,
+    activeInScope: row.active_in_scope,
+    capacity: BOARD_CAPACITY,
     deletedAt: row.deleted_at.toISOString(),
     purgeAt: row.purge_at.toISOString(),
   };
 }
 
 /**
- * 回收站可见范围：自己创建的板 + 自己作为所有者所在空间里的板。
- * 空间所有者可以删别人的板（设计稿 §05），删完必须能在回收站里看到并恢复。
+ * 回收站可见范围：当前仍在该空间的成员，才能看到自己创建的板；空间所有者能看到空间里的所有板。
+ * - 个人空间：成员只有自己，按「自己创建的板」可见；
+ * - 团队空间：退出后不再是成员，连带自己创建的板也不再出现在回收站（板留在空间里归空间管理）；
+ * - 空间所有者可以删别人的板（设计稿 §05），删完必须能在回收站里看到并恢复；
+ * - `space_id is null` 仅用于兼容未迁移的遗留板，游客板不会出现在登录用户的回收站。
  */
-const TRASH_VISIBLE = `(b.owner_id = $1 or exists (
-  select 1 from spaces s
-   join space_members m on m.space_id = s.id and m.user_id = $1
-  where s.id = b.space_id and m.role = 'owner'
-))`;
+const TRASH_VISIBLE = `(
+  (b.space_id is null and b.owner_id = $1)
+  or exists (
+    select 1 from spaces s
+     join space_members m on m.space_id = s.id and m.user_id = $1
+    where s.id = b.space_id and s.deleted_at is null
+      and (b.owner_id = $1 or m.role = 'owner')
+  )
+)`;
 
 /** `GET /api/boards/trash` —— 个人回收站，按删除时间倒序，12 行一页。 */
 trashRouter.get(
@@ -73,8 +95,12 @@ trashRouter.get(
     const { limit, offset, filter } = trashQuerySchema.parse(req.query);
 
     const { rows } = await pool.query<TrashRow>(
-      `select b.id, b.title, s.name as space_name, b.deleted_at,
-              b.deleted_at + make_interval(days => $3::int) as purge_at
+      `select b.id, b.title, b.space_id, s.name as space_name, b.deleted_at,
+              b.deleted_at + make_interval(days => $3::int) as purge_at,
+              (select count(*)::int from boards a
+                where a.space_id is not distinct from b.space_id
+                  and a.owner_id is not distinct from b.owner_id
+                  and a.deleted_at is null and a.archived_at is null) as active_in_scope
          from boards b
          left join spaces s on s.id = b.space_id
         where ${TRASH_VISIBLE} and b.deleted_at is not null
@@ -179,34 +205,146 @@ trashRouter.delete(
   }),
 );
 
-/** `POST /api/boards/:id/restore` —— 从回收站恢复；同名自动加序号。 */
+type TrashBoardRow = { id: string; title: string; space_id: string | null; owner_id: string | null };
+type Queryable = Pick<PoolClient, 'query'>;
+
+/** 回收站里的一块（含空间与创建者），恢复与恢复计划共用。 */
+async function loadTrashBoard(
+  client: Queryable,
+  userId: string,
+  boardId: string,
+  { forUpdate = false }: { forUpdate?: boolean } = {},
+): Promise<TrashBoardRow | null> {
+  const { rows } = await client.query<TrashBoardRow>(
+    `select b.id, b.title, b.space_id, b.owner_id from boards b
+      where b.id = $2 and ${TRASH_VISIBLE} and b.deleted_at is not null
+      ${forUpdate ? 'for update of b' : ''}`,
+    [userId, boardId],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * 恢复时的容量作用域：与新建淘汰同一口径——只统计「这块板的创建者在同一空间里自己的板」，
+ * 因此团队空间里恢复别人的板不会把同事的板挤掉。
+ */
+function scopeOf(board: TrashBoardRow): EvictionScope {
+  return { kind: 'user', userId: board.owner_id ?? '', spaceId: board.space_id ?? '', mode: 'trash' };
+}
+
+/**
+ * `GET /api/boards/:id/restore/plan` —— 满 12 时恢复前先取候选。
+ *
+ * 只读、不加锁：给出「当前用了几块、是否要腾位置、可淘汰哪些」，
+ * 真正执行时服务端会在事务里重新计数与复核。
+ */
+trashRouter.get(
+  '/boards/:id/restore/plan',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const identity = identityOf(req);
+    if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
+
+    const board = await loadTrashBoard(pool, identity.userId, boardId);
+    if (!board) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
+
+    const active = await loadScopeBoards(pool, scopeOf(board));
+    const candidates = listEvictionCandidates(active);
+    res.json({
+      capacity: BOARD_CAPACITY,
+      used: active.length,
+      needsEviction: active.length >= BOARD_CAPACITY,
+      candidates: candidates.map((row) => ({
+        id: row.id,
+        title: row.title,
+        openedCount: row.openedCount,
+        createdAt: row.createdAt.toISOString(),
+        lastEditedAt: row.lastEditedAt.toISOString(),
+      })),
+    });
+  }),
+);
+
+/**
+ * `POST /api/boards/:id/restore` —— 从回收站恢复；同名自动加序号。
+ *
+ * 满 12 块时必须带 `replaceBoardId`（用户在弹窗里选中的那块）：同一事务里
+ * 把它移入回收站 + 审计 `trigger=restore` + 恢复目标板。服务端不复用前端列表，
+ * 重新计数并复核「同作用域、未删除、不在保护期」。
+ */
 trashRouter.post(
   '/boards/:id/restore',
   handle(async (req, res) => {
     const boardId = boardIdSchema.parse(req.params.id);
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
+    const { replaceBoardId } = z
+      .object({ replaceBoardId: boardIdSchema.optional() })
+      .parse(req.body ?? {});
 
-    const { rows } = await pool.query<{ id: string; title: string; space_id: string | null }>(
-      `select b.id, b.title, b.space_id from boards b
-        where b.id = $2 and ${TRASH_VISIBLE} and b.deleted_at is not null`,
-      [identity.userId, boardId],
-    );
-    const board = rows[0];
-    if (!board) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const board = await loadTrashBoard(client, identity.userId, boardId, { forUpdate: true });
+      if (!board) throw new AppError(404, 'NOT_FOUND', '回收站里没有这块白板');
 
-    const { rows: takenRows } = await pool.query<{ title: string }>(
-      'select title from boards where space_id is not distinct from $1 and deleted_at is null and id <> $2',
-      [board.space_id, boardId],
-    );
-    const title = uniqueBoardTitle(
-      board.title,
-      takenRows.map((row) => row.title),
-    );
+      const scope = scopeOf(board);
+      // 与新建共用同一把作用域锁：恢复与第 13 块新建不会基于同一份旧计数各删一块
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [
+        `board-create:user:${scope.kind === 'user' ? scope.userId : ''}:${board.space_id ?? ''}`,
+      ]);
 
-    await pool.query('update boards set deleted_at = null, title = $2 where id = $1', [boardId, title]);
+      const active = await loadScopeBoards(client, scope, { forUpdate: true });
+      let evicted: EvictionResult | null = null;
 
-    res.json({ id: boardId, title, renamed: title !== board.title, deletedAt: null });
+      if (active.length >= BOARD_CAPACITY) {
+        if (replaceBoardId) {
+          const outcome = await evictSpecificBoard(client, scope, replaceBoardId, boardId);
+          if (outcome.kind === 'not-found') {
+            throw new AppError(409, 'CAPACITY_TARGET_GONE', '选中的白板已不在列表里，请重新选择');
+          }
+          if (outcome.kind === 'protected') {
+            throw new AppError(409, 'CAPACITY_TARGET_PROTECTED', '选中的白板在置顶或最近使用中，换一块');
+          }
+          evicted = outcome.board;
+        } else if (listEvictionCandidates(active).length === 0) {
+          // 12 块全在保护期：不删任何一块，提示稍后再试
+          throw new AppError(
+            429,
+            'CAPACITY_NO_EVICTABLE',
+            `${BOARD_CAPACITY} 块白板都在置顶或最近使用中，暂时腾不出位置，请稍后再试`,
+          );
+        } else {
+          // 有候选但用户还没选：前端据此拉 restore/plan 弹窗
+          throw new AppError(409, 'CAPACITY_FULL', '空间已满，需要先选一块白板移入回收站');
+        }
+      }
+
+      const { rows: takenRows } = await client.query<{ title: string }>(
+        'select title from boards where space_id is not distinct from $1 and deleted_at is null and id <> $2',
+        [board.space_id, boardId],
+      );
+      const title = uniqueBoardTitle(
+        board.title,
+        takenRows.map((row) => row.title),
+      );
+
+      await client.query('update boards set deleted_at = null, title = $2 where id = $1', [boardId, title]);
+      await client.query('commit');
+
+      res.json({
+        id: boardId,
+        title,
+        renamed: title !== board.title,
+        deletedAt: null,
+        evicted: evicted ? { id: evicted.id, title: evicted.title } : null,
+      });
+    } catch (err) {
+      await client.query('rollback').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   }),
 );
 

@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
-import { recordRecentBoard, titleOf } from "../boards/recentBoards";
+import {
+  GUEST_OWNER,
+  ownerTag,
+  recordRecentBoard,
+  setActiveOwner,
+  titleOf,
+  userOwner,
+  type RecentOwner,
+} from "../boards/recentBoards";
 import { markBoardOpened } from "../boards/boardsApi";
 import { captureBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from "../ui/icons";
@@ -91,6 +99,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const bridgeRef = useRef<BoardCanvasHandle | null>(null);
   /** 首帧缩略图每次进板只排一次（画布 API 可能因 StrictMode 重放两次） */
   const thumbScheduledRef = useRef(false);
+  /** 当前身份标签（`guest` / `user:<id>`）：身份握手完成前为 null，缩略图读写一律跳过 */
+  const ownerTagRef = useRef<string | null>(null);
   /** 编辑后的重拍防抖：连续落笔只在停笔后导出一次 */
   const thumbRefreshTimerRef = useRef<number | null>(null);
   const storeRef = useRef<BoardStore | null>(null);
@@ -98,7 +108,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed());
   const [shareOpen, setShareOpen] = useState(false);
-  const [title] = useState(() => titleOf(boardId) ?? "未命名白板");
+  /** 标题在身份握手完成后才能按归属读取本机记录，先渲染占位 */
+  const [title, setTitle] = useState<string | null>(null);
+  const displayTitle = title ?? "未命名白板";
   const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
@@ -113,6 +125,16 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const readonly = requestedViewOnly;
   const isGuest = storeState?.authenticated === false;
   const user = storeState?.user ?? null;
+  /**
+   * 本机记录归属：登录用户用自己的 key，游客用游客 key。
+   * 身份握手完成前是 null——此时既不读也不写，避免把已登录白板误记进游客列表。
+   */
+  const owner = useMemo<RecentOwner | null>(() => {
+    if (!storeState?.identityReady) return null;
+    return storeState.authenticated && storeState.user
+      ? userOwner(storeState.user.id)
+      : GUEST_OWNER;
+  }, [storeState?.identityReady, storeState?.authenticated, storeState?.user?.id]);
 
   /** 只有登录且非只读才展示上传入口；服务端还会独立校验一次（Q5） */
   const canUpload = !readonly && !isGuest && Boolean(user);
@@ -174,11 +196,37 @@ export function BoardPage({ boardId }: { boardId: string }) {
     };
   }, [boardId]);
 
+  /**
+   * 首帧缩略图：画布就绪与身份握手谁先完成不确定，两边都调一次，内部只放行一次。
+   * 身份未知时直接跳过，绝不用错归属的 key 写图。
+   */
+  const captureFirstFrame = useCallback(() => {
+    const api = apiRef.current;
+    const tag = ownerTagRef.current;
+    if (!api || !tag || thumbScheduledRef.current) return;
+    thumbScheduledRef.current = true;
+    scheduleThumbCapture(api, tag, boardId);
+  }, [boardId]);
+
+  // 身份就绪后：记下本页归属，按归属取标题，并补拍首帧缩略图（画布可能先于握手就绪）
   useEffect(() => {
-    recordRecentBoard({ id: boardId, title });
+    if (!owner) return;
+    ownerTagRef.current = ownerTag(owner);
+    setActiveOwner(owner);
+    setTitle(titleOf(boardId, owner) ?? "未命名白板");
+    captureFirstFrame();
+  }, [boardId, owner, captureFirstFrame]);
+
+  // 标题解析完成后才写回本机记录，避免占位标题覆盖已存的自定义名
+  useEffect(() => {
+    if (!owner || title === null) return;
+    recordRecentBoard({ id: boardId, title }, owner);
+  }, [boardId, owner, title]);
+
+  useEffect(() => {
     // 打开次数：列表容量 15 的淘汰排序依据；fire-and-forget，不阻塞首帧
     markBoardOpened(boardId);
-  }, [boardId, title]);
+  }, [boardId]);
 
   // 先让缓存/快照内容渲染出来，再创建 per-tab/per-board store（内部先做 tabId 握手，再连 Socket）
   useEffect(() => {
@@ -212,7 +260,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
     thumbRefreshTimerRef.current = window.setTimeout(() => {
       thumbRefreshTimerRef.current = null;
       const api = apiRef.current;
-      if (api) scheduleThumbCapture(api, boardId, { fast: true });
+      const tag = ownerTagRef.current;
+      if (api && tag) scheduleThumbCapture(api, tag, boardId, { fast: true });
     }, 50);
   }, [boardId]);
 
@@ -231,7 +280,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
   useEffect(() => {
     const flush = () => {
       const api = apiRef.current;
-      if (api) void captureBoardThumb(api, boardId);
+      const tag = ownerTagRef.current;
+      if (api && tag) void captureBoardThumb(api, tag, boardId);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -265,8 +315,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
     if (!api || leavingRef.current) return;
     event.preventDefault();
     leavingRef.current = true;
+    const tag = ownerTagRef.current;
     try {
-      await captureBoardThumb(api, boardId);
+      if (tag) await captureBoardThumb(api, tag, boardId);
     } finally {
       // 用 replace 而不是 push：返回是"上移一层"，不该在历史里再留一条白板页，
       // 否则返回列表后再按浏览器后退键会又回到白板，与页面内返回的行为不一致。
@@ -380,8 +431,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </a>
 
         <div style={{ minWidth: 0 }}>
-          <div className="wb-board__name" title={title}>
-            {title}
+          <div className="wb-board__name" title={displayTitle}>
+            {displayTitle}
           </div>
           <div className="wb-board__name-sub wb-mono" data-testid="board-id">
             {boardId}
@@ -538,11 +589,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
               timingRef.current.canvasReadyAt = performance.now();
               storeRef.current?.notifyCanvasReady();
               if (window.__board) window.__board.ready = true;
-              // 首帧快照：每次进板只排一次，已有快照且内容未改时 captureBoardThumb 内部会跳过
-              if (!thumbScheduledRef.current) {
-                thumbScheduledRef.current = true;
-                scheduleThumbCapture(api, boardId);
-              }
+              // 首帧快照：身份可能晚于画布就绪，captureFirstFrame 内部只放行一次
+              captureFirstFrame();
             }}
             onOps={(ops) => {
               window.__board?.opBatches.push(ops);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBoard } from "./boardsApi";
 import { boardHref, currentListHref } from "../board/backTarget";
-import { listRecentBoards, recordRecentBoard } from "./recentBoards";
+import { listRecentBoards, recordRecentBoard, type RecentOwner } from "./recentBoards";
 
 /**
  * 「新建一块白板」的共用逻辑：调 `POST /api/boards` → 写入本机最近列表 → 整页跳到
@@ -25,6 +25,8 @@ type UseCreateBoardOptions = {
   messageFor?: (failure: { kind: CreateBoardFailureKind; code?: string }) => string;
   /** 建到哪个空间；不传 = 服务端落到个人空间 */
   spaceId?: string;
+  /** 本机最近列表的归属（游客 / 某个登录用户）；不传用当前标签页已解析的身份 */
+  owner?: RecentOwner;
 };
 
 const DEFAULT_MESSAGES: Record<CreateBoardFailureKind, string> = {
@@ -41,7 +43,7 @@ function readOffline(): boolean {
 }
 
 export function useCreateBoard(options: UseCreateBoardOptions = {}) {
-  const { messageFor, spaceId } = options;
+  const { messageFor, spaceId, owner } = options;
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState<CreateBoardFailure | null>(null);
@@ -91,8 +93,8 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(true);
     slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
 
-    // 游客的置顶只存在本机；满 15 块淘汰时把本机置顶的板排除掉（登录用户由服务端忽略该字段）
-    const pinnedIds = listRecentBoards()
+    // 游客的置顶只存在本机；满额淘汰时把本机置顶的板排除掉（登录用户由服务端忽略该字段）
+    const pinnedIds = listRecentBoards(owner)
       .filter((item) => item.pinned)
       .map((item) => item.id);
     const result = await createBoard(undefined, spaceId, pinnedIds);
@@ -106,7 +108,7 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(false);
 
     if (result.ok) {
-      recordRecentBoard({ id: result.data.id, title: result.data.title });
+      recordRecentBoard({ id: result.data.id, title: result.data.title }, owner);
       window.location.href = boardHref(result.data.id, currentListHref());
       return;
     }
@@ -115,7 +117,7 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
       return;
     }
     setError(buildFailure("error", result.code));
-  }, [buildFailure, spaceId]);
+  }, [buildFailure, spaceId, owner]);
 
   return { busy, slow, error, start };
 }

@@ -13,9 +13,26 @@ export type MePayload = {
   loginMethod: 'password' | 'oauth:github' | null;
 };
 
-export type ClaimPreview = { count: number; boards: { id: string; title: string; lastEditedAt: string }[] };
+export type ClaimPreview = {
+  count: number;
+  boards: { id: string; title: string; lastEditedAt: string }[];
+  /** 当前浏览器是否仍持有效游客 cookie；false 时前端不弹提示 */
+  guestActive: boolean;
+  /** 个人空间里我创建的、未删除未归档的板 */
+  used: number;
+  capacity: number;
+  /** 服务端算好的容量结论，前端只负责展示 */
+  canTransfer: boolean;
+};
 
-export type ClaimResult = { transferred: number; boards: { id: string; title: string }[] };
+export type ClaimResult = {
+  /** 本次实际转入的块数；重复提交时为 0 */
+  transferred: number;
+  boards: { id: string; title: string }[];
+  used: number;
+  capacity: number;
+  userId: string;
+};
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string };
 
@@ -58,9 +75,10 @@ export function fetchClaimPreview(): Promise<ApiResult<ClaimPreview>> {
   return request<ClaimPreview>('/api/guest/claim-preview');
 }
 
-export function claimGuestBoards(boardIds?: string[]): Promise<ApiResult<ClaimResult>> {
+/** 全转或整体拒绝：不传 id，服务端只认当前 cookie 里的游客身份。 */
+export function claimGuestBoards(): Promise<ApiResult<ClaimResult>> {
   return request<ClaimResult>('/api/guest/claim', {
     method: 'POST',
-    body: JSON.stringify(boardIds ? { boardIds } : {}),
+    body: JSON.stringify({}),
   });
 }

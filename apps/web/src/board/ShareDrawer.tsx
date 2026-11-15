@@ -157,11 +157,13 @@ export function ShareDrawer({
 
             <label className="wb-field">
               <span className="wb-field__label">有效期</span>
-              <select className="wb-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}>
-                <option value="7">7 天（默认）</option>
-                <option value="30">30 天</option>
-                <option value="forever">永久</option>
-              </select>
+              <span className="wb-select-wrap">
+                <select className="wb-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}>
+                  <option value="7">7 天（默认）</option>
+                  <option value="30">30 天</option>
+                  <option value="forever">永久</option>
+                </select>
+              </span>
             </label>
 
             <button className="wb-btn wb-btn--primary wb-btn--full" type="button" onClick={() => void create()} disabled={busy}>

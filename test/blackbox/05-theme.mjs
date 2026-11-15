@@ -156,6 +156,86 @@ async function main() {
       await page.screenshot({ path: screenshotPath("theme-night-excalidraw") });
       await session.context.close();
     });
+    await test("空间设置下拉：自绘外壳随主题换色，尺寸不变、对比度 ≥ 4.5", async () => {
+      const space = await user.api.createSpace(`theme-space-${Date.now()}`);
+      const read = (page) =>
+        page.evaluate(() => {
+          const el = document.querySelector(".wb-space-invite__role select");
+          const style = getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          const rgb = (value) => value.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+          const lum = (value) => {
+            const [r, g, b] = rgb(value).map((part) => {
+              const c = part / 255;
+              return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const fg = lum(style.color);
+          const bg = lum(style.backgroundColor);
+          const mark = document.querySelector(".wb-brand__mark");
+          const markRect = mark.getBoundingClientRect();
+          return {
+            w: Math.round(rect.width),
+            h: Math.round(rect.height),
+            radius: style.borderRadius,
+            appearance: style.appearance,
+            bg: style.backgroundColor,
+            color: style.color,
+            contrast: Number(((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05)).toFixed(2)),
+            brand: {
+              tag: mark.tagName,
+              alt: mark.getAttribute("alt"),
+              text: document.querySelector(".wb-brand").textContent.trim(),
+              w: Math.round(markRect.width),
+              h: Math.round(markRect.height),
+            },
+          };
+        });
+
+      const open = async (session) => {
+        const page = session.page;
+        await page.goto(`${WEB}/boards?space=${space.json.id}`, { waitUntil: "networkidle2" });
+        await page.waitForSelector(".wb-space-pill", { timeout: 20_000 });
+        await page.click(".wb-space-pill");
+        await page.waitForSelector(".wb-space-menu__footlink", { timeout: 5000 });
+        for (const button of await page.$$(".wb-space-menu__footlink")) {
+          if ((await button.evaluate((el) => el.textContent))?.includes("空间设置")) {
+            await button.click();
+            break;
+          }
+        }
+        await page.waitForSelector(".wb-space-invite__role select", { timeout: 5000 });
+        await sleep(400);
+        return read(page);
+      };
+
+      const day = await openWithClock(browser, user.api.sessionCookie, AT("10:00"));
+      const dayState = await open(day);
+      await day.context.close();
+
+      const night = await openWithClock(browser, user.api.sessionCookie, AT("22:00"));
+      const nightState = await open(night);
+      await night.context.close();
+
+      eq(dayState.appearance, "none", "原生外观应关闭");
+      eq(dayState.radius, "10px", "圆角沿用 radius token");
+      eq(dayState.h, 44, "下拉高度");
+      eq(nightState.h, dayState.h, "夜间高度不变");
+      eq(nightState.w, dayState.w, "夜间宽度不变");
+      assert(dayState.bg !== nightState.bg, `底色应随主题变化：${dayState.bg} / ${nightState.bg}`);
+      assert(dayState.contrast >= 4.5, `白天对比度 ${dayState.contrast}`);
+      assert(nightState.contrast >= 4.5, `夜间对比度 ${nightState.contrast}`);
+      eq(dayState.brand.tag, "IMG", "品牌图标应为图片");
+      eq(dayState.brand.alt, "", "装饰性图标 alt 应为空");
+      eq(dayState.brand.text, "Sakura", "品牌文案");
+      // 图标高度 26px，宽度按裁边后的原图等比（1470×1033）
+      eq(dayState.brand.h, 26, "品牌图标高");
+      eq(dayState.brand.w, 37, "品牌图标宽等比");
+      eq(nightState.brand.h, dayState.brand.h, "夜间图标高度不变");
+      eq(nightState.brand.w, dayState.brand.w, "夜间图标宽度不变");
+    });
+
   } finally {
     await browser.close();
     await closePool();

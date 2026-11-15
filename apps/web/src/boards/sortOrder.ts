@@ -82,6 +82,12 @@ export function dropIndex(
     }
   }
 
+  // 指针中心越过最后一行底边 = 拖到了网格下方的空白区：直接追加到组尾。
+  // 没有这个兜底时，竖直往下拖只会落到最后一行的同列槽位（末位永远差一位）；
+  // 单列分支的「越过最后一张就追加」也是同一语义。
+  const lastRow = rows[rows.length - 1]!;
+  if (pointer.y > lastRow.bottom) return rest.length;
+
   // 指针落在某一行带内则直接选它；落在行间隙时取纵向更近的一行
   let picked = rows[0]!;
   let best = Number.POSITIVE_INFINITY;

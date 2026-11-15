@@ -193,6 +193,10 @@ export type TrashBoardItem = {
   title: string;
   /** 第 5 步接入团队空间后是真实空间名，当前固定 null → 「个人空间」 */
   spaceName: string | null;
+  spaceId?: string | null;
+  /** 同空间里当前活跃的白板数：满容量时恢复按钮改为「恢复并替换…」 */
+  activeInScope?: number;
+  capacity?: number;
   deletedAt: string;
   /** deleted_at + 30 天；前端据此换算剩余天数 */
   purgeAt: string;
@@ -242,12 +246,32 @@ export type RestoreBoardResult = {
   title: string;
   renamed: boolean;
   deletedAt: null;
+  /** 满容量时被替换掉的那一块（已移入回收站）；未腾位置时为 null */
+  evicted: { id: string; title: string } | null;
 };
 
-export function restoreBoard(boardId: string): Promise<ApiResult<RestoreBoardResult>> {
+/**
+ * 恢复一块白板。列表已满时必须带 `replaceBoardId`（用户在弹窗里选中的那一块），
+ * 服务端会在同一事务里完成「移入回收站 + 恢复」。
+ */
+export function restoreBoard(boardId: string, replaceBoardId?: string): Promise<ApiResult<RestoreBoardResult>> {
   return request<RestoreBoardResult>(`/api/boards/${encodeURIComponent(boardId)}/restore`, {
     method: "POST",
+    body: JSON.stringify(replaceBoardId ? { replaceBoardId } : {}),
   });
+}
+
+export type RestorePlan = {
+  capacity: number;
+  used: number;
+  needsEviction: boolean;
+  /** 可淘汰候选（已按打开次数升序、创建时间升序、id 排好） */
+  candidates: { id: string; title: string; openedCount: number; createdAt: string; lastEditedAt: string }[];
+};
+
+/** 恢复前的容量计划：满了要腾位置时用来列候选。 */
+export function fetchRestorePlan(boardId: string): Promise<ApiResult<RestorePlan>> {
+  return request<RestorePlan>(`/api/boards/${encodeURIComponent(boardId)}/restore/plan`);
 }
 
 export function purgeBoard(boardId: string): Promise<ApiResult<{ id: string; purged: true }>> {

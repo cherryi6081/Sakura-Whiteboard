@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
-import { fetchClaimPreview, fetchMe, type ClaimPreview } from "../auth/authApi";
-import { ClaimDialog, claimSnoozed } from "../auth/ClaimDialog";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
+import { fetchClaimPreview, fetchMe, logout, type ClaimPreview } from "../auth/authApi";
+import { ClaimDialog } from "../auth/ClaimDialog";
+import { migrateGuestLocalData } from "../auth/claimLocalData";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
 import {
   batchPinBoards,
@@ -28,13 +33,30 @@ import type { MenuAnchor } from "./boardMenu";
 import { BOARDS_CAPACITY, isPinned, sortBoards } from "./boardList";
 import { boardsLayout, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
 import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
+import { edgeScrollStep } from "./autoScroll";
 import { loadThumbUrls } from "./boardThumb";
-import { listRecentBoards, removeRecentBoard, setRecentPinned, type RecentBoard } from "./recentBoards";
+import {
+  GUEST_OWNER,
+  listRecentBoards,
+  ownerTag,
+  removeRecentBoard,
+  renameRecentBoard,
+  setActiveOwner,
+  setRecentPinned,
+  userOwner,
+  type RecentBoard,
+  type RecentOwner,
+} from "./recentBoards";
+import { publishLogout, subscribeLogout } from "../auth/authEvents";
 import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
-import { IconAlert, IconBoard, IconCheck, IconFlower, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
-import type { SpaceSummary } from "@whiteboard/shared";import { fetchSpaces } from "./spaceApi";
+import { IconAlert, IconBoard, IconCheck, IconFlower, IconLogout, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
+import { UserMark } from "../ui/UserMark";
+import sakuraMark from "../assets/sakura-mark.png";
+import type { SpaceSummary } from "@whiteboard/shared";
+import { LIMITS } from "@whiteboard/shared";
+import { fetchSpaces } from "./spaceApi";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SpaceSettings } from "./SpaceSettings";
 
@@ -46,8 +68,8 @@ import { SpaceSettings } from "./SpaceSettings";
  * - 卡片缩略图来自进板首帧快照（IndexedDB `wb-cache/thumbs`），没有快照时回退线稿图标。
  * - 骨架与真实卡片同盒模型（16:10 缩略图 / 22px 标题行 / 24px 元信息行）；
  *   加载超过 200ms 才显示骨架，数据到达时两者交叉淡出淡入，首屏不闪白、不位移。
- * - 一页最多 15 张（5 列 × 3 行），不翻页；服务端在创建第 16 块时淘汰一块，
- *   所以正常情况下列表永远不超过 15。
+ * - 一页最多 12 张（4 列 × 3 行），不翻页；服务端在创建第 13 块时淘汰一块，
+ *   所以正常情况下列表永远不超过 12。
  */
 
 type ViewState =
@@ -133,6 +155,12 @@ function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?:
 
 export function BoardsPage() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
+  /**
+   * 本机记录/缩略图的归属：`/api/auth/me` 成功切到该用户，401 切回游客。
+   * 所有读写本机数据的调用都用它，退出登录后立刻改回游客，不会读到上一个账号的条目。
+   */
+  const [owner, setOwner] = useState<RecentOwner>(GUEST_OWNER);
+  const ownerTagValue = ownerTag(owner);
   // 空间上下文：spaceId 为空表示尚未确定；个人空间在 URL 上不写 ?space=
   const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
   const [spaceId, setSpaceId] = useState("");
@@ -145,15 +173,19 @@ export function BoardsPage() {
   const [guestBannerVisible, setGuestBannerVisible] = useState(() => !readFlag(SAVE_BANNER_KEY));
   const [toast, setToast] = useState<string | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  /** thumbs 里那批 URL 属于哪个身份：身份切换后旧 URL 一律不再渲染，避免串图 */
+  const [thumbOwner, setThumbOwner] = useState("");
   const [thumbsReady, setThumbsReady] = useState(false);
+  /** 临时板转入后缩略图 owner 变了，但 ownerTag 不变，用这个计数强制重读一次 */
+  const [thumbEpoch, setThumbEpoch] = useState(0);
   const [pinBusyId, setPinBusyId] = useState<string | null>(null);
   const [trashCount, setTrashCount] = useState(0);
   // 右键菜单只允许一个实例：右键 / 长按 / 「更多」都写同一份 state
   const [menu, setMenu] = useState<{ board: CardModel; anchor: MenuAnchor; trigger: HTMLElement | null } | null>(null);
-  const [rename, setRename] = useState<{ board: CardModel; trigger: HTMLElement | null } | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [renameBusy, setRenameBusy] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
+  // 就地改名：输入框替换标题行，同时最多只允许一块板处于编辑态
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editRef = useRef<{ id: string; value: string; original: string; cancelled: boolean } | null>(null);
   const [undoToast, setUndoToast] = useState<UndoState | null>(null);
   // 批量选择：Set 只存 id，范围选择与权限判断都走 selection.ts
   const [selectMode, setSelectMode] = useState(false);
@@ -182,6 +214,9 @@ export function BoardsPage() {
   const dragSessionRef = useRef<DragSession | null>(null);
   const previewGroupsRef = useRef<{ pinned: string[]; others: string[] } | null>(null);
   const dragApiRef = useRef<{ begin: (source: DragSource) => void; move: (x: number, y: number) => void; end: (commit: boolean) => void } | null>(null);
+  // 拖拽自动滚动：rAF 句柄 + 最后一次指针坐标（页面滚动时坐标不变，靠它续算落点）
+  const autoScrollRafRef = useRef<number | null>(null);
+  const autoScrollPointRef = useRef<{ x: number; y: number } | null>(null);
   const touchTimerRef = useRef<number | null>(null);
   const currentSpace = spaces.find((space) => space.id === spaceId) ?? null;
   const role = currentSpace?.role ?? spaceRole;
@@ -190,6 +225,7 @@ export function BoardsPage() {
   const { busy, slow, error: createError, start } = useCreateBoard({
     messageFor: boardsMessageFor,
     spaceId: currentSpace?.kind === "team" ? currentSpace.id : undefined,
+    owner,
   });
 
   const load = useCallback(async (targetSpace?: string) => {
@@ -207,10 +243,19 @@ export function BoardsPage() {
     previewGroupsRef.current = null;
     const me = await fetchMe();
     if (!me.ok) {
+      // 未登录：列表完全来自本机临时板，不保留任何服务端列表/空间/计数状态
+      setActiveOwner(GUEST_OWNER);
+      setOwner(GUEST_OWNER);
       setSpaces([]);
-      setView({ kind: "guest", items: listRecentBoards() });
+      setSpaceId("");
+      spaceIdRef.current = "";
+      setTrashCount(0);
+      setView({ kind: "guest", items: listRecentBoards(GUEST_OWNER) });
       return;
     }
+    const currentOwner = userOwner(me.data.user.id);
+    setActiveOwner(currentOwner);
+    setOwner(currentOwner);
 
     // 空间是列表的一级上下文：先取空间列表，再按空间取白板
     const spacesResult = await fetchSpaces();
@@ -244,9 +289,9 @@ export function BoardsPage() {
       user: { displayName: me.data.user.displayName },
     });
 
-    if (!claimSnoozed() && !readFlag(CLAIM_DISMISSED_KEY)) {
+    if (!readFlag(CLAIM_DISMISSED_KEY)) {
       const p = await fetchClaimPreview();
-      if (p.ok && p.data.count > 0) {
+      if (p.ok && p.data.count > 0 && p.data.guestActive !== false) {
         setPreview(p.data);
         setClaimBarVisible(true);
       }
@@ -266,6 +311,10 @@ export function BoardsPage() {
 
   // 回收站入口徽标：登录用户才取，401/网络失败都静默降级为不显示徽标
   useEffect(() => {
+    if (owner.kind !== "user") {
+      setTrashCount(0);
+      return;
+    }
     let alive = true;
     void fetchTrashCount().then((result) => {
       if (alive && result.ok) setTrashCount(result.data.count);
@@ -273,13 +322,15 @@ export function BoardsPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [owner]);
 
-  // 缩略图与列表并行取：列表先到也要等缩略图，避免卡片先显示线稿再换成图片
+  // 缩略图与列表并行取：按身份读，列表先到也要等缩略图，避免卡片先显示线稿再换成图片
   useEffect(() => {
     let alive = true;
     let created: string[] = [];
-    void loadThumbUrls()
+    setThumbs({});
+    setThumbsReady(false);
+    void loadThumbUrls(ownerTagValue)
       .then((urls) => {
         created = Object.values(urls);
         if (!alive) {
@@ -287,6 +338,7 @@ export function BoardsPage() {
           return;
         }
         setThumbs(urls);
+        setThumbOwner(ownerTagValue);
       })
       .catch((err) => {
         console.warn("[boards] 读取缩略图失败，回退线稿占位", err);
@@ -299,7 +351,54 @@ export function BoardsPage() {
       alive = false;
       created.forEach((url) => URL.revokeObjectURL(url));
     };
+  }, [ownerTagValue, thumbEpoch]);
+
+  /**
+   * 切到游客视图：列表、容量计数、空间上下文、回收站计数、缩略图、
+   * 选择/菜单/改名等账号维度状态一次性清空，账号的板子一帧都不留。
+   * 广播收到与本页主动退出共用这一套。
+   */
+  const switchToGuest = useCallback(() => {
+    setActiveOwner(GUEST_OWNER);
+    setOwner(GUEST_OWNER);
+    setView({ kind: "guest", items: listRecentBoards(GUEST_OWNER) });
+    setSpaces([]);
+    setSpaceId("");
+    spaceIdRef.current = "";
+    setSpaceRole("owner");
+    setSettingsOpen(false);
+    setPreview(null);
+    setClaimBarVisible(false);
+    setDialogOpen(false);
+    setTrashCount(0);
+    setThumbs({});
+    setThumbsReady(false);
+    setSelectMode(false);
+    setSelected(new Set());
+    setMenu(null);
+    setEditingId(null);
+    setUndoToast(null);
   }, []);
+
+  // 其它标签页退出登录：首页广播后本页立刻切游客，不等下一次请求 401
+  useEffect(() => subscribeLogout(switchToGuest), [switchToGuest]);
+
+  const [loggingOut, setLoggingOut] = useState(false);
+  const handleBoardsLogout = useCallback(async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const result = await logout();
+      if (!result.ok) {
+        setToast("退出登录失败，请重试");
+        return;
+      }
+      switchToGuest();
+      publishLogout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }, [loggingOut, switchToGuest]);
 
   useEffect(() => {
     if (!toast) return;
@@ -317,6 +416,39 @@ export function BoardsPage() {
   const dismissClaimBar = () => {
     setClaimBarVisible(false);
     writeFlag(CLAIM_DISMISSED_KEY);
+  };
+
+  /** 重新拉一次转入预览：腾出名额 / 删除白板后，横幅上的用量与块数保持真实 */
+  const refreshClaimPreview = async () => {
+    if (!preview) return;
+    const p = await fetchClaimPreview();
+    if (!p.ok) return;
+    if (p.data.count === 0 || p.data.guestActive === false) {
+      setPreview(null);
+      setClaimBarVisible(false);
+      return;
+    }
+    setPreview(p.data);
+    setClaimBarVisible(true);
+  };
+
+  /** 打开转入弹窗：先用服务端最新用量覆盖本地 preview，避免拿着旧容量做判断 */
+  const openClaim = async () => {
+    const p = await fetchClaimPreview();
+    if (!p.ok) {
+      setToast("读取临时板信息失败，请稍后重试。");
+      return;
+    }
+    if (p.data.guestActive === false || p.data.count === 0) {
+      setPreview(null);
+      setClaimBarVisible(false);
+      setDialogOpen(false);
+      setToast(p.data.guestActive === false ? "游客身份已失效，无法再转入这些临时板。" : "没有待转入的临时板。");
+      return;
+    }
+    setPreview(p.data);
+    setClaimBarVisible(true);
+    setDialogOpen(true);
   };
 
   const dismissGuestBanner = () => {
@@ -396,7 +528,7 @@ export function BoardsPage() {
   const skeletonActive = view.kind === "loading" || (listReady && cards.length > 0 && !thumbsReady);
   const skeletonPhase = useSkeletonPhase(skeletonActive);
 
-  // 容量 15：服务端已按容量淘汰，这里再截一次兜底（脏数据/竞态时不渲染第 16 张）
+  // 容量 12：服务端已按容量淘汰，这里再截一次兜底（脏数据/竞态时不渲染第 13 张）
   const paged = cards.slice(0, BOARDS_CAPACITY);
   // 拖拽中的乐观顺序：只在预览里重排，松手保存成功后才回落到服务端顺序
   const visible = previewIds
@@ -684,6 +816,33 @@ export function BoardsPage() {
     void load(space.id);
   };
 
+  /** 退出空间：从本地空间列表移除，回到个人空间，列表重新加载 */
+  const handleSpaceLeft = (space: SpaceSummary) => {
+    setSettingsOpen(false);
+    setSpaces((current) => current.filter((entry) => entry.id !== space.id));
+    window.history.pushState({}, "", "/boards");
+    window.scrollTo({ top: 0, behavior: "auto" });
+    void load().then(() => setToast(`已退出「${space.name}」`));
+  };
+
+  /** 解散空间：同退出落点，白板已由服务端移入所有者回收站 */
+  const handleSpaceDissolved = (space: SpaceSummary) => {
+    setSettingsOpen(false);
+    setSpaces((current) => current.filter((entry) => entry.id !== space.id));
+    window.history.pushState({}, "", "/boards");
+    window.scrollTo({ top: 0, behavior: "auto" });
+    void load().then(() => setToast(`「${space.name}」已解散，白板已移入回收站`));
+  };
+
+  /** 转让所有权：当前用户降为编辑者，设置面板保持打开以便继续退出 */
+  const handleSpaceTransferred = (spaceId: string) => {
+    setSpaces((current) =>
+      current.map((entry) => (entry.id === spaceId ? { ...entry, role: "editor" as const } : entry)),
+    );
+    setSpaceRole("editor");
+    setToast("已转让所有权，你现在是编辑者");
+  };
+
   const backToPersonal = () => {
     window.history.pushState({}, "", "/boards");
     void load();
@@ -722,6 +881,8 @@ export function BoardsPage() {
       );
       setTrashCount((count) => count + 1);
       setUndoToast({ kind: "trash", ids: [board.id], title: board.title, ttl: 5000 });
+      // 腾出的名额反映到待转入横幅，避免容量判据还是删除前那份
+      void refreshClaimPreview();
     }
     // 焦点落到原位置的下一条卡片，避免删除后焦点丢回 body
     window.requestAnimationFrame(() => {
@@ -867,6 +1028,8 @@ export function BoardsPage() {
         : current,
     );
     setTrashCount((count) => count + moved.length);
+    // 批量腾名额同样要刷新待转入横幅的容量判据
+    void refreshClaimPreview();
     const failed = ids.length - moved.length;
     const singleTitle =
       moved.length === 1 ? confirm.targets.find((card) => card.id === moved[0])?.title : undefined;
@@ -949,6 +1112,41 @@ export function BoardsPage() {
     if (wasAuto) setUndoToast({ kind: "mode", ttl: 8000 });
   };
 
+  /**
+   * 拖拽自动滚动。
+   *
+   * 指针贴住视口上下边缘时按「离边缘多近」加速滚动（64px 内线性加速，压到边缘 18px/帧
+   * ≈ 1080px/s），这样用户不用先松手滚一轮，就能把卡片拖到首屏之外的行。
+   * 只由拖拽驱动：`moveDrag` 负责起帧与续帧，松手 / 取消 / 指针离开窗口 / 组件卸载都会停。
+   */
+  const stopAutoScroll = useCallback(() => {
+    autoScrollPointRef.current = null;
+    if (autoScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+  }, []);
+
+  const autoScrollTick = useCallback(() => {
+    autoScrollRafRef.current = null;
+    const point = autoScrollPointRef.current;
+    if (!point || !dragSessionRef.current) return;
+    const step = edgeScrollStep(point.y, 0, window.innerHeight);
+    if (step === 0) {
+      stopAutoScroll();
+      return;
+    }
+    const before = window.scrollY;
+    window.scrollBy(0, step);
+    // 已经到页面顶部 / 底部，滚不动了：停掉循环，下一次 pointermove 再判断
+    if (window.scrollY === before) {
+      stopAutoScroll();
+      return;
+    }
+    // 滚动之后卡片几何全变了，用同一指针坐标重算落点（moveDrag 内部会续下一帧）
+    dragApiRef.current?.move(point.x, point.y);
+  }, [stopAutoScroll]);
+
   const beginDrag = (source: DragSource) => {
     const ids = groupIdsOf(source.group);
     const from = ids.indexOf(source.id);
@@ -980,6 +1178,14 @@ export function BoardsPage() {
     const source = dragSourceRef.current;
     const session = dragSessionRef.current;
     if (!source?.active || !session) return;
+
+    // 边缘区里按接近程度起帧滚动；离开边缘或指针出视口就立刻停
+    autoScrollPointRef.current = { x, y };
+    if (edgeScrollStep(y, 0, window.innerHeight) === 0) {
+      stopAutoScroll();
+    } else if (autoScrollRafRef.current === null) {
+      autoScrollRafRef.current = window.requestAnimationFrame(autoScrollTick);
+    }
 
     const ghost = {
       left: x - source.offsetX,
@@ -1052,6 +1258,7 @@ export function BoardsPage() {
   const finishDrag = (commit: boolean) => {
     const session = dragSessionRef.current;
     const source = dragSourceRef.current;
+    stopAutoScroll();
     dragSessionRef.current = null;
     dragSourceRef.current = null;
     document.body.classList.remove("wb-sorting");
@@ -1109,19 +1316,24 @@ export function BoardsPage() {
       event.preventDefault();
       dragApiRef.current?.end(false);
     };
+    // 指针移出窗口后收不到 pointermove，最后一帧的边缘坐标会一直滚下去，必须在这里停
+    const onLeave = () => stopAutoScroll();
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
     window.addEventListener("keydown", onKey);
     window.addEventListener("blur", onCancel);
+    document.addEventListener("pointerleave", onLeave);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("blur", onCancel);
+      document.removeEventListener("pointerleave", onLeave);
+      stopAutoScroll();
     };
-  }, []);
+  }, [stopAutoScroll]);
 
   useEffect(() => {
     if (!movedId) return;
@@ -1274,42 +1486,67 @@ export function BoardsPage() {
     setToast(ok ? "邀请链接已复制" : "邀请链接已生成，但复制失败，请到分享面板查看。");
   };
 
-  const closeRename = () => {
-    const trigger = rename?.trigger ?? null;
-    setRename(null);
-    setRenameError(null);
-    if (trigger) window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+  /** 标题落到本地列表（游客同时写本机 recentBoards，刷新才不会回退） */
+  const applyBoardTitle = (id: string, title: string) => {
+    if (view.kind === "guest") renameRecentBoard(id, title);
+    setView((current) => {
+      if (current.kind === "user") {
+        return { ...current, items: current.items.map((item) => (item.id === id ? { ...item, title } : item)) };
+      }
+      if (current.kind === "guest") {
+        return { ...current, items: current.items.map((item) => (item.id === id ? { ...item, title } : item)) };
+      }
+      return current;
+    });
   };
 
-  const submitRename = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!rename) return;
-    const title = renameValue.trim();
+  const startRename = (board: CardModel) => {
+    if (readOnly) return;
+    editRef.current = { id: board.id, value: board.title, original: board.title, cancelled: false };
+    setEditingId(board.id);
+    setEditValue(board.title);
+  };
+
+  const changeRename = (value: string) => {
+    if (editRef.current) editRef.current.value = value;
+    setEditValue(value);
+  };
+
+  const cancelRename = () => {
+    if (editRef.current) editRef.current.cancelled = true;
+    editRef.current = null;
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  /** Enter / 失焦 / 菜单都走这里：先本地乐观更新，服务端失败再回滚原名 */
+  const submitRename = async () => {
+    const edit = editRef.current;
+    if (!edit || edit.cancelled) return;
+    const title = edit.value.trim();
     if (!title) {
-      setRenameError("标题不能为空");
+      cancelRename();
+      setToast("标题不能为空，已保留原名");
       return;
     }
-    setRenameBusy(true);
-    const result = await renameBoard(rename.board.id, title);
-    setRenameBusy(false);
+    if (title.length > LIMITS.boardTitleMax) {
+      setToast(`标题最多 ${LIMITS.boardTitleMax} 个字符`);
+      return;
+    }
+    editRef.current = null;
+    setEditingId(null);
+    setEditValue("");
+    if (title === edit.original) return;
+
+    applyBoardTitle(edit.id, title);
+    const result = await renameBoard(edit.id, title);
     if (!result.ok) {
-      setRenameError("改名没成功，再试一次。");
+      applyBoardTitle(edit.id, edit.original);
+      setToast("改名没成功，已恢复原名");
       return;
     }
-    const nextTitle = result.data.title;
-    setView((current) =>
-      current.kind === "user"
-        ? {
-            ...current,
-            items: current.items.map((item) => (item.id === rename.board.id ? { ...item, title: nextTitle } : item)),
-          }
-        : current,
-    );
-    const trigger = rename.trigger;
-    setRename(null);
-    setRenameError(null);
+    applyBoardTitle(edit.id, result.data.title);
     setToast("已重命名");
-    if (trigger) window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
   };
 
   const handleMenuAction = (key: string) => {
@@ -1325,9 +1562,7 @@ export function BoardsPage() {
         window.location.href = boardHref(board.id, currentListHref());
         return;
       case "rename":
-        setRename({ board, trigger });
-        setRenameValue(board.title);
-        setRenameError(null);
+        startRename(board);
         return;
       case "move-to":
         openPicker(board);
@@ -1355,7 +1590,7 @@ export function BoardsPage() {
     <BoardCard
       key={board.id}
       board={board}
-      thumbUrl={thumbs[board.id]}
+      thumbUrl={ownerTagValue === thumbOwner ? thumbs[board.id] : undefined}
       pinBusy={pinBusyId === board.id}
       menuOpen={menu?.board.id === board.id}
       selectMode={selectMode}
@@ -1368,6 +1603,12 @@ export function BoardsPage() {
       dropBlocked={Boolean(drag?.noDrop && drag.id !== board.id)}
       justMoved={movedId === board.id}
       picked={kbPick === board.id}
+      editing={editingId === board.id}
+      editValue={editValue}
+      onEditChange={changeRename}
+      onEditCommit={() => void submitRename()}
+      onEditCancel={cancelRename}
+      onRename={startRename}
       onTogglePin={togglePin}
       onOpenMenu={openMenu}
       onCloseMenu={() => closeMenu(true)}
@@ -1398,10 +1639,9 @@ export function BoardsPage() {
 
       <div className="wb-topbar">
         <a className="wb-brand" href="/">
-          <span className="wb-brand__mark" aria-hidden>
-            白
-          </span>
-          白板
+          {/* 装饰性图标：品牌文字紧随其后，不重复朗读 */}
+          <img className="wb-brand__mark" src={sakuraMark} alt="" aria-hidden />
+          Sakura
         </a>
         {view.kind === "user" && spaces.length > 0 ? (
           <SpaceSwitcher
@@ -1423,9 +1663,26 @@ export function BoardsPage() {
           </a>
         ) : null}
         {view.kind === "user" ? (
-          <span className="wb-caption" data-testid="boards-user">
-            {view.user.displayName}
+          <span className="wb-user-chip">
+            <UserMark />
+            <span className="wb-caption" data-testid="boards-user">
+              {view.user.displayName}
+            </span>
           </span>
+        ) : null}
+        {view.kind === "user" ? (
+          <button
+            className="wb-boards__logout"
+            type="button"
+            onClick={() => void handleBoardsLogout()}
+            disabled={loggingOut}
+            data-testid="boards-logout"
+            title="退出登录"
+            aria-label="退出登录"
+          >
+            <IconLogout size={16} />
+            <span className="wb-boards__logout-text">{loggingOut ? "退出中" : "退出登录"}</span>
+          </button>
         ) : null}
         {isGuest ? (
           <a className="wb-link" href="/login?next=%2Fboards" data-testid="boards-login">
@@ -1476,7 +1733,14 @@ export function BoardsPage() {
                     {SPACE_ROLE_LABEL[role] ?? role}
                   </span>
                 ) : null}
-                {listReady ? <span className="wb-boards__count wb-nums">{view.items.length} 块</span> : null}
+                {listReady ? (
+                  <span
+                    className={`wb-boards__count wb-nums${view.items.length >= BOARDS_CAPACITY ? " is-full" : ""}`}
+                    title={`最多 ${BOARDS_CAPACITY} 块，满了之后新建会先淘汰一块最早未使用的`}
+                  >
+                    {view.items.length} / {BOARDS_CAPACITY}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="wb-boards__head-actions">
@@ -1543,14 +1807,21 @@ export function BoardsPage() {
         ) : null}
 
         {claimBarVisible && preview && preview.count > 0 ? (
-          <div className="wb-banner wb-banner--info wb-boards__banner" role="status">
-            <span>有 {preview.count} 块临时白板可以转入账号。临时板只保存在这台浏览器。</span>
+          <div className="wb-banner wb-banner--info wb-boards__banner" role="status" data-testid="claim-banner">
+            <span>
+              {preview.count} 块临时板，要转入当前账号吗？不转入的话，登录状态下看不到它们。
+            </span>
             <span className="wb-banner__spacer" />
-            <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={() => setDialogOpen(true)}>
-              查看
+            <button
+              className="wb-btn wb-btn--ghost wb-btn--sm"
+              type="button"
+              data-testid="claim-banner-open"
+              onClick={() => void openClaim()}
+            >
+              全部转入
             </button>
-            <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={dismissClaimBar} aria-label="关闭">
-              关闭
+            <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={dismissClaimBar} data-testid="claim-banner-later">
+              暂不
             </button>
           </div>
         ) : null}
@@ -1589,12 +1860,13 @@ export function BoardsPage() {
               title={isGuest ? "还没有打开过白板" : "还没有白板"}
               hint={
                 isGuest
-                  ? "这块浏览器还没记录任何临时板。新建一块，立刻开始画。"
+                  ? "这块浏览器还没记录任何临时板。新建一块立刻开始画，登录后还能把它带进账号。"
                   : currentSpace?.kind === "team"
                     ? "新建一块，空间里的成员都能看到。"
                     : "新建一块，立刻开始画。"
               }
               onNew={() => void start()}
+              onLogin={isGuest ? () => (window.location.href = "/login?next=%2Fboards") : undefined}
             />
           )
         ) : null}
@@ -1809,63 +2081,14 @@ export function BoardsPage() {
         />
       ) : null}
 
-      {rename ? (
-        <div
-          className="wb-overlay"
-          onPointerDown={(event) => {
-            if (event.target === event.currentTarget) closeRename();
-          }}
-        >
-          <form
-            className="wb-rename"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="wb-rename-title"
-            onSubmit={(event) => void submitRename(event)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeRename();
-              }
-            }}
-          >
-            <h2 className="wb-dialog__title" id="wb-rename-title">
-              重命名白板
-            </h2>
-            <label className="wb-field">
-              <span className="wb-field__label">白板名称</span>
-              <input
-                className="wb-input"
-                value={renameValue}
-                maxLength={80}
-                autoFocus
-                aria-invalid={renameError ? "true" : undefined}
-                onChange={(event) => {
-                  setRenameValue(event.target.value);
-                  if (renameError) setRenameError(null);
-                }}
-                data-testid="rename-input"
-              />
-            </label>
-            {renameError ? (
-              <p className="wb-rename__error" role="alert">
-                {renameError}
-              </p>
-            ) : null}
-            <div className="wb-dialog__actions">
-              <button className="wb-btn wb-btn--ghost" type="button" onClick={closeRename}>
-                取消
-              </button>
-              <button className="wb-btn wb-btn--primary" type="submit" disabled={renameBusy}>
-                {renameBusy ? "保存中…" : "保存"}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-
       {settingsOpen && currentSpace ? (
-        <SpaceSettings space={currentSpace} onClose={() => setSettingsOpen(false)} />
+        <SpaceSettings
+          space={currentSpace}
+          onClose={() => setSettingsOpen(false)}
+          onLeft={handleSpaceLeft}
+          onDissolved={handleSpaceDissolved}
+          onTransferred={handleSpaceTransferred}
+        />
       ) : null}
 
       {dialogOpen && preview && preview.count > 0 ? (
@@ -1875,11 +2098,27 @@ export function BoardsPage() {
             setDialogOpen(false);
             setClaimBarVisible(false);
           }}
+          onOrganize={() => {
+            // 留在本页腾名额：不写「暂不」标记、不清 preview，横幅与「全部转入」都还在，
+            // 删掉白板后 refreshClaimPreview 会刷新用量，可以直接重试。
+            setDialogOpen(false);
+            setToast(`请先删除至少 ${preview.count - (preview.capacity - preview.used)} 块白板腾出名额，再点横幅上的「全部转入」。`);
+            void refreshClaimPreview();
+            window.requestAnimationFrame(() => {
+              document.querySelector('[data-testid="claim-banner"]')?.scrollIntoView({ block: "nearest" });
+            });
+          }}
           onClaimed={(result) => {
             setDialogOpen(false);
             setClaimBarVisible(false);
-            if (result.transferred > 0) setToast(`已转入 ${result.transferred} 块白板`);
-            void load();
+            setPreview(null);
+            if (result.transferred === 0) return;
+            // 本机缩略图与「最近打开」跟着板搬到账号下，再重拉列表与缩略图
+            void migrateGuestLocalData(result.userId, result.boards.map((board) => board.id)).finally(() => {
+              setThumbEpoch((value) => value + 1);
+              setToast(`已转入 ${result.transferred} 块临时板`);
+              void load();
+            });
           }}
         />
       ) : null}
@@ -1902,6 +2141,12 @@ function BoardCard({
   dropBlocked,
   justMoved,
   picked,
+  editing,
+  editValue,
+  onEditChange,
+  onEditCommit,
+  onEditCancel,
+  onRename,
   onTogglePin,
   onOpenMenu,
   onCloseMenu,
@@ -1931,6 +2176,14 @@ function BoardCard({
   dropBlocked: boolean;
   justMoved: boolean;
   picked: boolean;
+  /** 就地改名：输入框顶替标题行，高度与标题一致，网格不跳动 */
+  editing: boolean;
+  editValue: string;
+  onEditChange: (value: string) => void;
+  onEditCommit: () => void;
+  onEditCancel: () => void;
+  /** 双击标题进入就地改名（鼠标入口；键盘仍走菜单 / F2） */
+  onRename: (board: CardModel) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
   onOpenMenu: (board: CardModel, anchor: MenuAnchor, trigger: HTMLElement | null) => void;
   onCloseMenu: () => void;
@@ -1956,6 +2209,48 @@ function BoardCard({
   };
 
   useEffect(() => clearHold, []);
+
+  // 双击标题改名：标题在卡片的 <a> 里，原生链接会吃掉第一次 click 直接导航，
+  // 所以单击先拦住默认行为、延时 250ms 判定；期间出现第二次点击就取消导航并进入改名。
+  // 不依赖 dblclick 事件：部分自动化/触控环境只发两次 detail=1 的 click，这里按点击间隔判定。
+  const openTimer = useRef<number | null>(null);
+  const lastTitleClick = useRef(0);
+  const cancelOpen = () => {
+    if (openTimer.current !== null) window.clearTimeout(openTimer.current);
+    openTimer.current = null;
+  };
+  useEffect(() => cancelOpen, []);
+
+  const canRename = !readOnly && !selectMode && !editing;
+
+  const onTitleClick = (event: ReactMouseEvent<HTMLSpanElement>) => {
+    if (!canRename || event.button !== 0) return;
+    // 带修饰键是「新标签/新窗口打开」，保持原生行为，不延时
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const now = performance.now();
+    const doubled = now - lastTitleClick.current < 300;
+    lastTitleClick.current = now;
+    cancelOpen();
+    event.preventDefault();
+    if (doubled) {
+      onRename(board);
+      return;
+    }
+    const href = event.currentTarget.closest("a")?.getAttribute("href");
+    if (!href) return;
+    openTimer.current = window.setTimeout(() => {
+      openTimer.current = null;
+      window.location.href = href;
+    }, 250);
+  };
+
+  const onTitleDoubleClick = (event: ReactMouseEvent<HTMLSpanElement>) => {
+    if (!canRename) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelOpen();
+    onRename(board);
+  };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (selectMode) return;
@@ -2081,6 +2376,11 @@ function BoardCard({
         draggable={false}
         tabIndex={selectMode ? -1 : undefined}
         onClick={(event) => {
+          // 改名时点标题不会跳进白板
+          if (editing) {
+            event.preventDefault();
+            return;
+          }
           if (selectMode) {
             event.preventDefault();
             if (event.shiftKey) onExtendSelect(board.id);
@@ -2116,9 +2416,38 @@ function BoardCard({
             </span>
           ) : null}
         </span>
-        <span className="wb-board-card__title" title={board.title}>
-          {board.title}
-        </span>
+        {editing ? (
+          <input
+            className="wb-board-card__title-input"
+            value={editValue}
+            autoFocus
+            aria-label="白板名称"
+            data-testid="rename-input"
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onEditChange(event.target.value)}
+            onBlur={onEditCommit}
+            onKeyDown={(event) => {
+              // 卡片上的键盘排序也监听 Enter / Esc，编辑时必须截住
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onEditCommit();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                onEditCancel();
+              }
+            }}
+          />
+        ) : (
+          <span
+            className="wb-board-card__title"
+            title={board.title}
+            onClick={onTitleClick}
+            onDoubleClick={onTitleDoubleClick}
+          >
+            {board.title}
+          </span>
+        )}
       </a>
       {selectMode ? (
         <button
@@ -2239,10 +2568,13 @@ function EmptyState({
   title = "还没有白板",
   hint = "新建一块，立刻开始画。",
   onNew,
+  onLogin,
 }: {
   title?: string;
   hint?: string;
   onNew: () => void;
+  /** 游客空态额外给一个登录入口：本机没有临时板时也有下一步 */
+  onLogin?: () => void;
 }) {
   return (
     <div className="wb-empty" data-testid="boards-empty">
@@ -2251,9 +2583,21 @@ function EmptyState({
       </span>
       <h2 className="wb-title">{title}</h2>
       <p className="wb-caption">{hint}</p>
-      <button className="wb-btn wb-btn--primary" type="button" onClick={onNew}>
-        新建第一块
-      </button>
+      <div className="wb-empty__actions">
+        <button className="wb-btn wb-btn--primary" type="button" onClick={onNew}>
+          新建第一块
+        </button>
+        {onLogin ? (
+          <button
+            className="wb-btn wb-btn--ghost"
+            type="button"
+            onClick={onLogin}
+            data-testid="boards-empty-login"
+          >
+            登录 / 注册
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -2317,7 +2661,8 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function readFlag(key: string): boolean {  try {
+function readFlag(key: string): boolean {
+  try {
     return sessionStorage.getItem(key) === "1";
   } catch {
     return false;

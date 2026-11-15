@@ -75,3 +75,51 @@ export function acceptSpaceInvite(token: string): Promise<ApiResult<AcceptInvite
     body: JSON.stringify({}),
   });
 }
+
+/* ------------------------------------------------------------------------------------------
+ * 生命周期
+ * ---------------------------------------------------------------------------------------- */
+
+export type LeaveSpaceResult = {
+  spaceId: string;
+  mode: "left";
+  /** 退出后仍留在空间里的、自己创建的白板数（不随人走） */
+  boardsKept: number;
+};
+
+export function leaveSpace(spaceId: string): Promise<ApiResult<LeaveSpaceResult>> {
+  return request<LeaveSpaceResult>(`/api/spaces/${encodeURIComponent(spaceId)}/leave`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export type TransferSpaceResult = {
+  spaceId: string;
+  ownerId: string;
+  previousOwnerId: string;
+  previousOwnerRole: "editor";
+};
+
+export function transferSpaceOwner(spaceId: string, userId: string): Promise<ApiResult<TransferSpaceResult>> {
+  return request<TransferSpaceResult>(`/api/spaces/${encodeURIComponent(spaceId)}/owner`, {
+    method: "PUT",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export type DissolveSpaceResult = {
+  spaceId: string;
+  mode: "dissolved";
+  boardsMoved: number;
+  boardsTrashed: number;
+  boardsAlreadyTrashed: number;
+  retentionDays: number;
+  purgeAt: string;
+};
+
+export function dissolveSpace(spaceId: string): Promise<ApiResult<DissolveSpaceResult>> {
+  return request<DissolveSpaceResult>(`/api/spaces/${encodeURIComponent(spaceId)}`, {
+    method: "DELETE",
+  });
+}

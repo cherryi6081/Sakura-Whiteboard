@@ -113,8 +113,12 @@ export class Api {
     return this.delete(`/api/boards/${boardId}`);
   }
 
-  async restore(boardId) {
-    return this.post(`/api/boards/${boardId}/restore`);
+  async restore(boardId, replaceBoardId) {
+    return this.post(`/api/boards/${boardId}/restore`, replaceBoardId ? { replaceBoardId } : {});
+  }
+
+  async restorePlan(boardId) {
+    return this.get(`/api/boards/${boardId}/restore/plan`);
   }
 
   async createShare(boardId, permission = "read", expiresInDays = 7) {

@@ -57,11 +57,13 @@ export type QueuedOp = {
 };
 
 /**
- * 首帧缩略图（v2）。只存压缩后的 Blob 与内容指纹：
+ * 首帧缩略图（v3）。只存压缩后的 Blob 与内容指纹：
  * - `signature` 用来判断"内容有没有改过"，一致就不重拍；
- * - `bytes` 便于验收时核对体积，不参与渲染。
+ * - `bytes` 便于验收时核对体积，不参与渲染；
+ * - `owner` 是身份标识（`guest` / `user:<id>`），和 `boardId` 一起做主键，退出登录后读不到上一个账号的图。
  */
 export type StoredThumb = {
+  owner: string;
   boardId: string;
   blob: Blob;
   signature: string;
@@ -79,8 +81,9 @@ export function openCacheDb(): Promise<IDBDatabase> {
       return;
     }
     const req = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
       if (!db.objectStoreNames.contains(CACHE_STORES.elements)) {
         const store = db.createObjectStore(CACHE_STORES.elements, { keyPath: [...ELEMENT_KEY_PATH] });
         store.createIndex('byBoard', 'boardId');
@@ -94,7 +97,11 @@ export function openCacheDb(): Promise<IDBDatabase> {
         db.createObjectStore(CACHE_STORES.meta, { keyPath: 'boardId' });
       }
       if (!db.objectStoreNames.contains(CACHE_STORES.thumbs)) {
-        db.createObjectStore(CACHE_STORES.thumbs, { keyPath: 'boardId' });
+        db.createObjectStore(CACHE_STORES.thumbs, { keyPath: ['owner', 'boardId'] });
+      } else if (oldVersion < 3) {
+        // v2 的 thumbs 只有 boardId、不分身份；纯派生物，直接清空按新主键重建
+        db.deleteObjectStore(CACHE_STORES.thumbs);
+        db.createObjectStore(CACHE_STORES.thumbs, { keyPath: ['owner', 'boardId'] });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -180,28 +187,31 @@ export async function writeCachedScene(
 }
 
 /** 读一块板的首帧缩略图；没有或库不可用时返回 null（页面回退线稿占位）。 */
-export async function readBoardThumb(boardId: string): Promise<StoredThumb | null> {
+export async function readBoardThumb(owner: string, boardId: string): Promise<StoredThumb | null> {
   const db = await openCacheDb();
   const tx = db.transaction(CACHE_STORES.thumbs, 'readonly');
   const record = await requestOf(
-    tx.objectStore(CACHE_STORES.thumbs).get(boardId) as IDBRequest<StoredThumb | undefined>,
+    tx.objectStore(CACHE_STORES.thumbs).get([owner, boardId]) as IDBRequest<StoredThumb | undefined>,
   );
   await done(tx);
   return record ?? null;
 }
 
-/** 「我的白板」一次取回全部缩略图：最多 30 块板，读一次比逐块 get 更省事。 */
-export async function readAllBoardThumbs(): Promise<Map<string, StoredThumb>> {
+/** 「我的白板」一次取回当前身份的全部缩略图：最多 12 块板，读一次比逐块 get 更省事。 */
+export async function readAllBoardThumbs(owner: string): Promise<Map<string, StoredThumb>> {
   const db = await openCacheDb();
   const tx = db.transaction(CACHE_STORES.thumbs, 'readonly');
   const records = await requestOf(
     tx.objectStore(CACHE_STORES.thumbs).getAll() as IDBRequest<StoredThumb[]>,
   );
   await done(tx);
-  return new Map(records.map((record) => [record.boardId, record]));
+  return new Map(
+    records.filter((record) => record.owner === owner).map((record) => [record.boardId, record]),
+  );
 }
 
 export async function writeBoardThumb(input: {
+  owner: string;
   boardId: string;
   blob: Blob;
   signature: string;
@@ -210,6 +220,7 @@ export async function writeBoardThumb(input: {
   const db = await openCacheDb();
   const tx = db.transaction(CACHE_STORES.thumbs, 'readwrite');
   tx.objectStore(CACHE_STORES.thumbs).put({
+    owner: input.owner,
     boardId: input.boardId,
     blob: input.blob,
     signature: input.signature,
@@ -219,8 +230,35 @@ export async function writeBoardThumb(input: {
   await done(tx);
 }
 
-/** 只更新 `lastAccessAt`（刷新时让缓存不计入过期）。 */
-export async function touchCache(boardId: string): Promise<void> {
+/**
+ * 游客板转入账号后，把缩略图从 `owner` 键搬到新身份下。
+ * 主键是 `[owner, boardId]`：同一事务内 put 新键 + delete 旧键，卡片不会突然退回线稿。
+ */
+export async function migrateBoardThumbs(
+  fromOwner: string,
+  toOwner: string,
+  boardIds: readonly string[],
+): Promise<number> {
+  if (boardIds.length === 0 || fromOwner === toOwner) return 0;
+  const db = await openCacheDb();
+  const tx = db.transaction(CACHE_STORES.thumbs, 'readwrite');
+  const store = tx.objectStore(CACHE_STORES.thumbs);
+  let moved = 0;
+  for (const boardId of boardIds) {
+    const req = store.get([fromOwner, boardId]) as IDBRequest<StoredThumb | undefined>;
+    req.onsuccess = () => {
+      const record = req.result;
+      if (!record) return;
+      store.put({ ...record, owner: toOwner } satisfies StoredThumb);
+      store.delete([fromOwner, boardId]);
+      moved += 1;
+    };
+  }
+  await done(tx);
+  return moved;
+}
+
+/** 只更新 `lastAccessAt`（刷新时让缓存不计入过期）。 */export async function touchCache(boardId: string): Promise<void> {
   const db = await openCacheDb();
   const tx = db.transaction(CACHE_STORES.meta, 'readwrite');
   const store = tx.objectStore(CACHE_STORES.meta);
@@ -322,7 +360,14 @@ export async function clearBoardCache(boardId: string): Promise<void> {
       for (const key of outboxKeys.result) outbox.delete(key);
     };
     tx.objectStore(CACHE_STORES.meta).delete(boardId);
-    tx.objectStore(CACHE_STORES.thumbs).delete(boardId);
+    // thumbs 主键是 [owner, boardId]：这个板在游客/各账号下都可能有一份，按 boardId 全删
+    const thumbCursor = tx.objectStore(CACHE_STORES.thumbs).openCursor();
+    thumbCursor.onsuccess = () => {
+      const cursor = thumbCursor.result;
+      if (!cursor) return;
+      if ((cursor.value as StoredThumb).boardId === boardId) cursor.delete();
+      cursor.continue();
+    };
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error('clear board cache failed'));

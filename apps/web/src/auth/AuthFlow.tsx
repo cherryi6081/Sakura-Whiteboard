@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { AuthPage } from "./AuthPage";
-import { ClaimDialog, claimSnoozed } from "./ClaimDialog";
+import { ClaimDialog } from "./ClaimDialog";
+import { migrateGuestLocalData } from "./claimLocalData";
 import { fetchClaimPreview, type ClaimPreview } from "./authApi";
 
 /**
  * 登录/注册完整流程（M5，开发文档 §8.6.3）：
- * 表单 → 成功后拉 `claim-preview` → `count > 0` 且未 snooze 时弹认领框（默认全选、可取消）
+ * 表单 → 成功后拉 `claim-preview` → `count > 0` 时弹「全部转入 / 暂不」
  * → 关闭/完成后跳回 `next`（仅站内路径）或首页。
  */
 export function AuthFlow({ mode, next }: { mode: "login" | "register"; next: string | null }) {
@@ -26,12 +27,8 @@ export function AuthFlow({ mode, next }: { mode: "login" | "register"; next: str
   }, [done, preview]);
 
   const afterAuth = async () => {
-    if (claimSnoozed()) {
-      gotoNext();
-      return;
-    }
     const res = await fetchClaimPreview();
-    if (res.ok && res.data.count > 0) {
+    if (res.ok && res.data.count > 0 && res.data.guestActive !== false) {
       setPreview(res.data);
       return;
     }
@@ -48,13 +45,22 @@ export function AuthFlow({ mode, next }: { mode: "login" | "register"; next: str
             setPreview(null);
             setDone(true);
           }}
+          onOrganize={() => {
+            // 登录流程里没有列表可整理，直接去「我的白板」腾名额；
+            // 那边打开时会重新拉一次 claim-preview，转入入口还在。
+            setPreview(null);
+            window.location.href = "/boards";
+          }}
           onClaimed={(result) => {
             setPreview(null);
-            setDone(true);
             if (result.transferred > 0) {
-              // 认领后回到目标板，让服务端用新身份重新解析权限
-              window.location.href = next ?? "/";
+              // 先把本机缩略图/最近打开搬到账号下，再跳转，避免列表首帧没有图
+              void migrateGuestLocalData(result.userId, result.boards.map((board) => board.id)).finally(() => {
+                window.location.href = next ?? "/";
+              });
+              return;
             }
+            setDone(true);
           }}
         />
       ) : null}

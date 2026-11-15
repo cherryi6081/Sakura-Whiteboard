@@ -68,11 +68,13 @@ function thumbFrameFor(api: ExcalidrawImperativeAPI, boardId: string): ThumbFram
  */
 export function scheduleThumbCapture(
   api: ExcalidrawImperativeAPI,
+  owner: string,
   boardId: string,
   options: { fast?: boolean } = {},
 ): void {
   // 尽量在进板这一刻就把视口定下来，后续的编辑重拍不再跟随用户平移/缩放
-  thumbFrameFor(api, boardId);
+  const frameKey = `${owner}:${boardId}`;
+  thumbFrameFor(api, frameKey);
   const run = () => {
     void (async () => {
       try {
@@ -82,7 +84,7 @@ export function scheduleThumbCapture(
       }
       // 连续两帧：第一帧等 updateScene 落到画布，第二帧等浏览器完成绘制
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => void captureBoardThumb(api, boardId));
+        requestAnimationFrame(() => void captureBoardThumb(api, owner, boardId));
       });
     })();
   };
@@ -96,26 +98,38 @@ export function scheduleThumbCapture(
   }
 }
 
-export async function captureBoardThumb(api: ExcalidrawImperativeAPI, boardId: string): Promise<void> {
+export async function captureBoardThumb(
+  api: ExcalidrawImperativeAPI,
+  owner: string,
+  boardId: string,
+): Promise<void> {
+  const key = `${owner}:${boardId}`;
   // 同一块板的拍摄串行化：并发导出时后完成的旧画面可能覆盖新画面
-  const previous = thumbQueue.get(boardId) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(() => captureBoardThumbNow(api, boardId));
-  thumbQueue.set(boardId, next);
+  const previous = thumbQueue.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => captureBoardThumbNow(api, owner, boardId, key));
+  thumbQueue.set(key, next);
   await next;
 }
 
 const thumbQueue = new Map<string, Promise<void>>();
 
-async function captureBoardThumbNow(api: ExcalidrawImperativeAPI, boardId: string): Promise<void> {
+async function captureBoardThumbNow(
+  api: ExcalidrawImperativeAPI,
+  owner: string,
+  boardId: string,
+  frameKey: string,
+): Promise<void> {
   try {
     const elements = api.getSceneElements();
     const signature = thumbSignature(elements);
     if (!signature) return;
 
-    const previous = await readBoardThumb(boardId).catch(() => null);
+    const previous = await readBoardThumb(owner, boardId).catch(() => null);
     if (!shouldCapture(previous, signature)) return;
 
-    const frame = thumbFrameFor(api, boardId);
+    const frame = thumbFrameFor(api, frameKey);
     if (!frame) return;
 
     const live = liveElements(elements) as never;
@@ -143,7 +157,7 @@ async function captureBoardThumbNow(api: ExcalidrawImperativeAPI, boardId: strin
 
     const blob = await rasterize(svg);
     if (!(blob instanceof Blob) || blob.size === 0) return;
-    await writeBoardThumb({ boardId, blob, signature });
+    await writeBoardThumb({ owner, boardId, blob, signature });
   } catch (err) {
     console.warn("[boards] 首帧缩略图失败，卡片回退线稿占位", err);
   }
@@ -173,9 +187,9 @@ async function rasterize(svg: SVGSVGElement): Promise<Blob | null> {
   }
 }
 
-/** 列表页一次性取出缩略图并转成可直接给 <img> 用的 objectURL。 */
-export async function loadThumbUrls(): Promise<Record<string, string>> {
-  const records = await readAllBoardThumbs();
+/** 列表页一次性取出当前身份的缩略图并转成可直接给 <img> 用的 objectURL。 */
+export async function loadThumbUrls(owner: string): Promise<Record<string, string>> {
+  const records = await readAllBoardThumbs(owner);
   const urls: Record<string, string> = {};
   for (const [boardId, record] of records) {
     if (!(record.blob instanceof Blob) || record.blob.size === 0) continue;

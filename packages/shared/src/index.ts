@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export * from './password.js';
 export * from './spaces.js';
+export * from './capacity.js';
 
 export const BOARD_ROLES = ['owner', 'editor', 'viewer'] as const;
 export type BoardRole = (typeof BOARD_ROLES)[number];
@@ -29,6 +30,8 @@ export const LIMITS = {
   resyncThreshold: 500,
   /** 白板 ID 长度与字符集 */
   boardIdPattern: /^[A-Za-z0-9_-]{12}$/,
+  /** 白板标题上限（建板与改名共用，前后端同源） */
+  boardTitleMax: 80,
   /** 单张图片上限 5MB（与 `0004_assets.sql` 的 check 一致） */
   assetMaxBytes: 5 * 1024 * 1024,
   /** 单板图片总量上限 50MB */

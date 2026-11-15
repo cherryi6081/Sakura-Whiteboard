@@ -25,6 +25,9 @@ export const SPACE_ACTIONS = [
   'invite',
   'manageMembers',
   'manageSpace',
+  'leaveSpace',
+  'transferSpace',
+  'dissolveSpace',
   'copyToPersonal',
   'requestEdit',
 ] as const;
@@ -42,6 +45,10 @@ const ALLOWED: Record<SpaceAction, readonly SpaceRole[]> = {
   invite: ['owner'],
   manageMembers: ['owner'],
   manageSpace: ['owner'],
+  // 生命周期：退出所有成员都能做；转让与解散只属于当前所有者。
+  leaveSpace: ['owner', 'editor', 'viewer'],
+  transferSpace: ['owner'],
+  dissolveSpace: ['owner'],
   // 只读成员的「出口」：浏览与复制到个人空间仍然可用
   copyToPersonal: ['owner', 'editor', 'viewer'],
   requestEdit: ['viewer'],

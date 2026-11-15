@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import { can, type SpaceRole, type SpaceSummary } from "@whiteboard/shared";
 import {
   createSpaceInvite,
+  dissolveSpace,
   fetchSpaceMembers,
+  leaveSpace,
   revokeSpaceInvite,
+  transferSpaceOwner,
   type SpaceInvite,
   type SpaceMember,
 } from "./spaceApi";
 
 /**
- * 空间设置（设计稿 §07 最小版）。
+ * 空间设置（设计稿 §07）。
  *
- * 本期只做：成员列表 + 邀请链接（7 天、可撤销）。
- * 角色修改 / 移除成员 / 转让空间是 P1，这里的按钮不出现，也不留假入口。
+ * 成员列表 + 邀请链接（7 天、可撤销）+ 生命周期（退出 / 转让 / 解散）。
+ * 角色调整与移除成员仍未做，不在界面上留假入口。
  */
 
 const ROLE_TEXT: Record<SpaceRole, string> = {
@@ -24,9 +27,40 @@ const ROLE_TEXT: Record<SpaceRole, string> = {
 type Props = {
   space: SpaceSummary;
   onClose: () => void;
+  /** 退出成功：父级移除该空间并回到个人空间 */
+  onLeft: (space: SpaceSummary) => void;
+  /** 解散成功：父级移除该空间、回到个人空间并提示回收站 */
+  onDissolved: (space: SpaceSummary) => void;
+  /** 转让成功：父级把当前用户角色改为 editor */
+  onTransferred: (spaceId: string, newOwnerId: string) => void;
 };
 
-export function SpaceSettings({ space, onClose }: Props) {
+type ConfirmKind = "leave" | "dissolve" | "transfer";
+
+function actionErrorText(code: string): string {
+  switch (code) {
+    case "OWNER_MUST_TRANSFER":
+      return "你是所有者，请先把所有权转让给其他成员，再退出空间。";
+    case "LAST_OWNER_USE_DISSOLVE":
+      return "你是唯一成员，请使用「解散空间」。";
+    case "CANNOT_LEAVE_PERSONAL":
+      return "个人空间不能退出。";
+    case "CANNOT_DELETE_PERSONAL":
+      return "个人空间不能解散。";
+    case "CANNOT_TRANSFER_PERSONAL":
+      return "个人空间不能转让。";
+    case "ALREADY_OWNER":
+      return "你已经是这个空间的所有者。";
+    case "FORBIDDEN":
+      return "当前角色没有权限执行这个操作。";
+    case "NOT_FOUND":
+      return "空间或成员已不存在，请刷新后再试。";
+    default:
+      return "操作没成功，请稍后再试。";
+  }
+}
+
+export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferred }: Props) {
   const [members, setMembers] = useState<SpaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +68,17 @@ export function SpaceSettings({ space, onClose }: Props) {
   const [invite, setInvite] = useState<SpaceInvite | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
+  const [transferTo, setTransferTo] = useState("");
+  const [dissolveText, setDissolveText] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const owner = can(space.role, "invite");
+  const isOwner = can(space.role, "transferSpace");
+  const isPersonal = space.kind === "personal";
+  const otherMembers = members.filter((member) => member.role !== "owner");
+  const transferTarget = members.find((member) => member.userId === transferTo) ?? null;
 
   useEffect(() => {
     let alive = true;
@@ -91,7 +135,73 @@ export function SpaceSettings({ space, onClose }: Props) {
     setInvite(null);
   };
 
+  // 成员列表到达后默认选中第一位可转让成员，省掉一次「请选择」
+  useEffect(() => {
+    setTransferTo(
+      (current) => current || members.find((member) => member.role !== "owner")?.userId || "",
+    );
+  }, [members]);
+
+  const openConfirm = (kind: ConfirmKind) => {
+    setConfirm(kind);
+    setActionError(null);
+    setDissolveText("");
+  };
+
+  const runLeave = async () => {
+    if (actionBusy) return;
+    setActionBusy(true);
+    setActionError(null);
+    const result = await leaveSpace(space.id);
+    setActionBusy(false);
+    if (!result.ok) {
+      setActionError(actionErrorText(result.code));
+      return;
+    }
+    setConfirm(null);
+    onLeft(space);
+  };
+
+  const runDissolve = async () => {
+    if (actionBusy || dissolveText.trim() !== space.name) return;
+    setActionBusy(true);
+    setActionError(null);
+    const result = await dissolveSpace(space.id);
+    setActionBusy(false);
+    if (!result.ok) {
+      setActionError(actionErrorText(result.code));
+      return;
+    }
+    setConfirm(null);
+    onDissolved(space);
+  };
+
+  const runTransfer = async () => {
+    if (actionBusy || !transferTarget) return;
+    setActionBusy(true);
+    setActionError(null);
+    const result = await transferSpaceOwner(space.id, transferTarget.userId);
+    setActionBusy(false);
+    if (!result.ok) {
+      setActionError(actionErrorText(result.code));
+      return;
+    }
+    setMembers((current) =>
+      current.map((member) =>
+        member.userId === result.data.ownerId
+          ? { ...member, role: "owner" as SpaceRole }
+          : member.userId === result.data.previousOwnerId
+            ? { ...member, role: "editor" as SpaceRole }
+            : member,
+      ),
+    );
+    setConfirm(null);
+    setActionNotice(`已把所有权转给 ${transferTarget.displayName}，你现在是编辑者，可以退出空间。`);
+    onTransferred(space.id, result.data.ownerId);
+  };
+
   return (
+    <>
     <div
       className="wb-overlay"
       onPointerDown={(event) => {
@@ -164,14 +274,16 @@ export function SpaceSettings({ space, onClose }: Props) {
               <div className="wb-space-invite">
                 <label className="wb-field wb-space-invite__role">
                   <span className="wb-field__label">加入后角色</span>
-                  <select
-                    className="wb-input"
-                    value={inviteRole}
-                    onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
-                  >
-                    <option value="viewer">只读</option>
-                    <option value="editor">编辑者</option>
-                  </select>
+                  <span className="wb-select-wrap">
+                    <select
+                      className="wb-select wb-select--lg"
+                      value={inviteRole}
+                      onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
+                    >
+                      <option value="viewer">只读</option>
+                      <option value="editor">编辑者</option>
+                    </select>
+                  </span>
                 </label>
                 <button className="wb-btn wb-btn--primary" type="button" onClick={() => void generate()} disabled={inviteBusy}>
                   {inviteBusy ? "生成中…" : invite ? "重新生成" : "生成并复制链接"}
@@ -207,11 +319,95 @@ export function SpaceSettings({ space, onClose }: Props) {
           )}
         </section>
 
-        <section className="wb-space-settings__section wb-space-settings__section--last">
+        <section className="wb-space-settings__section">
           <h3 className="wb-space-settings__subtitle">空间与权限</h3>
           <p className="wb-caption">
             所有者管理空间与邀请；编辑者可新建、编辑与置顶；只读成员只能浏览、搜索并复制到个人空间。
           </p>
+        </section>
+
+        <section
+          className="wb-space-settings__section wb-space-settings__section--last"
+          aria-labelledby="wb-space-lifecycle-title"
+        >
+          <h3 className="wb-space-settings__subtitle" id="wb-space-lifecycle-title">
+            空间生命周期
+          </h3>
+          {isPersonal ? (
+            <p className="wb-caption">个人空间是你的私人空间，不能被退出或解散。</p>
+          ) : (
+            <>
+              {isOwner ? (
+                otherMembers.length > 0 ? (
+                  <div className="wb-space-transfer">
+                    <p className="wb-caption">你是所有者。离开前需要先把所有权转给一位成员。</p>
+                    <div className="wb-space-transfer__row">
+                      <label className="wb-field">
+                        <span className="wb-field__label">转让给</span>
+                        <span className="wb-select-wrap">
+                          <select
+                            className="wb-select wb-select--lg"
+                            value={transferTo}
+                            onChange={(event) => setTransferTo(event.target.value)}
+                            data-testid="space-transfer-target"
+                          >
+                            <option value="" disabled>
+                              选择成员
+                            </option>
+                            {otherMembers.map((member) => (
+                              <option key={member.userId} value={member.userId}>
+                                {member.displayName} · {ROLE_TEXT[member.role]}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                      </label>
+                      <button
+                        className="wb-btn wb-btn--ghost"
+                        type="button"
+                        disabled={!transferTarget}
+                        onClick={() => openConfirm("transfer")}
+                        data-testid="space-transfer-open"
+                      >
+                        转让所有权
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="wb-caption">
+                    你是这个空间唯一的成员。退出会解散空间，请使用下方「解散空间」。
+                  </p>
+                )
+              ) : (
+                <p className="wb-caption">
+                  退出后你将无法访问这个空间；你在空间里创建的白板会保留，其他成员仍可使用。
+                </p>
+              )}
+
+              <div className="wb-space-danger">
+                <p className="wb-space-danger__title">{isOwner ? "解散空间" : "退出空间"}</p>
+                <p className="wb-space-danger__desc">
+                  {isOwner
+                    ? "所有白板会移到你的个人空间并进入回收站，30 天内可恢复；其他成员会立即失去访问权限。"
+                    : "空间本身和其中的白板不会受影响。"}
+                </p>
+                <button
+                  className="wb-btn wb-btn--danger-outline"
+                  type="button"
+                  onClick={() => openConfirm(isOwner ? "dissolve" : "leave")}
+                  data-testid={isOwner ? "space-dissolve-open" : "space-leave-open"}
+                >
+                  {isOwner ? "解散空间" : "退出空间"}
+                </button>
+              </div>
+
+              {actionNotice ? (
+                <p className="wb-space-lifecycle__notice" role="status">
+                  {actionNotice}
+                </p>
+              ) : null}
+            </>
+          )}
         </section>
 
         {error ? (
@@ -221,6 +417,138 @@ export function SpaceSettings({ space, onClose }: Props) {
         ) : null}
       </div>
     </div>
+
+    {confirm ? (
+      <div
+        className="wb-overlay wb-overlay--confirm"
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget && !actionBusy) setConfirm(null);
+        }}
+      >
+        <div
+          className="wb-dialog wb-space-confirm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wb-space-confirm-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !actionBusy) {
+              event.preventDefault();
+              setConfirm(null);
+            }
+          }}
+        >
+          {confirm === "leave" ? (
+            <>
+              <h2 className="wb-dialog__title" id="wb-space-confirm-title">
+                退出「{space.name}」？
+              </h2>
+              <p className="wb-dialog__desc">
+                退出后你将无法再访问这个空间，也不再收到它的白板更新。你在空间里创建的白板会保留，其他成员仍可继续使用。
+              </p>
+              <div className="wb-dialog__actions">
+                <button
+                  className="wb-btn wb-btn--ghost"
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  disabled={actionBusy}
+                >
+                  取消
+                </button>
+                <button
+                  className="wb-btn wb-btn--danger"
+                  type="button"
+                  onClick={() => void runLeave()}
+                  disabled={actionBusy}
+                  data-testid="space-leave-confirm"
+                >
+                  {actionBusy ? "退出中…" : "退出空间"}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {confirm === "dissolve" ? (
+            <>
+              <h2 className="wb-dialog__title" id="wb-space-confirm-title">
+                解散「{space.name}」？
+              </h2>
+              <p className="wb-dialog__desc">
+                空间本身无法恢复。所有白板会移到你的个人空间并进入回收站，30 天内可恢复；其他成员会立即失去访问权限。
+              </p>
+              <label className="wb-field">
+                <span className="wb-field__label">输入空间名称「{space.name}」确认</span>
+                <input
+                  className="wb-input"
+                  value={dissolveText}
+                  autoFocus
+                  onChange={(event) => {
+                    setDissolveText(event.target.value);
+                    if (actionError) setActionError(null);
+                  }}
+                  data-testid="space-dissolve-input"
+                />
+              </label>
+              <div className="wb-dialog__actions">
+                <button
+                  className="wb-btn wb-btn--ghost"
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  disabled={actionBusy}
+                >
+                  取消
+                </button>
+                <button
+                  className="wb-btn wb-btn--danger"
+                  type="button"
+                  onClick={() => void runDissolve()}
+                  disabled={actionBusy || dissolveText.trim() !== space.name}
+                  data-testid="space-dissolve-confirm"
+                >
+                  {actionBusy ? "解散中…" : "确认解散"}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {confirm === "transfer" ? (
+            <>
+              <h2 className="wb-dialog__title" id="wb-space-confirm-title">
+                转让所有权？
+              </h2>
+              <p className="wb-dialog__desc">
+                转让后 {transferTarget?.displayName ?? "对方"} 将成为空间所有者，你降为编辑者；随后你可以选择退出空间。
+              </p>
+              <div className="wb-dialog__actions">
+                <button
+                  className="wb-btn wb-btn--ghost"
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  disabled={actionBusy}
+                >
+                  取消
+                </button>
+                <button
+                  className="wb-btn wb-btn--primary"
+                  type="button"
+                  onClick={() => void runTransfer()}
+                  disabled={actionBusy || !transferTarget}
+                  data-testid="space-transfer-confirm"
+                >
+                  {actionBusy ? "转让中…" : "确认转让"}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {actionError ? (
+            <p className="wb-rename__error" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

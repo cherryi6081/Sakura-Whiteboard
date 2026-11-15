@@ -15,3 +15,11 @@ apps/web/.spike/
 # 本地上传的图片资产（v1.1 本地磁盘驱动）
 apps/server/.storage/
 *.storage/
+
+# 本地验收产物：探针脚本、截图、对比图与日志，不进仓库
+.verify/
+.spike/
+.trae/
+_preview/
+/_*.png
+/.tmp-*

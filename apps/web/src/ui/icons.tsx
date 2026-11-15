@@ -204,6 +204,17 @@ export function IconUser({ size = 14 }: IconProps) {
   );
 }
 
+/** 退出登录：门框 + 向外的箭头 */
+export function IconLogout({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M10 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H10" />
+      <path d="M14.5 8.5 18 12l-3.5 3.5" />
+      <path d="M18 12H9" />
+    </svg>
+  );
+}
+
 export function IconCheck({ size = 12 }: IconProps) {
   return (
     <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>

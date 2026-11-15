@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: 48px;
+  height: var(--topbar-h);
   padding: 0 var(--space-8);
   flex: none;
 }
@@ -47,6 +47,19 @@
   font-weight: 700;
 }
 
+/* 品牌图标换成透明 PNG（已裁掉原图透明边，内容 1470×1033 ≈ 1.42:1）。
+   高度：20px/600 下「S」实测 cap height 16px，按用户要求再放大一档，取 26px；
+   宽度按原图等比（≈37px），不拉伸、不加底色与圆角。 */
+img.wb-brand__mark {
+  display: block;
+  flex: none;
+  width: auto;
+  height: 26px;
+  border-radius: 0;
+  background: none;
+  object-fit: contain;
+}
+
 /* ============ 首页内容层 ============ */
 .wb-home__nav { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--ui-fs) * .45) clamp(24px, 5vw, 72px); }
 .wb-home__wordmark { color: var(--rose-900); text-decoration: none; display: inline-flex; align-items: center; gap: calc(var(--ui-fs) * .58); font-size: var(--ui-fs); line-height: 1; font-weight: 700; letter-spacing: .08em; }
@@ -56,7 +69,13 @@
 .wb-home__menu { display: none; border: 0; background: transparent; padding: calc(var(--ui-fs) * .55); cursor: pointer; } .wb-home__menu span { display: block; width: calc(var(--ui-fs) * 1.6); height: 1px; margin: calc(var(--ui-fs) * .36) 0; background: var(--rose-900); }
 /* 导航账号区：登录后用显示名替换「登录」，下划线沿用登录入口那一条 */
 .wb-home__account { position: relative; display: inline-flex; align-items: center; }
-.wb-home__user { max-width: min(38vw, 9em); overflow: hidden; padding: 0 0 3px; border: 0; border-bottom: 1px solid currentColor; background: none; color: #000; font: inherit; line-height: 1; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; opacity: .8; cursor: pointer; transition: opacity var(--dur-fast) var(--ease-standard); }
+.wb-home__user { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: #000; font: inherit; line-height: 1; letter-spacing: .06em; opacity: .8; cursor: pointer; transition: opacity var(--dur-fast) var(--ease-standard); }
+.wb-home__user-name { max-width: min(30vw, 9em); overflow: hidden; padding-bottom: 3px; border-bottom: 1px solid currentColor; text-overflow: ellipsis; white-space: nowrap; }
+/* 账号区多了 24px 头像：桌面/平板导航锁回原来的高度（2.45 × 字号，等于原 1.55 图标 + 上下 .45 内边距），
+   避免头像把导航撑高、顶到品牌标题；≤700 的抽屉式导航不受影响。 */
+@media (min-width: 701px) {
+  .wb-home__nav { height: calc(var(--ui-fs) * 2.45); padding-block: 0; }
+}
 .wb-home__user:hover, .wb-home__user[aria-expanded="true"] { opacity: 1; }
 /* 焦点沿用全局 :focus-visible 的白+玫红双环（--shadow-focus），不再叠自己的 outline */
 /* 待定期只占「登录」两个字的位置，不写任何内容 */
@@ -1804,6 +1823,11 @@ body:has(.wb-home) {
   color: var(--neutral-800);
 }
 
+/* 满 12 块：计数变玫红，提示再建就要腾位置 */
+.wb-boards__count.is-full {
+  color: var(--rose-700);
+}
+
 .wb-boards__banner {
   margin-top: var(--space-4);
   border: 1px solid var(--rose-200);
@@ -2007,6 +2031,27 @@ body:has(.wb-home) {
   transition: color var(--dur-fast) var(--ease-standard);
 }
 
+/* 就地改名：几何与 .wb-board-card__title 完全一致（18px 行高、13px 字号），
+   边框用 box-shadow，不占盒模型高度，进入/退出编辑时网格不跳动 */
+.wb-board-card__title-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--ink-strong);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  outline: none;
+}
+
 /* 桌面 4 列时卡片宽度由行高反推，可能比旧的 227 窄；
    元信息固定单行，时间允许省略，避免换行把卡片撑出三行高度 */
 .wb-board-card__meta {
@@ -2203,6 +2248,47 @@ body:has(.wb-home) {
 
 .wb-trash__nav:focus-visible {
   box-shadow: var(--focus-ring);
+}
+
+/* 顶栏退出登录：与回收站入口同为 32px 高幽灵按钮，排在用户名之后，不挤压空间胶囊 */
+.wb-boards__logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--neutral-800);
+  font-family: inherit;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-boards__logout:hover {
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+}
+
+.wb-boards__logout:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.wb-boards__logout:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+:root[data-theme="night"] .wb-boards__logout {
+  color: var(--ink-strong);
+}
+
+:root[data-theme="night"] .wb-boards__logout:hover {
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
 }
 
 .wb-trash__badge {
@@ -2693,6 +2779,33 @@ body:has(.wb-home) {
   flex: none;
 }
 
+/* 恢复前的候选列表：最多 12 块，超出就滚动，避免弹窗长过屏幕 */
+.wb-trash__candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(46vh, 300px);
+  margin: 4px 0 2px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.wb-trash__candidates .wb-trash__check {
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(90, 42, 63, 0.12);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.wb-trash__candidates .wb-trash__check:hover {
+  background: var(--surface-sunken);
+}
+
+.wb-trash__candidates .wb-trash__check input {
+  margin: 0;
+}
+
 /* ---------- 390 底部动作面板 ---------- */
 .wb-sheet-layer {
   position: fixed;
@@ -2791,7 +2904,7 @@ body:has(.wb-home) {
 /* ---------- 响应式：≤700 单列双层行 ---------- */
 @media (max-width: 700px) {
   .wb-page--trash .wb-topbar {
-    height: 48px;
+    height: var(--topbar-h);
     gap: 8px;
     padding: 0 var(--space-4);
   }
@@ -2801,10 +2914,10 @@ body:has(.wb-home) {
     line-height: 26px;
   }
 
+  /* 18px 字号的 cap height ≈ 14px，图标取 24px 与桌面 26px 同步下调，宽度等比 */
   .wb-page--trash .wb-brand__mark {
-    width: 22px;
-    height: 22px;
-    font-size: 11px;
+    width: auto;
+    height: 24px;
   }
 
   .wb-trash__back,
@@ -2818,6 +2931,17 @@ body:has(.wb-home) {
     height: 32px;
     padding: 0;
     justify-content: center;
+  }
+
+  /* 窄屏退出登录收成 32×32 图标按钮，避免与用户名挤在一行换行 */
+  .wb-boards__logout {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .wb-boards__logout-text {
+    display: none;
   }
 
   .wb-trash__badge {
@@ -3352,16 +3476,69 @@ body:has(.wb-home) {
   font-weight: 500;
 }
 
+/* 自绘下拉：外壳（圆角/描边/底色）完全可控，展开的 option 列表仍由浏览器绘制，
+   只能跟随系统配色。箭头用 ::after 画，颜色走 --ink-muted，夜间自动换 */
+.wb-select-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.wb-select-wrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
 .wb-select {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   height: var(--control-h);
-  padding: 0 var(--space-3);
+  padding: 0 calc(var(--space-3) * 2 + 7px) 0 var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
   color: var(--ink-strong);
   font: inherit;
   font-size: var(--text-body);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.wb-select:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+
+.wb-select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.wb-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 与 .wb-input 同高（表单行里按钮 44px，保持成员/邀请行高度与对齐不变） */
+.wb-select--lg {
+  height: var(--control-h-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-select {
+    transition: none;
+  }
 }
 
 .wb-linkbox {
@@ -3961,7 +4138,7 @@ body:has(.wb-home) {
   }
 
   .wb-topbar {
-    height: 48px;
+    height: var(--topbar-h);
     padding: 0 var(--space-4);
   }
 
@@ -3993,7 +4170,7 @@ body:has(.wb-home) {
   }
 
   .wb-board__topbar {
-    height: 48px;
+    height: var(--topbar-h);
     gap: var(--space-2);
     padding: 0 var(--space-2);
   }
@@ -5509,41 +5686,76 @@ button.wb-sortchip:hover {
 .wb-space-settings {
   width: 560px;
   max-width: calc(100vw - 32px);
-  max-height: 86vh;
+  /* 只留 overlay 的 16px 上下内边距，把窗口高度尽量用满 */
+  max-height: calc(100vh - 32px);
   overflow-y: auto;
-  padding: var(--space-6);
+  /* 比通用 dialog 更紧凑：目标是在 720px 高的窗口里也能一次看全，不依赖滚动条 */
+  padding: 18px 20px;
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: 9px;
 }
 
 .wb-space-settings__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+.wb-space-settings .wb-dialog__title {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.wb-space-settings .wb-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.wb-space-settings .wb-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.wb-space-settings .wb-select.wb-select--lg {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.wb-space-settings .wb-field {
+  gap: 4px;
+}
+
+.wb-space-settings .wb-field__label {
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .wb-space-settings__eyebrow {
-  margin: 0 0 2px;
+  margin: 0 0 1px;
   font-size: var(--text-micro);
+  line-height: 16px;
   color: var(--ink-muted);
 }
 
 .wb-space-settings__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-4);
+  gap: 6px;
+  padding-top: 7px;
   border-top: 1px solid var(--line-soft);
 }
 
 .wb-space-settings__subtitle {
   margin: 0;
   font-size: var(--text-caption);
+  line-height: 17px;
   font-weight: 600;
   color: var(--ink-strong);
 }
@@ -5554,25 +5766,25 @@ button.wb-sortchip:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .wb-space-members__row {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  min-height: 44px;
-  padding: 4px 0;
+  gap: 10px;
+  min-height: 32px;
+  padding: 1px 0;
 }
 
 .wb-space-members__avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   color: #ffffff;
-  font-size: var(--text-micro);
+  font-size: 11px;
   font-weight: 600;
   flex: none;
 }
@@ -5585,12 +5797,14 @@ button.wb-sortchip:hover {
 }
 
 .wb-space-members__name {
-  font-size: var(--text-body);
+  font-size: 13px;
+  line-height: 17px;
   color: var(--ink-strong);
 }
 
 .wb-space-members__meta {
-  font-size: var(--text-micro);
+  font-size: 12px;
+  line-height: 15px;
   color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5600,7 +5814,7 @@ button.wb-sortchip:hover {
 .wb-space-invite {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: 10px;
 }
 
 .wb-space-invite__role {
@@ -5611,7 +5825,7 @@ button.wb-sortchip:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: 3px 10px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   background: var(--surface-sunken);
@@ -5621,7 +5835,8 @@ button.wb-sortchip:hover {
   flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: var(--text-micro);
+  font-size: 11px;
+  line-height: 16px;
   color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5632,6 +5847,73 @@ button.wb-sortchip:hover {
   font-size: var(--text-micro);
   color: var(--ok-fg);
   white-space: nowrap;
+}
+
+/* ---------- 空间生命周期：转让 / 退出 / 解散 ---------- */
+.wb-space-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-space-transfer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wb-space-transfer__row .wb-field {
+  flex: 1;
+  min-width: 180px;
+}
+
+.wb-space-danger {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-md);
+  background: var(--danger-bg);
+}
+
+.wb-space-danger__title {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--danger-fg);
+}
+
+.wb-space-danger__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+
+.wb-space-lifecycle__notice {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--ok-fg);
+}
+
+/* 二次确认压在空间设置之上 */
+.wb-overlay--confirm {
+  z-index: 70;
+}
+
+.wb-space-confirm {
+  width: 460px;
+  gap: var(--space-3);
+}
+
+.wb-space-confirm .wb-dialog__actions {
+  justify-content: flex-end;
+  margin-top: var(--space-2);
 }
 
 .wb-space-create {

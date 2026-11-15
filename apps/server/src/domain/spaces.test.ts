@@ -18,6 +18,16 @@ describe('空间角色矩阵', () => {
     expect(can('editor', 'invite')).toBe(false);
     expect(can('editor', 'manageMembers')).toBe(false);
     expect(can('editor', 'manageSpace')).toBe(false);
+    // 生命周期：编辑者可以退出，但不能转让或解散
+    expect(can('editor', 'leaveSpace')).toBe(true);
+    expect(can('editor', 'transferSpace')).toBe(false);
+    expect(can('editor', 'dissolveSpace')).toBe(false);
+  });
+
+  it('只读成员可以退出空间，但不能转让或解散', () => {
+    expect(can('viewer', 'leaveSpace')).toBe(true);
+    expect(can('viewer', 'transferSpace')).toBe(false);
+    expect(can('viewer', 'dissolveSpace')).toBe(false);
   });
 
   it('所有者拥有除「申请编辑」外的全部动作', () => {
@@ -26,6 +36,9 @@ describe('空间角色矩阵', () => {
       expect(can('owner', action), action).toBe(true);
     }
     expect(can('owner', 'requestEdit')).toBe(false);
+    expect(can('owner', 'leaveSpace')).toBe(true);
+    expect(can('owner', 'transferSpace')).toBe(true);
+    expect(can('owner', 'dissolveSpace')).toBe(true);
   });
 
   it('未知角色与空值一律拒绝', () => {

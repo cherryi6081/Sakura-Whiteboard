@@ -102,4 +102,49 @@ describe('dropIndex', () => {
     // 指针在行间隙：取纵向更近的一行
     expect(dropIndex(grid, { x: 190, y: 105 }, 'a', true)).toBe(1);
   });
+
+  /** 4 列网格：卡 120×120、间距 30，行 top = 0 / 150 / 300 / 450 */
+  const gridOf = (ids: string[]) =>
+    ids.map((id, index) => ({
+      id,
+      left: (index % 4) * 150,
+      top: Math.floor(index / 4) * 150,
+      width: 120,
+      height: 120,
+    }));
+  const letters = (count: number) => Array.from({ length: count }, (_, index) => `c${index + 1}`);
+
+  it('拖到最后一行下方的空白区：追加到组尾（12 块正好三行）', () => {
+    const rects12 = gridOf(letters(12));
+    // 贴着最后一张中线垂直往下（回归：过去只到第 11 位）
+    expect(dropIndex(rects12, { x: 510, y: 600 }, 'c1', true)).toBe(11);
+    // 在最后一行的第一列下方竖直往下，同样要能到组尾
+    expect(dropIndex(rects12, { x: 50, y: 600 }, 'c1', true)).toBe(11);
+  });
+
+  it('末尾行不满时也追加到组尾（11 / 13 / 15 块）', () => {
+    expect(dropIndex(gridOf(letters(11)), { x: 50, y: 600 }, 'c1', true)).toBe(10);
+    expect(dropIndex(gridOf(letters(13)), { x: 50, y: 600 }, 'c1', true)).toBe(12);
+    expect(dropIndex(gridOf(letters(15)), { x: 50, y: 600 }, 'c1', true)).toBe(14);
+  });
+
+  it('最后一行带内仍按列落点，只有越过行底才追加', () => {
+    const rects12 = gridOf(letters(12));
+    // 12 块 = 3 行，最后一行占 300…420；y=350 仍在行内：第一列 = 该行行首（移除源卡后第 8 位）
+    expect(dropIndex(rects12, { x: 50, y: 350 }, 'c1', true)).toBe(7);
+    // 越过行底 420 才追加
+    expect(dropIndex(rects12, { x: 50, y: 421 }, 'c1', true)).toBe(11);
+  });
+
+  it('最后一张拖到末尾空白处等于原位（不产生位移）', () => {
+    expect(dropIndex(gridOf(letters(12)), { x: 50, y: 600 }, 'c12', true)).toBe(11);
+  });
+
+  it('单列时越过最后一张同样追加到组尾', () => {
+    const vertical = [
+      { id: 'a', left: 0, top: 0, width: 300, height: 100 },
+      { id: 'b', left: 0, top: 120, width: 300, height: 100 },
+    ];
+    expect(dropIndex(vertical, { x: 10, y: 300 }, 'a', false)).toBe(1);
+  });
 });

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import { can } from '@whiteboard/shared';
+import { can, LIMITS } from '@whiteboard/shared';
 import { pool } from '../../infra/db.js';
 import { ensureRedisConnected, redis } from '../../infra/redis.js';
 import { AppError } from '../middlewares/error.js';
@@ -39,7 +39,7 @@ const GUEST_UNARCHIVED_MAX = BOARD_CAPACITY;
 const spaceIdSchema = z.string().regex(/^sp_[A-Za-z0-9_-]{10,32}$/);
 
 const createBoardSchema = z.object({
-  title: z.string().trim().min(1).max(80).optional(),
+  title: z.string().trim().min(1).max(LIMITS.boardTitleMax).optional(),
   /** 建到哪个空间；缺省为个人空间 */
   spaceId: spaceIdSchema.optional(),
   /**
@@ -70,7 +70,7 @@ type BoardMetaRow = {
 const pinSchema = z.object({ pinned: z.boolean() });
 
 const renameSchema = z.object({
-  title: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(LIMITS.boardTitleMax),
 });
 
 async function enforceGuestQuota(guestId: string): Promise<void> {
@@ -115,8 +115,8 @@ async function enforceGuestQuota(guestId: string): Promise<void> {
 /**
  * 游客建板前的额度检查。
  *
- * 已经满 15 块时交给事务内的淘汰逻辑处理（先淘汰再建），此时不再套 24h 限流，
- * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由 15 的容量上限兜住。
+ * 已经满 12 块时交给事务内的淘汰逻辑处理（先淘汰再建），此时不再套 24h 限流，
+ * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由 12 的容量上限兜住。
  */
 async function enforceGuestCreation(guestId: string): Promise<void> {
   const { rows } = await pool.query<{ used: number }>(
@@ -168,7 +168,20 @@ boardsRouter.post(
         : `board-create:guest:${ownerGuestId}`;
       await client.query('select pg_advisory_xact_lock(hashtext($1))', [lockKey]);
 
-      // 满 15 块时先淘汰一块（登录→回收站；游客→物理删除），审计写在同一事务里
+      // 与空间退出/解散串行：锁住空间与成员行，避免在空间刚被解散后又插进一块
+      // 无归属空间的板（解散事务会等待这里提交，然后把这块新板一起迁走）。
+      if (spaceId) {
+        const { rows: liveRows } = await client.query(
+          `select 1 from spaces s
+             join space_members m on m.space_id = s.id and m.user_id = $2
+            where s.id = $1 and s.deleted_at is null
+            for share of s, m`,
+          [spaceId, identity.userId],
+        );
+        if (!liveRows[0]) throw new AppError(404, 'NOT_FOUND', 'space not found');
+      }
+
+      // 满 12 块时先淘汰一块（登录→回收站；游客→物理删除），审计写在同一事务里
       const eviction = await evictForCapacity(
         client,
         ownerId
@@ -582,6 +595,13 @@ boardsRouter.patch(
     }
 
     let ranks = await ranksOf(identity.userId, neighbors);
+    // 手动模式是账号级设置，但 rank 是「用户 + 分组」级别的：
+    // 换到还没排过序的空间/分组时邻居没有 rank，不能把 undefined 当 null
+    // 走「组首/组尾」公式（beforeId 有值却按 null 算会得到 1024，直接排到最前）。
+    if (neighbors.some((id) => !ranks.has(id))) {
+      await materializeGroup(identity.userId, pinned, spaceId);
+      ranks = await ranksOf(identity.userId, neighbors);
+    }
     let rank = rankBetween(beforeId ? ranks.get(beforeId) ?? null : null, afterId ? ranks.get(afterId) ?? null : null);
     if (rank === null) {
       // 间隙不足或邻居没有 rank：整组重排后用新的 rank 再算一次

@@ -27,17 +27,24 @@ const BLACKBOX = [
   ["theme", "05-theme.mjs"],
   ["permissions", "06-permissions.mjs"],
   ["editor", "07-editor.mjs"],
+  ["restore", "08-restore.mjs"],
+  ["rename", "09-rename.mjs"],
+  ["logout", "10-logout.mjs"],
+  ["claim", "11-claim.mjs"],
+  ["user-mark", "12-user-mark.mjs"],
 ];
 
 const WHITEBOX = [
   {
-    label: "web: selection / sortOrder / thumbPolicy / boardList / route / returnTo / backTarget",
+    label: "web: selection / sortOrder / autoScroll / thumbPolicy / boardList / recentBoards / route / returnTo / backTarget",
     cwd: path.join(REPO_ROOT, "apps/web"),
     files: [
       "src/boards/selection.test.ts",
       "src/boards/sortOrder.test.ts",
+      "src/boards/autoScroll.test.ts",
       "src/boards/thumbPolicy.test.ts",
       "src/boards/boardList.test.ts",
+      "src/boards/recentBoards.test.ts",
       "src/board/route.test.ts",
       "src/auth/returnTo.test.ts",
       "src/board/backTarget.test.ts",

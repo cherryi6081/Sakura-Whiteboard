@@ -3,11 +3,14 @@
  *
  * 排序契约：置顶优先 → 最近打开倒序 → id 兜底（同一时间戳也不抖序）。
  * 手动模式（用户拖过某一组后）在同一分组内改为按 `rank` 升序，没排过的仍回落到时间。
- * 容量契约：一页最多 15 张（5 列 × 3 行），不做翻页；服务端在创建第 16 块时
- * 按「打开次数升序、创建时间升序」淘汰一块，列表本身永远不超过 15。
+ * 容量契约：一页最多 12 张（4 列 × 3 行），不做翻页；服务端在创建第 13 块时
+ * 按「打开次数升序、创建时间升序」淘汰一块，列表本身永远不超过 12。
  */
 
-export const BOARDS_CAPACITY = 15;
+import { BOARD_CAPACITY } from "@whiteboard/shared";
+
+/** 与 `packages/shared` 同一常量，前端只做别名，不再写第二个数字 */
+export const BOARDS_CAPACITY = BOARD_CAPACITY;
 
 export type SortMode = "auto" | "manual";
 

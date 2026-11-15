@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchMe, logout, type AuthUser } from "../auth/authApi";
+import { publishLogout } from "../auth/authEvents";
 import { useCreateBoard } from "../boards/useCreateBoard";
+import { GUEST_OWNER, setActiveOwner, userOwner } from "../boards/recentBoards";
 import { FujiScene } from "./FujiScene";
 import { useThemePeriod } from "../theme/ThemeClock";
+import { UserMark } from "../ui/UserMark";
 
 /**
  * 导航账号区。`pending` 是 `/api/auth/me` 返回前的唯一状态：
@@ -15,7 +18,6 @@ type AccountState =
 
 /** 首页：富士山场景中的实时协作入口。 */
 export function HomePage() {
-  const { busy, slow, error, start } = useCreateBoard();
   const [menuOpen, setMenuOpen] = useState(false);
   const [account, setAccount] = useState<AccountState>({ status: "pending" });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -23,6 +25,9 @@ export function HomePage() {
   const accountRef = useRef<HTMLDivElement | null>(null);
   const userButtonRef = useRef<HTMLButtonElement | null>(null);
   const period = useThemePeriod();
+  // 首页建板也要按身份记本机最近列表：登录时记进账号那份，未登录记游客那份
+  const owner = account.status === "authed" ? userOwner(account.user.id) : GUEST_OWNER;
+  const { busy, slow, error, start } = useCreateBoard({ owner });
 
   // 会话是 HttpOnly cookie，只能问服务端；判定就是 GET /api/auth/me
   useEffect(() => {
@@ -64,6 +69,9 @@ export function HomePage() {
     if (result.ok) {
       setAccount({ status: "anon" });
       setUserMenuOpen(false);
+      // 本页立刻回到游客归属；其它标签页收到广播后同样切到游客临时板
+      setActiveOwner(GUEST_OWNER);
+      publishLogout();
     }
   };
 
@@ -111,7 +119,8 @@ export function HomePage() {
                 data-testid="home-user"
                 onClick={() => setUserMenuOpen(true)}
               >
-                {account.user.displayName}
+                <UserMark />
+                <span className="wb-home__user-name">{account.user.displayName}</span>
               </button>
               {userMenuOpen ? (
                 <div className="wb-home__user-menu" role="menu" aria-label="账号">

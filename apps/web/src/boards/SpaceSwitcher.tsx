@@ -228,6 +228,7 @@ export function SpaceSwitcher({ spaces, currentId, onSelect, onCreated, onOpenSe
         <button
           className="wb-space-menu__footlink"
           type="button"
+          data-testid="space-settings-open"
           onClick={() => {
             close(false);
             onOpenSettings();

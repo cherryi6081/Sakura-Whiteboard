@@ -1,50 +1,37 @@
 import { useEffect, useState } from "react";
-import { claimGuestBoards, fetchClaimPreview, type ClaimPreview, type ClaimResult } from "./authApi";
+import { claimGuestBoards, type ClaimPreview, type ClaimResult } from "./authApi";
 import { IconAlert, IconClose } from "../ui/icons";
 
 /**
- * 注册/登录后的认领对话框（M5，开发文档 §8.6.3；视觉方案 §4.4）。
+ * 临时板转入账号（v1.8，全转或整体拒绝）。
  *
- * - 默认**全选**，可逐块取消；
- * - 「转移」失败（409：有板已被其他账号认领）时**整笔回滚**，保持打开并支持重新拉预览；
- * - 「稍后再说」保留 guest 归属，不删 `wb_gid`；
- * - 「不再提示」只写前端 7 天标记，不改服务端状态。
+ * - 没有逐块勾选：要么「全部转入」，要么「暂不」；
+ * - 容量由服务端判定：`已用 + N > 12` 时返回 `CAPACITY_FULL_TRANSFER`，弹窗给出准确文案；
+ * - 「暂不」不删 `wb_gid`，但这些板在登录状态下不可见，只有退出登录回到游客视图才会再出现。
  */
 
-const SNOOZE_KEY = "wb:claimSnoozeUntil";
-const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function claimSnoozed(): boolean {
-  try {
-    const until = Number(localStorage.getItem(SNOOZE_KEY) ?? 0);
-    return Number.isFinite(until) && until > Date.now();
-  } catch {
-    return false;
-  }
-}
-
-export function snoozeClaimPrompt(): void {
-  try {
-    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
-  } catch {
-    /* localStorage 不可用时仅本次生效 */
-  }
-}
+const ERROR_TEXT: Record<string, string> = {
+  CAPACITY_FULL_TRANSFER: "空间已满，请先整理后再转入。",
+  GUEST_COOKIE_INVALID: "游客身份已失效，无法确认哪些临时板属于这台浏览器。请退出后以游客身份打开一次，再重新登录转入。",
+  UNAUTHENTICATED: "登录状态已失效，请重新登录后再转入。",
+};
 
 export function ClaimDialog({
   preview,
   onClose,
   onClaimed,
+  onOrganize,
 }: {
   preview: ClaimPreview;
   onClose: () => void;
   onClaimed: (result: ClaimResult) => void;
+  /** 「去整理」：留在列表页腾名额，不跳转、不写「暂不」标记，腾完能直接重试 */
+  onOrganize: () => void;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(preview.boards.map((board) => board.id)));
-  const [current, setCurrent] = useState(preview);
   const [error, setError] = useState<string | null>(null);
+  const [capacityBlocked, setCapacityBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const after = preview.used + preview.count;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -54,153 +41,88 @@ export function ClaimDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, onClose]);
 
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const refresh = async () => {
-    setError(null);
-    setRefreshing(true);
-    const res = await fetchClaimPreview();
-    setRefreshing(false);
-    if (res.ok) {
-      setCurrent(res.data);
-      setSelected(new Set(res.data.boards.map((board) => board.id)));
-    }
-  };
-
   const submit = async () => {
+    if (busy) return;
     setError(null);
     setBusy(true);
-    const res = await claimGuestBoards([...selected]);
+    const res = await claimGuestBoards();
     setBusy(false);
     if (res.ok) {
       onClaimed(res.data);
       return;
     }
+    const detail = ERROR_TEXT[res.code];
+    setCapacityBlocked(res.code === "CAPACITY_FULL_TRANSFER");
     setError(
-      res.code === "CLAIM_CONFLICT"
-        ? "有临时板已被其他账号认领，本次一块都没有转移。请重新拉取预览后重试。"
-        : `转移失败（${res.code}），没有产生部分转移。`,
+      res.code === "CAPACITY_FULL_TRANSFER"
+        ? `${detail}（已用 ${preview.used} / ${preview.capacity}，待转入 ${preview.count} 块，本次一块都没有转移）`
+        : detail ?? `转入失败（${res.code}），本次没有转移任何白板。`,
     );
   };
 
   return (
     <div className="wb-overlay" data-testid="claim-dialog" role="dialog" aria-modal="true" aria-labelledby="claim-title">
       <div className="wb-dialog">
-        {current.count === 0 ? (
-          <>
+        <div className="wb-dialog__head">
+          <div style={{ flex: 1 }}>
             <h2 className="wb-title" id="claim-title">
-              当前没有可转移的临时白板
+              这 <span className="wb-nums">{preview.count}</span> 块临时板，要转入当前账号吗？
             </h2>
-            <p className="wb-caption">你可以继续使用账号里的白板。</p>
-            <div className="wb-dialog__actions wb-dialog__actions--end">
-              <button data-testid="claim-close" className="wb-btn wb-btn--primary" type="button" onClick={onClose}>
-                知道了
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="wb-dialog__head">
-              <div style={{ flex: 1 }}>
-                <h2 className="wb-title" id="claim-title">
-                  把这 <span className="wb-nums">{current.count}</span> 块临时白板转到你的账号？
-                </h2>
-                <p className="wb-caption" style={{ marginTop: "var(--space-2)" }}>
-                  这些板目前只存在这台浏览器，换设备或清缓存会丢失。转移后可在任何设备登录查看。
-                </p>
-              </div>
-              <button className="wb-drawer__close" type="button" onClick={onClose} aria-label="关闭" disabled={busy}>
-                <IconClose size={16} />
-              </button>
-            </div>
+            <p className="wb-caption" style={{ marginTop: "var(--space-2)" }}>
+              临时板目前只存在这台浏览器，换设备或清缓存会丢失。全部转入后可在任何设备登录查看。
+            </p>
+          </div>
+          <button className="wb-drawer__close" type="button" onClick={onClose} aria-label="关闭" disabled={busy}>
+            <IconClose size={16} />
+          </button>
+        </div>
 
-            <ul
-              data-testid="claim-board-list"
-              className="wb-claim-list"
-              style={busy ? { opacity: 0.6, pointerEvents: "none" } : undefined}
-            >
-              {current.boards.map((board) => (
-                <li key={board.id}>
-                  <label className="wb-claim-item">
-                    <input
-                      data-testid="claim-board-checkbox"
-                      type="checkbox"
-                      checked={selected.has(board.id)}
-                      onChange={() => toggle(board.id)}
-                      disabled={busy}
-                    />
-                    <span className="wb-claim-item__title" title={board.title}>
-                      {board.title}
-                    </span>
-                    <time className="wb-claim-item__time wb-nums" dateTime={board.lastEditedAt}>
-                      {formatDay(board.lastEditedAt)}
-                    </time>
-                  </label>
-                </li>
-              ))}
-            </ul>
+        <p className="wb-caption" data-testid="claim-later-hint">
+          选择「暂不」后，登录状态下看不到这些临时板，退出登录才会回来。
+        </p>
 
-            {error ? (
-              <div className="wb-inline-note wb-inline-note--danger" role="alert">
-                <IconAlert />
-                <span data-testid="claim-error">{error}</span>
-                <span className="wb-banner__spacer" />
-                <button
-                  type="button"
-                  className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text"
-                  onClick={() => void refresh()}
-                  disabled={refreshing}
-                >
-                  {refreshing ? "重新拉取中…" : "重新拉取预览"}
-                </button>
-              </div>
+        <p className="wb-caption" data-testid="claim-capacity">
+          个人空间已用 <span className="wb-nums">{preview.used}</span> / <span className="wb-nums">{preview.capacity}</span>
+          ，全部转入后为 <span className="wb-nums">{after}</span> / <span className="wb-nums">{preview.capacity}</span>。
+          {preview.canTransfer ? null : " 超过上限时本次不会转移任何一块，也不会淘汰已有白板。"}
+        </p>
+
+        {error ? (
+          <div className="wb-inline-note wb-inline-note--danger" role="alert">
+            <IconAlert />
+            <span className="wb-inline-note__text" data-testid="claim-error">
+              {error}
+            </span>
+            {capacityBlocked ? (
+              <button
+                className="wb-link wb-inline-note__action"
+                type="button"
+                data-testid="claim-organize"
+                onClick={onOrganize}
+              >
+                去整理
+              </button>
             ) : null}
+          </div>
+        ) : null}
 
-            <div className="wb-dialog__actions">
-              <button
-                data-testid="claim-snooze"
-                type="button"
-                className="wb-btn wb-btn--ghost wb-btn--sm"
-                style={{ color: "var(--text-secondary)" }}
-                onClick={() => {
-                  snoozeClaimPrompt();
-                  onClose();
-                }}
-                disabled={busy}
-              >
-                7 天内不再提示
-              </button>
-              <span className="wb-banner__spacer" />
-              <button data-testid="claim-later" type="button" className="wb-btn wb-btn--secondary" onClick={onClose} disabled={busy}>
-                稍后再说
-              </button>
-              <button
-                data-testid="claim-submit"
-                type="button"
-                disabled={busy || selected.size === 0}
-                onClick={() => void submit()}
-                className="wb-btn wb-btn--primary"
-              >
-                {busy ? <span className="wb-spinner" aria-hidden /> : null}
-                {busy ? "正在转入…" : `转到账号（${selected.size}）`}
-              </button>
-            </div>
-          </>
-        )}
+        <div className="wb-dialog__actions">
+          <span className="wb-banner__spacer" />
+          <button data-testid="claim-later" type="button" className="wb-btn wb-btn--secondary" onClick={onClose} disabled={busy}>
+            暂不
+          </button>
+          <button
+            data-testid="claim-submit"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+            className="wb-btn wb-btn--primary"
+          >
+            {busy ? <span className="wb-spinner" aria-hidden /> : null}
+            {busy ? "正在转入…" : `全部转入（${preview.count}）`}
+          </button>
+        </div>
       </div>
     </div>
   );
-}
-
-function formatDay(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

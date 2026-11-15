@@ -7,13 +7,12 @@ import { screenshotPath } from "../lib/harness.mjs";
 
 const spec = "thumb";
 
-function readThumb(page, boardId) {
+function readThumb(page, owner, boardId) {
   return page.evaluate(
-    (id) =>
+    ({ owner, id }) =>
       new Promise((resolve) => {
-        const request = indexedDB.open("wb-cache", 2);
+        const request = indexedDB.open("wb-cache");
         request.onerror = () => resolve(null);
-        request.onupgradeneeded = () => resolve(null);
         request.onsuccess = () => {
           const db = request.result;
           if (!db.objectStoreNames.contains("thumbs")) {
@@ -21,7 +20,7 @@ function readThumb(page, boardId) {
             return;
           }
           const tx = db.transaction("thumbs", "readonly");
-          const get = tx.objectStore("thumbs").get(id);
+          const get = tx.objectStore("thumbs").get([owner, id]);
           get.onerror = () => resolve(null);
           get.onsuccess = async () => {
             const value = get.result;
@@ -52,7 +51,7 @@ function readThumb(page, boardId) {
           };
         };
       }),
-    boardId,
+    { owner, id: boardId },
   );
 }
 
@@ -92,6 +91,9 @@ async function main() {
   const user = await registerUser("thumb");
   const created = await user.api.createBoard({ title: "缩略图测试板" });
   const boardId = created.json.id;
+  // 缩略图按身份隔离：登录用户的 key 是 user:<userId>
+  const me = await user.api.get("/api/auth/me");
+  const owner = `user:${me.json.user.id}`;
   const browser = await launchBrowser();
   try {
     const { page } = await newPage(browser, { cookie: user.api.sessionCookie, width: 1440, height: 950 });
@@ -99,9 +101,9 @@ async function main() {
     await test("空板不写缩略图", async () => {
       await openBoard(page, boardId);
       await sleep(1800);
-      eq(await readThumb(page, boardId), null, "空板不应有 thumb 记录");
+      eq(await readThumb(page, owner, boardId), null, "空板不应有 thumb 记录");
       await goBack(page);
-      eq(await readThumb(page, boardId), null, "返回列表后仍不应写入");
+      eq(await readThumb(page, owner, boardId), null, "返回列表后仍不应写入");
       const img = await page.$(`[data-board-id="${boardId}"] img`);
       eq(img, null, "卡片应回退线稿图标");
     });
@@ -111,7 +113,7 @@ async function main() {
       await openBoard(page, boardId);
       await drawRectangle(page, 0);
       await goBack(page);
-      firstThumb = await readThumb(page, boardId);
+      firstThumb = await readThumb(page, owner, boardId);
       assert(firstThumb, "应写入缩略图");
       eq([firstThumb.width, firstThumb.height], [640, 400], "缩略图尺寸");
       eq(firstThumb.type, "image/webp", "格式");
@@ -121,21 +123,21 @@ async function main() {
     });
 
     await test("指纹一致不重拍：再次进出不改 updatedAt", async () => {
-      const before = await readThumb(page, boardId);
+      const before = await readThumb(page, owner, boardId);
       await openBoard(page, boardId);
       await sleep(1500);
       await goBack(page);
-      const after = await readThumb(page, boardId);
+      const after = await readThumb(page, owner, boardId);
       eq(after.signature, before.signature, "指纹不应变化");
       eq(after.updatedAt, before.updatedAt, "updatedAt 不应变化");
     });
 
     await test("编辑后再返回：指纹与画面都更新", async () => {
-      const before = await readThumb(page, boardId);
+      const before = await readThumb(page, owner, boardId);
       await openBoard(page, boardId);
       await drawRectangle(page, 120);
       await goBack(page);
-      const after = await readThumb(page, boardId);
+      const after = await readThumb(page, owner, boardId);
       assert(after.signature !== before.signature, "指纹应变化");
       assert(after.updatedAt > before.updatedAt, "updatedAt 应前进");
       assert(after.size !== before.size, "画面变化后体积应不同");
@@ -145,10 +147,10 @@ async function main() {
       const second = await newPage(browser, { cookie: user.api.sessionCookie, width: 1280, height: 900 });
       await second.page.goto(`${WEB}/boards`, { waitUntil: "networkidle2" });
       await second.page.waitForSelector('[data-testid="board-card"]', { timeout: 20_000 });
-      eq(await readThumb(second.page, boardId), null, "新上下文一开始没有缩略图");
+      eq(await readThumb(second.page, owner, boardId), null, "新上下文一开始没有缩略图");
       await openBoard(second.page, boardId);
       await goBack(second.page);
-      const thumb = await readThumb(second.page, boardId);
+      const thumb = await readThumb(second.page, owner, boardId);
       assert(thumb, "进板后应补齐缩略图");
       eq([thumb.width, thumb.height], [640, 400], "补齐尺寸");
       await second.context.close();

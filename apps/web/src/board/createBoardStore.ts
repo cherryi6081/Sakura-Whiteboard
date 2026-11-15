@@ -49,6 +49,8 @@ export type BoardStoreSnapshot = {
   boardId: string;
   tabId: string;
   guestId: string;
+  /** 身份握手是否完成：未完成时 `authenticated=false` 不能当作游客，避免误把条目写进游客记录 */
+  identityReady: boolean;
   /** M5-1：是否已登录 + 当前用户（游客为 null） */
   authenticated: boolean;
   user: GuestUser | null;
@@ -182,6 +184,7 @@ export function createBoardStore(options: {
       boardId,
       tabId: tabIdentity?.tabId ?? "",
       guestId: tabIdentity?.guestId ?? "",
+      identityReady: tabIdentity !== null,
       authenticated: tabIdentity?.authenticated ?? false,
       user: tabIdentity?.user ?? null,
       tabSupported: tabIdentity?.supported ?? false,

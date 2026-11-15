@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BOARD_CAPACITY } from '@whiteboard/shared';
 import { BOARDS_CAPACITY, isPinned, sortBoards, type PinnableBoard } from './boardList';
 
 const board = (id: string, lastEditedAt: string, extra: Partial<PinnableBoard> = {}): PinnableBoard => ({
@@ -65,7 +66,8 @@ describe('isPinned', () => {
 });
 
 describe('容量', () => {
-  it('一页 15 张（5 列 × 3 行），不做翻页', () => {
-    expect(BOARDS_CAPACITY).toBe(15);
+  it('一页 12 张（4 列 × 3 行），不做翻页，且与共享常量同源', () => {
+    expect(BOARDS_CAPACITY).toBe(12);
+    expect(BOARDS_CAPACITY).toBe(BOARD_CAPACITY);
   });
 });

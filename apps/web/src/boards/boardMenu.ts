@@ -72,8 +72,8 @@ export function buildBoardMenu(options: {
           label: "重命名",
           icon: "rename",
           shortcut: "F2",
-          // 游客列表的标题只存本机，改名后刷新会回退，因此只对登录用户开放
-          disabledReason: options.guest ? "登录后可用" : canEdit ? undefined : "只读",
+          // 游客改完会同步本机 recentBoards 里的标题，刷新不会回退，因此同样开放
+          disabledReason: canEdit ? undefined : "只读",
         },
         {
           // 单列（≤700）下横向拖拽失效，这里是精确与读屏用户的兜底入口
