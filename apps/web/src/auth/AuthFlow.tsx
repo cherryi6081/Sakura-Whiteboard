@@ -45,12 +45,6 @@ export function AuthFlow({ mode, next }: { mode: "login" | "register"; next: str
             setPreview(null);
             setDone(true);
           }}
-          onOrganize={() => {
-            // 登录流程里没有列表可整理，直接去「我的白板」腾名额；
-            // 那边打开时会重新拉一次 claim-preview，转入入口还在。
-            setPreview(null);
-            window.location.href = "/boards";
-          }}
           onClaimed={(result) => {
             setPreview(null);
             if (result.transferred > 0) {

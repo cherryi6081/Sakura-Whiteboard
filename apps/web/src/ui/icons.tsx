@@ -114,6 +114,18 @@ export function IconImage({ size = 16 }: IconProps) {
   );
 }
 
+export function IconLibrary({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
+      <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
+      <path d="M3 6v13" />
+      <path d="M12 6v13" />
+      <path d="M21 6v13" />
+    </svg>
+  );
+}
+
 export function IconPin({ size = 14 }: IconProps) {
   return (
     <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>

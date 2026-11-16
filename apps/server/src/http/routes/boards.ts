@@ -18,8 +18,8 @@ import { BOARD_CAPACITY, evictForCapacity } from '../../domain/boardCapacity.js'
 /**
  * 白板 REST（M5-1）。
  *
- * - `POST /api/boards`：登录用户 `owner_id = userId`；无会话时按游客建板（`owner_guest_id`
- *   取签名 cookie），满足 §4.5.3 配额（24h 3 块 / 未归档 ≤6）。
+ * - `POST /api/boards`：登录用户 `owner_id = userId`，**不限数量**；无会话时按游客建板
+ *   （`owner_guest_id` 取签名 cookie），满足 §4.5.3 配额（24h 3 块 / 未归档 ≤12）。
  * - `GET /api/boards`：**仅登录用户**，游客 401（游客列表只在本机）。
  * - `GET /api/boards/:id/ops|snapshot`：身份与权限统一由 `resolveBoardAccess` 推导，
  *   不再按"share_mode != private"放行；陌生人访问 private 板一律 404。
@@ -50,7 +50,8 @@ const createBoardSchema = z.object({
 });
 
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(30).default(BOARD_CAPACITY),
+  /** 登录账号不限量，前端按页拉全；单页上限 100 防止一次取回过多 */
+  limit: z.coerce.number().int().min(1).max(100).default(50),
   /** 手动排序与时间解耦后游标不再可靠（会把已排到前面的板重复取回），统一用 offset 分页 */
   offset: z.coerce.number().int().min(0).default(0),
   /** 空间 id；缺省为个人空间 */
@@ -116,7 +117,8 @@ async function enforceGuestQuota(guestId: string): Promise<void> {
  * 游客建板前的额度检查。
  *
  * 已经满 12 块时交给事务内的淘汰逻辑处理（先淘汰再建），此时不再套 24h 限流，
- * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由 12 的容量上限兜住。
+ * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由游客上限兜住。
+ * 登录账号不经过这个函数，也不做任何容量判定。
  */
 async function enforceGuestCreation(guestId: string): Promise<void> {
   const { rows } = await pool.query<{ used: number }>(
@@ -181,14 +183,16 @@ boardsRouter.post(
         if (!liveRows[0]) throw new AppError(404, 'NOT_FOUND', 'space not found');
       }
 
-      // 满 12 块时先淘汰一块（登录→回收站；游客→物理删除），审计写在同一事务里
-      const eviction = await evictForCapacity(
-        client,
-        ownerId
-          ? { kind: 'user', userId: ownerId, spaceId: targetSpaceId ?? '', mode: 'trash' }
-          : { kind: 'guest', guestId: ownerGuestId ?? '', pinnedIds: pinnedIds ?? [], mode: 'purged' },
-        boardId,
-      );
+      // 只有游客有 12 块上限：满额时先淘汰一块（物理删除），审计写在同一事务里；
+      // 登录账号不限数量，直接插入，不触发淘汰、不写 board_evictions
+      const eviction =
+        ownerId === null
+          ? await evictForCapacity(
+              client,
+              { kind: 'guest', guestId: ownerGuestId ?? '', pinnedIds: pinnedIds ?? [] },
+              boardId,
+            )
+          : { kind: 'none' as const };
       if (eviction.kind === 'blocked') {
         throw new AppError(
           429,

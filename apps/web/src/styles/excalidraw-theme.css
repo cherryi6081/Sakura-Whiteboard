@@ -60,3 +60,538 @@
   --color-surface-primary-container: #f4e3e9;
   --select-highlight-color: #edd2de;
 }
+
+/*
+ * 浮岛外观（对应设计稿 design/editor-page.html §04）：只改「表面」——
+ * 尺寸、圆角、描边、阴影、字重，不动库的 DOM 结构与排布。
+ * 白纸岛在夜间同样保持白底，所以这里一律引用不随时辰变化的原始中性/玫瑰 token。
+ */
+
+/* 左上菜单：与「我的白板」同一胶囊口径（32 高 / 999 圆角 / 图标按钮即 32 圆） */
+.wb-canvas .excalidraw .App-menu_top .main-menu-trigger {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--neutral-200);
+  background: var(--paper);
+  color: var(--neutral-900);
+  box-shadow: var(--shadow-1);
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-canvas .excalidraw .App-menu_top .main-menu-trigger:hover {
+  background: var(--neutral-100);
+}
+
+.wb-canvas .excalidraw .App-menu_top .main-menu-trigger:active {
+  background: var(--neutral-200);
+}
+
+/* 素材库入口已并入顶栏（跟在「图片」后面），画布右上角这颗同功能触发器不再保留，
+   避免两处入口。侧栏本身（.sidebar）与库的 API 不受影响。 */
+.wb-canvas .excalidraw .layer-ui__wrapper__top-right .sidebar-trigger__label-element:has(.default-sidebar-trigger) {
+  display: none;
+}
+
+/* ==========================================================================
+ * 素材库侧栏：按钮口径与顶栏/分享抽屉统一
+ *
+ * 侧栏是库自己的 DOM（tab 触发器 / 关闭 / 「Browse libraries」/ 底部「…」），
+ * 原来一律 36 高、14 圆角、12 号字。这里压到 32 高、999 圆角、13 号字，
+ * 左右内边距收紧，点击区仍是 32 的整数倍，拖放（`.library-unit`）不碰。
+ * 侧栏底色昼夜都钉成白纸（--paper），所以只用不随时辰变化的中性/玫瑰 token，
+ * 夜间不会出现深底配深字。
+ * ========================================================================== */
+.wb-canvas .excalidraw .sidebar .sidebar-triggers {
+  padding: 2px;
+  border-radius: var(--radius-pill);
+}
+
+.wb-canvas .excalidraw .sidebar .sidebar-tab-trigger {
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border-radius: var(--radius-pill);
+}
+
+/* 「Keep side open」固定键与关闭键同排：库给的是 36×36（--lg-button-size），
+   这里一并压到 32×32 胶囊，图标保持 16 且零内边距居中。
+   固定态库只改图标颜色，背景仍是透明；侧栏钉死白底，这里补一层固定的玫瑰水洗底
+   与深玫瑰图标，昼夜都看得清（不使用随时辰变化的 token）。 */
+.wb-canvas .excalidraw .sidebar .sidebar__close,
+.wb-canvas .excalidraw .sidebar .sidebar__dock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+}
+
+.wb-canvas .excalidraw .sidebar .sidebar__close svg,
+.wb-canvas .excalidraw .sidebar .sidebar__dock svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 固定态底色用写死的浅玫瑰/深玫瑰（侧栏白底钉死昼夜不变，--rose-100 在夜间会被压深） */
+.wb-canvas .excalidraw .sidebar .sidebar__dock.selected {
+  background: #f4e3e9;
+  color: #8e4568;
+}
+
+.wb-canvas .excalidraw .sidebar .sidebar__dock.selected:hover {
+  background: #edd2de;
+}
+
+.wb-canvas .excalidraw .sidebar .sidebar__dock.selected svg {
+  stroke: #8e4568;
+  fill: #8e4568;
+}
+
+/* 「Browse libraries」大按钮：36 高/14 圆角/12 号字 → 32 高/999/13 号字 */
+.wb-canvas .excalidraw .sidebar .library-menu-browse-button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+}
+
+/* 侧栏底部「…」菜单触发：同一套 32 圆（库给的 10px 内边距会把 20 图标挤出 12 的内容盒） */
+.wb-canvas .excalidraw .sidebar .dropdown-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: var(--radius-pill);
+}
+
+/* 工具条：圆角 14 / 1px 描边 / 二级阴影，高度与内边距保持库的 44 + 4 */
+.wb-canvas .excalidraw .App-toolbar {
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-2);
+  padding: 4px;
+}
+
+/* 缩放 / 撤销重做浮岛：胶囊口径（40 高外壳 = 32 控件 + 4 内边距 + 描边） */
+.wb-canvas .excalidraw .zoom-actions {
+  height: 40px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  box-shadow: var(--shadow-2);
+  padding: 4px;
+}
+
+/* 缩放岛内部三个按钮 / 撤销重做两个按钮：一律 32 高胶囊。
+   库里 `.zoom-button`、`.undo-redo-buttons button`、`.reset-zoom-button` 连同首尾单边
+   圆角都用 !important 写死，这里必须同等强度覆盖，否则会残留单边 14 圆与 14px 字号。 */
+.wb-canvas .excalidraw .zoom-actions .zoom-button,
+.wb-canvas .excalidraw .undo-redo-buttons button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-radius: var(--radius-pill) !important;
+  background-color: transparent !important;
+  color: var(--neutral-700);
+  font-family: inherit;
+  font-size: var(--text-caption) !important;
+  line-height: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* − / + 是纯图标，正方形即 32 圆；100% 用左右 12 内边距当胶囊 */
+.wb-canvas .excalidraw .zoom-actions .zoom-out-button,
+.wb-canvas .excalidraw .zoom-actions .zoom-in-button {
+  padding: 0 !important;
+}
+
+.wb-canvas .excalidraw .zoom-actions .reset-zoom-button {
+  width: auto !important;
+  min-width: 60px;
+  padding: 0 12px !important;
+}
+
+/* 库里给首尾按钮留了单边 14 圆角，这里统一抹平成完整胶囊 */
+.wb-canvas .excalidraw .zoom-actions .zoom-out-button,
+.wb-canvas .excalidraw .zoom-actions .zoom-in-button,
+.wb-canvas .excalidraw .zoom-actions .reset-zoom-button,
+.wb-canvas .excalidraw .undo-redo-buttons .undo-button-container button,
+.wb-canvas .excalidraw .undo-redo-buttons .redo-button-container button {
+  border: 0 !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+/* 图标层自带 14 圆角且填满按钮，悬停底色要跟着变成胶囊 */
+.wb-canvas .excalidraw .zoom-actions .zoom-button .ToolIcon__icon,
+.wb-canvas .excalidraw .undo-redo-buttons button .ToolIcon__icon {
+  border-radius: var(--radius-pill) !important;
+}
+
+.wb-canvas .excalidraw .zoom-actions .zoom-button .ToolIcon__icon:hover,
+.wb-canvas .excalidraw .undo-redo-buttons button .ToolIcon__icon:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.wb-canvas .excalidraw .zoom-actions .zoom-button:focus-visible,
+.wb-canvas .excalidraw .undo-redo-buttons button:focus-visible {
+  outline: 2px solid var(--rose-600);
+  outline-offset: 1px;
+}
+
+/* 撤销重做：同一颗胶囊外壳，内部两个 32 圆图标按钮 */
+.wb-canvas .excalidraw .undo-redo-buttons {
+  height: 40px;
+  padding: 4px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-canvas .excalidraw .undo-redo-buttons .undo-button-container,
+.wb-canvas .excalidraw .undo-redo-buttons .redo-button-container {
+  width: 32px;
+  height: 32px;
+}
+
+/* 属性面板：白纸 + 14 圆角，标题弱化，与外壳的卡片口径一致 */
+.wb-canvas .excalidraw .App-menu__left {
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-canvas .excalidraw .App-menu__left .panelColumn h3 {
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--neutral-700);
+}
+
+/* ==========================================================================
+ * C′ 骨架：属性面板停靠右侧 272，画布真实收窄（design/editor-page.html）
+ *
+ * 这是整个编辑页唯一碰库内部结构的「深水区」，刻意集中成一段，升级
+ * @excalidraw/excalidraw 时只回归下面三件事：
+ *   1) .excalidraw 自身宽度收窄 272；
+ *   2) 6 个祖先层放开 overflow（库默认裁切，否则面板只剩 16px 白边）；
+ *   3) .App-menu__left 平移到右侧槽位（left 的 +16 用于抵消库内 16px 偏移）。
+ * 只读/游客只读时不给 --docked，画布回到整宽、右侧不留槽。
+ * ========================================================================== */
+.wb-canvas--docked .excalidraw {
+  --wb-inspector-w: 272px;
+  position: relative;
+  width: calc(100% - var(--wb-inspector-w));
+  overflow: visible;
+}
+
+.wb-canvas--docked .excalidraw .layer-ui__wrapper,
+.wb-canvas--docked .excalidraw .FixedSideContainer,
+.wb-canvas--docked .excalidraw .App-menu,
+.wb-canvas--docked .excalidraw .App-menu_top,
+.wb-canvas--docked .excalidraw .App-menu_top__left,
+.wb-canvas--docked .excalidraw .selected-shape-actions {
+  overflow: visible !important;
+}
+
+/* 面板从「左上浮岛」改为「右侧通栏列」：无圆角、无投影，只留左分隔线。
+   底色仍是白纸岛（夜间也不跟随），否则库内浅色控件会不可读。 */
+.wb-canvas--docked .excalidraw .App-menu__left {
+  left: calc(100% + 16px) !important;
+  right: auto !important;
+  top: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  width: var(--wb-inspector-w) !important;
+  padding: 14px 16px 16px;
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: none;
+}
+
+/* 顶部横条工具条由自研竖条取代；它下方的英文操作提示随横条一起收掉。
+   折叠右栏后画布回到整宽，横条同样不该重新冒出来（否则同一页出现两套工具条）。 */
+.wb-canvas--docked .excalidraw .App-toolbar,
+.wb-canvas--docked .excalidraw .HintViewer,
+.wb-canvas--inspector-collapsed .excalidraw .App-toolbar,
+.wb-canvas--inspector-collapsed .excalidraw .HintViewer {
+  display: none;
+}
+
+/* 画布容器需要拿焦点（快捷键），但不需要全局焦点环：整块画布出现玫红描边很奇怪 */
+.wb-canvas .excalidraw:focus,
+.wb-canvas .excalidraw:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ==========================================================================
+ * 库弹窗：Help 的排版收紧 + 滚动条不再顶出圆角
+ *
+ * 库把滚动放在 .Modal__content 上（圆角 12、padding 0），滚动条因此贴着
+ * 圆角外沿跑，顶部/底部会「切角」。这里把 Modal__content 改成 flex 裁剪层，
+ * 滚动下沉到 .Dialog__content，滚动条就落在圆角内侧。
+ * 同类弹窗已核对：Export image 等内容不滚动（scrollHeight == clientHeight），
+ * 不受这组规则影响；这里全部限定在 .excalidraw-modal-container .HelpDialog 下，避免误伤其它弹窗。
+ * ========================================================================== */
+.excalidraw-modal-container .HelpDialog .Modal__content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.excalidraw-modal-container .HelpDialog .Modal__content > .Island {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  /* 关闭按钮以 Island 为定位父级，绝对定位落在卡片右上角，不参与滚动 */
+  position: relative;
+}
+
+.excalidraw-modal-container .HelpDialog .Dialog__title {
+  flex: none;
+  margin: 0;
+  /* 右侧留出关闭按钮的宽度，标题不再与它挤在一起 */
+  padding: 12px 56px 10px 20px;
+  border-bottom: 1px solid var(--dialog-border-color);
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.excalidraw-modal-container .HelpDialog .Dialog__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 滚动条只在这块里跑；上下各留出圆角半径的活动余量，轨道不会顶到弹窗圆角 */
+  margin: 0 0 8px;
+  overflow-y: auto;
+  padding: 10px 20px 14px;
+  scrollbar-width: thin;
+}
+
+/* 库弹窗右上角的圆形关闭键（DOM 由 BoardPage 注入）：外观与自研弹窗共用
+   `.wb-dialog-close`，这里只负责定位；Help / 加载确认 / 导出等所有库弹窗一致。 */
+.excalidraw-modal-container .Modal__content,
+.excalidraw-modal-container .Modal__content > .Island {
+  position: relative;
+}
+
+.excalidraw-modal-container .wb-modal-close {
+  position: absolute;
+  /* 与自研弹窗 `.wb-dialog-close` 的 12/12 内缩对齐 */
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
+/* 标题右侧留出关闭键的宽度，长标题不会压到按钮下面 */
+.excalidraw-modal-container .Modal__content > .Island .Dialog__title {
+  padding-right: 56px;
+}
+
+/* 库在部分弹窗（如移动端全屏确认）自带 `.Dialog__close`，默认是 36×26 的透明方角。
+   统一成与 `.wb-dialog-close` 同一颗：32 圆 / 1px 描边 / 白纸底 / 同一套 hover 与焦点环。 */
+.excalidraw-modal-container .Dialog__close {
+  /* 弹窗 portal 挂在 `.excalidraw-modal-container` 下、不在 `.excalidraw` 子树内，
+     库那条 `.excalidraw .Dialog__close { position: absolute }` 不一定命中；
+     缺了 position 时 top/right 会被忽略，按钮就退回文档流（全屏弹窗里表现为落在底部居中）。
+     这里显式补上定位，不再依赖库的上下文选择器。 */
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  /* 库的移动端全屏样式把关闭键放在 20/20，这里钉回与注入键一致的 12/12 */
+  top: 12px !important;
+  right: 12px !important;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.excalidraw-modal-container .Dialog__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.excalidraw-modal-container .Dialog__close:hover {
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+  color: var(--ink-strong);
+}
+
+.excalidraw-modal-container .Dialog__close:focus-visible {
+  outline: none;
+  border-color: var(--line-strong);
+  /* 库的焦点环特异性更高且后加载，这里强制对齐到全站同一套 */
+  box-shadow: var(--focus-ring) !important;
+}
+
+/* 字号/行距/区块间距：行高 21 → 16、标题层级同步收紧，
+   让 77 条快捷键在 900 高的窗口里一屏放下（不再需要滚两屏）。 */
+.excalidraw-modal-container .HelpDialog__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.excalidraw-modal-container .HelpDialog__btn {
+  padding: 4px 9px;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.excalidraw-modal-container .HelpDialog h3 {
+  margin: 6px 0 3px;
+  font-size: 12.5px;
+  line-height: 17px;
+}
+
+.excalidraw-modal-container .HelpDialog__islands-container {
+  grid-column-gap: 16px;
+  grid-row-gap: 6px;
+}
+
+.excalidraw-modal-container .HelpDialog__island h4 {
+  margin-bottom: 2px;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.excalidraw-modal-container .HelpDialog__shortcut {
+  padding: 0 8px;
+  column-gap: 6px;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.excalidraw-modal-container .HelpDialog__key {
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 12px;
+}
+
+/* ---------- 「Load from file」确认弹窗 ----------
+ * 库的默认尺寸是 916 宽、内边距 40、标题 21px、说明块 40 内边距、按钮 48 高，
+ * 两句说明就占掉一大块。这里整体按正文口径收一档（宽度 / 标题 / 说明块 / 备份卡 /
+ * 按钮），只改尺寸不改结构，Esc 与「点外面不关」的既有行为不受影响。
+ * 用 :has(.OverwriteConfirm) 限定，Help 与导出弹窗不受牵连。 */
+.excalidraw-modal-container .Modal__content:has(.OverwriteConfirm) {
+  /* 600 是「说明两行收住」的下限：再窄两句说明会折出第三行（只剩一个 below.） */
+  --max-width: 600px;
+  max-width: 600px;
+}
+
+.excalidraw-modal-container .Dialog:has(.OverwriteConfirm) .Island {
+  padding: 16px 18px 18px;
+}
+
+.excalidraw-modal-container .OverwriteConfirm > h3 {
+  margin: 0 0 10px;
+  /* 右上角关闭键占位，标题再长也不会压到按钮下 */
+  padding-right: 40px;
+  font-size: var(--text-subtitle);
+  line-height: var(--lh-body);
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Description {
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  line-height: var(--lh-micro);
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Description__icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Description__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Actions {
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Actions__Action {
+  padding: 10px 12px 12px;
+  gap: 6px;
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Actions__Action h4 {
+  font-size: var(--text-caption);
+  line-height: var(--lh-micro);
+}
+
+.excalidraw-modal-container .OverwriteConfirm__Actions__Action__content {
+  font-size: var(--text-micro);
+  line-height: 16px;
+}
+
+/* 两个操作按钮：28 → 36 高（更易点，又不把弹窗撑回 48 的原始体量） */
+.excalidraw-modal-container .OverwriteConfirm .ExcButton--size-large {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: var(--text-caption);
+}
+
+@media (max-width: 720px) {
+  .excalidraw-modal-container .Modal__content:has(.OverwriteConfirm) {
+    --max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  /* 窄视口两列会把说明压成四五行，改单列更省纵向空间 */
+  .excalidraw-modal-container .OverwriteConfirm__Actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .excalidraw-modal-container .OverwriteConfirm__Description {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .excalidraw-modal-container .OverwriteConfirm__Description__spacer {
+    display: none;
+  }
+
+  .excalidraw-modal-container .OverwriteConfirm__Description .ExcButton {
+    flex: 1 0 100%;
+    width: 100%;
+    margin-top: 6px;
+  }
+}
+

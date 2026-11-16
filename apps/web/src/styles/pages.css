@@ -1895,6 +1895,13 @@ body:has(.wb-home) {
   z-index: 2;
 }
 
+/* 空间切换条（40px 胶囊）与页面顶部留出呼吸：顶栏按设计稿抬到 64（= .mk-topbar），
+   胶囊上下各 12px。只给「我的白板」——回收站复用 wb-page--boards，但那里没有切换条，
+   仍保持共享的 44，编辑页同样不动。 */
+.wb-page--boards:not(.wb-page--trash) > .wb-topbar {
+  height: 64px;
+}
+
 /* 顶栏文字直接压在天空渐变上：12px 用户名与登录链接都要比纸面多用一档深色 */
 .wb-page--boards .wb-topbar .wb-caption {
   color: var(--neutral-800);
@@ -1961,6 +1968,49 @@ body:has(.wb-home) {
   color: var(--ink-link);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ---------- 展开占位格：与卡片同尺寸，落在每满 12 格的第 12 位 ---------- */
+.wb-board-card--more {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-style: dashed;
+  transition:
+    border-color var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard);
+}
+
+.wb-board-card--more:hover {
+  border-color: var(--ink-faint);
+  background: var(--surface-sunken);
+  box-shadow: none;
+}
+
+.wb-board-card--more:hover .wb-board-card__title {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wb-board-card--more:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.wb-board-card__thumb--more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+}
+
+.wb-board-card__more-count {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ink-strong);
 }
 
 .wb-board-card__link {
@@ -2733,12 +2783,198 @@ body:has(.wb-home) {
   border-width: 2px;
 }
 
+/* ---------- 弹窗统一关闭键 ---------- */
+/* 库自带弹窗（BoardPage 注入）与自己写的弹窗共用这一颗：32 圆、1px 描边、
+   白纸底；hover 加深一档，focus-visible 走统一焦点环。 */
+.wb-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex: none;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-dialog-close svg {
+  display: block;
+}
+
+.wb-dialog-close:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+  color: var(--ink-strong);
+}
+
+.wb-dialog-close:focus-visible {
+  outline: none;
+  border-color: var(--line-strong);
+  /* 库的 `.excalidraw button:focus-visible` 特异性更高（0,2,1），这里强制走全站焦点环 */
+  box-shadow: var(--focus-ring) !important;
+}
+
+.wb-dialog-close:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 作为弹窗直接子级时吸附右上角，所有窗口的位置一致 */
+.wb-dialog > .wb-dialog-close,
+.wb-space-create > .wb-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+
+.wb-dialog:has(> .wb-dialog-close) .wb-dialog__title,
+.wb-space-create:has(> .wb-dialog-close) .wb-dialog__title {
+  padding-right: 44px;
+}
+
+/* 标题在 head 里（认领弹窗）时给 head 留位，关闭键同样吸附右上角 */
+.wb-dialog:has(> .wb-dialog-close) .wb-dialog__head {
+  padding-right: 44px;
+}
+
 /* ---------- 确认弹窗 ---------- */
 .wb-trash__dialog {
   width: 480px;
   gap: 12px;
   padding: var(--space-6);
   border-radius: var(--radius-lg);
+}
+
+/* ---------- 云端载入（库主菜单「打开…」旁边的入口） ---------- */
+.wb-cloud-load {
+  /* 网格轨道按内容撑开时 `max-width: 100%` 会以轨道为基准，窄视口夹不住，这里直接按视口算 */
+  width: min(520px, calc(100vw - 2 * var(--space-4)));
+  max-height: 86vh;
+  gap: var(--space-4);
+}
+
+.wb-cloud-load__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-cloud-load__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-cloud-load__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(52vh, 420px);
+  margin: 0;
+  padding: 2px;
+  overflow: auto;
+  list-style: none;
+}
+
+.wb-cloud-load__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-cloud-load__row:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+}
+
+.wb-cloud-load__row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.wb-cloud-load__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: var(--rose-100);
+  color: var(--rose-700);
+}
+
+.wb-cloud-load__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-cloud-load__name {
+  overflow: hidden;
+  color: var(--ink-strong);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wb-cloud-load__meta {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wb-cloud-load__arrow {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.wb-cloud-load__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+  color: var(--ink-muted);
+  font-size: var(--text-body);
+  text-align: center;
+}
+
+.wb-cloud-load__state p {
+  margin: 0;
+}
+
+.wb-cloud-load__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .wb-dialog__title {
@@ -3164,6 +3400,9 @@ body:has(.wb-home) {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* 画布页是一屏应用：浮层（竖条「更多」、库菜单）用 fixed 定位在视口内，
+     任何宽度下都不该把文档流撑出滚动条 */
+  overflow: hidden;
   background: var(--surface-page);
 }
 
@@ -3176,6 +3415,97 @@ body:has(.wb-home) {
   flex: none;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--line-soft);
+}
+
+/* 顶栏按钮统一成「我的白板」那套胶囊口径：28 高 / 999 圆角 / 左右 10 / 13 字，
+   与用户名、连接状态、图片三颗胶囊同高同内边距，同一行的上下留白才对得上。
+   颜色、hover、focus-visible、disabled 全部沿用 .wb-btn / .wb-btn--primary 基础件。 */
+.wb-board__topbar .wb-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  line-height: 17px;
+}
+
+/* 顶栏用户名 / 登录入口：外观直接复用 .wb-user-chip（ui.css），这里只补顶栏语境——
+   28 高不撑高 44 顶栏、不参与换行，名字过长时截断而不是把顶栏顶出横向滚动。 */
+.wb-board__topbar > .wb-user-chip {
+  max-width: 180px;
+  text-decoration: none;
+  /* 三颗胶囊（用户 / 连接状态 / 图片）同一套字号节奏 */
+  font-size: var(--text-caption);
+  line-height: 17px;
+  /* 编辑页这颗胶囊常驻「我的白板」的 hover 形态（同组 token：沉一档的底 + 更实的描边），
+     不再随指针在常态/悬停之间来回跳颜色。 */
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+  /* 常态之上再进一档：底色沉到 neutral-200、描边压到 neutral-600（比常态的 line-strong 更实），只换颜色不做位移 */
+  --wb-chip-bg-raised: var(--neutral-200);
+  --wb-chip-line-raised: var(--neutral-600);
+}
+
+/* 连接状态是只读信息，套同一套胶囊外观但不做 hover 反馈（避免看起来可点） */
+.wb-board__topbar > .wb-board__status {
+  gap: 6px;
+}
+
+/* 图片是真的按钮，胶囊外观下补回手型 */
+.wb-board__topbar > button.wb-user-chip {
+  cursor: pointer;
+}
+
+/* 夜间没有更深的中性阶梯，用同一组 token 混出一档：底向 line-strong 提亮、描边再提亮 */
+:root[data-theme="night"] .wb-board__topbar > .wb-user-chip {
+  --wb-chip-bg-raised: color-mix(in srgb, var(--surface-sunken) 84%, var(--line-strong));
+  --wb-chip-line-raised: color-mix(in srgb, var(--line-strong) 78%, #ffffff);
+}
+
+.wb-board__topbar > .wb-user-chip:hover {
+  background: var(--wb-chip-bg-raised);
+  border-color: var(--wb-chip-line-raised);
+}
+
+/* 只读的连接状态固定在常态那一档：即使指针扫过也不进档，避免看起来可点。
+   选择器要压过上面的 .wb-user-chip:hover（同为三颗类，靠后 + 双类提高特异性）。 */
+.wb-board__topbar > .wb-user-chip.wb-board__status:hover,
+.wb-board__topbar > .wb-user-chip.wb-board__status:focus-visible {
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+}
+
+.wb-board__topbar > .wb-user-chip:focus-visible {
+  background: var(--wb-chip-bg-raised);
+  border-color: var(--wb-chip-line-raised);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 素材库：胶囊外观 + 开合反馈。常态/悬停沿用上面那档，按下（侧栏开着）再进一档，
+   用 aria-pressed 驱动，键盘与读屏也能读到当前开合。 */
+.wb-board__topbar > .wb-board__library {
+  gap: 6px;
+}
+
+.wb-board__topbar > .wb-board__library[aria-pressed="true"],
+.wb-board__topbar > .wb-board__library[aria-pressed="true"]:hover {
+  background: var(--neutral-300);
+  border-color: var(--neutral-700);
+  color: var(--neutral-900);
+}
+
+:root[data-theme="night"] .wb-board__topbar > .wb-board__library[aria-pressed="true"],
+:root[data-theme="night"] .wb-board__topbar > .wb-board__library[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--surface-sunken) 66%, var(--line-strong));
+  border-color: color-mix(in srgb, var(--line-strong) 58%, #ffffff);
+  color: var(--ink-strong);
+}
+
+.wb-board__topbar > .wb-user-chip > .wb-caption {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .wb-board__back {
@@ -3196,6 +3526,23 @@ body:has(.wb-home) {
   color: var(--ink-strong);
 }
 
+.wb-board__title {
+  /* 标题块只占一行：板号默认收起，标题在 44 顶栏里垂直居中，不留空行。
+     板号绝对定位、不参与顶栏高度计算，展开时顶栏高度与右侧胶囊都不会位移。 */
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* 键盘 Tab 落到标题块时给标准焦点环，同时触发板号展开 */
+.wb-board__title:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .wb-board__name {
   max-width: 320px;
   font-size: var(--text-body);
@@ -3207,10 +3554,48 @@ body:has(.wb-home) {
   text-overflow: ellipsis;
 }
 
+/* 板号：默认透明且不拦截指针；外壳（描边/白纸底/阴影）让它压在画布上也能读清。
+   悬停标题区、或键盘/触屏聚焦标题块时展开，键盘用户与读屏也能拿到这串 id。 */
 .wb-board__name-sub {
+  position: absolute;
+  top: calc(100% - 9px);
+  left: 0;
+  z-index: 2;
+  /* 绝对定位子盒按「left → 父盒右缘」收缩，短标题会把板号截成一小条；
+     显式 max-content 让它按内容取宽，再由 max-width 兜住长 id */
+  width: max-content;
+  max-width: min(320px, calc(100vw - 88px));
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-1);
   font-size: var(--text-micro);
   line-height: var(--lh-micro);
   color: var(--ink-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
+}
+
+.wb-board__title:hover .wb-board__name-sub,
+.wb-board__title:focus .wb-board__name-sub,
+.wb-board__title:focus-within .wb-board__name-sub {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-board__name-sub {
+    transition: none;
+  }
 }
 
 .wb-board__spacer {
@@ -3380,13 +3765,17 @@ body:has(.wb-home) {
   flex-wrap: wrap;
 }
 
+/* 状态条芯片：与设计稿 §04 状态条同口径（实线细边 + 等宽数字），
+   只在 24px 条内提供只读信息，不抢画布视觉 */
 .wb-board__debug-item {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 16px;
   color: var(--ink-muted);
-  border: 1px dashed var(--neutral-300);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
-  padding: 1px 6px;
+  padding: 0 6px;
   background: var(--surface-raised);
 }
 
@@ -4179,10 +4568,10 @@ body:has(.wb-home) {
     max-width: 180px;
   }
 
-  /* 移动端顶栏只留「返回 + 板名 + 头像 + 分享图标」；状态点、游客徽标、登录链接让位（§5.4） */
-  .wb-board__name-sub,
+  /* 移动端顶栏只留「返回 + 板名 + 用户胶囊 + 分享图标」；状态点、游客徽标让位（§5.4）。
+     用户胶囊在 390 宽实测 87/70 宽、右边界 382，仍在一屏内，不再隐藏登录入口。
+     板号不在这里隐藏：它默认就是收起的，触屏点一下标题块即可展开（浮在画布上方，不占行高）。 */
   .wb-board__topbar > .wb-badge--guest,
-  .wb-board__topbar > .wb-link,
   .wb-board__status {
     display: none;
   }
@@ -5719,12 +6108,15 @@ button.wb-sortchip:hover {
 .wb-space-settings .wb-btn {
   height: 32px;
   padding: 0 12px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
 }
 
+/* 转让成员仍用原生 select，但外壳与同排按钮、加入后角色下拉同规格 */
 .wb-space-settings .wb-select.wb-select--lg {
   height: 32px;
-  padding: 0 10px;
+  padding: 0 calc(var(--space-3) * 2 + 7px) 0 12px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
 }
 
@@ -5819,6 +6211,172 @@ button.wb-sortchip:hover {
 
 .wb-space-invite__role {
   min-width: 120px;
+}
+
+/* ---------- 「加入后角色」自绘下拉（design/space-role-select.html） ----------
+   32px 胶囊与右侧「生成并复制链接」同高；菜单两行角色说明，选中/高亮/禁用三态。
+   颜色全部走语义 token，日间与夜间自动跟随主题。 */
+.wb-role-select {
+  /* 设计稿夜间把本控件的主色提到 --ink-link（#d39ab1），白天仍用 --accent */
+  --role-accent: var(--accent);
+  position: relative;
+  width: 120px;
+}
+
+:root[data-theme="night"] .wb-role-select {
+  --role-accent: var(--ink-link);
+}
+
+/* 占满所在列（分享抽屉的表单行），菜单跟触发器同宽 */
+.wb-role-select--full {
+  width: 100%;
+}
+
+.wb-role-select--full .wb-role-select__menu {
+  width: 100%;
+  max-width: none;
+}
+
+/* 单行选项（没有说明第二行）：行高收到 36，和 32 的触发器同一档 */
+.wb-role-select--compact .wb-role-select__option {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.wb-role-select__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 17px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.wb-role-select__btn:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+  background: var(--surface-raised-hover);
+  box-shadow: var(--shadow-1);
+}
+
+.wb-role-select__btn:focus {
+  outline: none;
+}
+
+.wb-role-select__btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.wb-role-select.is-open .wb-role-select__btn {
+  border-color: var(--role-accent);
+}
+
+.wb-role-select__caret {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted);
+  transform: rotate(45deg);
+  transition:
+    transform var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-role-select.is-open .wb-role-select__caret {
+  margin-top: 3px;
+  border-color: var(--role-accent);
+  transform: rotate(225deg);
+}
+
+.wb-role-select__btn:disabled {
+  opacity: 0.55;
+  background: var(--surface-sunken);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.wb-role-select__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 3;
+  width: 224px;
+  max-width: calc(100vw - 48px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-role-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wb-role-select__option.is-active {
+  background: var(--surface-sunken);
+}
+
+.wb-role-select__option.is-selected {
+  background: color-mix(in srgb, var(--role-accent) 12%, var(--surface-raised));
+}
+
+.wb-role-select__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wb-role-select__title {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-strong);
+}
+
+.wb-role-select__desc {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ink-faint);
+}
+
+.wb-role-select__check {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: transparent;
+  font-size: 12px;
+  line-height: 12px;
+}
+
+.wb-role-select__option.is-selected .wb-role-select__check {
+  color: var(--role-accent);
 }
 
 .wb-space-invite__link {
@@ -5916,7 +6474,16 @@ button.wb-sortchip:hover {
   margin-top: var(--space-2);
 }
 
+/* 确认/取消与面板内的胶囊按钮同口径 */
+.wb-space-confirm .wb-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+}
+
 .wb-space-create {
+  position: relative;
   width: 420px;
   max-width: calc(100vw - 32px);
   padding: var(--space-6);
@@ -6326,3 +6893,248 @@ button.wb-sortchip:hover {
 
 
 
+
+/* ---------- 编辑页 C′：右侧属性槽空态 + 自研左侧竖工具条 ----------
+   两者都画在库子树之外（挂在 .wb-board__canvas 上），所以一律用不随时辰
+   变化的原始中性/玫瑰 token，保证夜间仍是白纸岛口径。 */
+
+.wb-board__inspector-empty {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 272px;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+  border-left: 1px solid var(--neutral-200);
+}
+
+.wb-board__inspector-empty-title {
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--neutral-900);
+}
+
+.wb-board__inspector-empty-sub {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--neutral-700);
+}
+
+.wb-board__inspector-empty-hint {
+  margin: 6px 0 0;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--neutral-700);
+}
+
+.wb-board__inspector-empty-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin: 0 2px;
+  padding: 0 4px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 4px;
+  background: var(--neutral-100);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--neutral-900);
+}
+
+/* 右侧 272 列的折叠入口：展开时在面板标题右角，收起后变成画布右侧中段的把手。
+   面板本体是库渲染的，拿不到它的 DOM，所以入口画在库子树之外。 */
+.wb-inspector-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--neutral-700);
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-inspector-toggle:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.wb-inspector-toggle:focus-visible {
+  outline: 2px solid var(--rose-600);
+  outline-offset: 1px;
+}
+
+/* 收起后画布铺满 1440，右上角是库的 Library 岛，所以入口落在右侧中段避免打架 */
+.wb-inspector-toggle--collapsed {
+  top: 50%;
+  right: 12px;
+  width: 32px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* 收起时库面板整体退场，画布回到整宽；只读态没有这个入口，也就不会命中 */
+.wb-canvas--inspector-collapsed .excalidraw .App-menu__left {
+  display: none !important;
+}
+
+.wb-toolrail {
+  position: absolute;
+  left: 16px;
+  top: 64px;
+  z-index: 6;
+  /* 高度自适应：顶部让开库的菜单岛，底部给缩放岛/撤销重做岛（36 高 + 12 底距）留出
+     16px 安全间距；矮屏时在竖条内部滚动，绝不压住底部浮岛。 */
+  max-height: calc(100% - 140px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  /* 竖条是白纸岛，夜间也不该跟着 .wb-board 把玫瑰水洗底混成深色（否则选中块变成黑方块） */
+  --rose-100: #f4e3e9;
+  --rose-700: #8e4568;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 48px;
+  padding: 4px;
+  background: var(--paper);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.wb-toolrail::-webkit-scrollbar {
+  display: none;
+}
+
+/* 滚动容器里的按钮不许被压扁（flex 默认会 shrink） */
+.wb-toolrail > * {
+  flex: none;
+}
+
+/* 库主菜单展开时竖条让位：菜单从 x=16 起，正好压在竖条上，
+   让它盖住菜单左侧文字（截图里的「pen / ave to」）。 */
+.wb-board__canvas:has(.App-menu_top .dropdown-menu) .wb-toolrail {
+  visibility: hidden;
+}
+
+.wb-toolrail__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  /* 图标按钮按「我的白板」胶囊口径：32 高 + 999 圆角即正圆，仍与胶囊按钮同语言 */
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--neutral-700);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-toolrail__btn:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.wb-toolrail__btn[aria-pressed="true"] {
+  background: var(--rose-100);
+  color: var(--rose-700);
+}
+
+.wb-toolrail__btn:focus-visible {
+  outline: 2px solid var(--rose-600);
+  outline-offset: -1px;
+}
+
+.wb-toolrail__btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.wb-toolrail__sep {
+  width: 28px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--neutral-200);
+}
+
+.wb-toolrail__more-wrap {
+  position: relative;
+  width: 32px;
+}
+
+/* 浮层挂到 body（portal）并用 fixed 定位：既不被竖条的 overflow 裁掉，
+   也不参与文档流计算，任何视口宽度都不会因此出现滚动条。坐标由 JS 按视口夹取。 */
+.wb-toolrail__more {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 184px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--paper);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  /* 同样固定在白纸口径，夜间不跟着 .wb-board 变深 */
+  --rose-100: #f4e3e9;
+  --rose-700: #8e4568;
+}
+
+.wb-toolrail__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--neutral-900);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-toolrail__item:hover,
+.wb-toolrail__item[aria-pressed="true"] {
+  background: var(--rose-100);
+  color: var(--rose-700);
+}
+
+.wb-toolrail__item:focus-visible {
+  outline: 2px solid var(--rose-600);
+  outline-offset: -1px;
+}
+
+.wb-toolrail__kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--neutral-700);
+}

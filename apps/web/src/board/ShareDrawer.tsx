@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { request } from "../auth/authApi";
-import { IconAlert, IconClose, IconCopy, IconShare } from "../ui/icons";
+import { IconAlert, IconCopy, IconShare } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
+import { ListSelect } from "../ui/ListSelect";
 
 /**
  * 分享抽屉（视觉方案 §4.3）：只读 / 可编辑链接、有效期、创建、复制、吊销。
  * 接口为 M5-2 已实现的 `/api/boards/:id/share-links`；这里只做表现层，不改服务端权限逻辑。
  * 只读（viewer）进入时不给邀请入口，只允许复制当前页链接。
+ * 抽屉内的有效期下拉与空间设置「加入后角色」共用 `ListSelect`，按钮统一 32 高胶囊口径。
  */
+
+/** 有效期取值与请求体 `expiresInDays` 保持一致（"forever" → null） */
+const EXPIRY_OPTIONS = [
+  { value: "7", title: "7 天（默认）" },
+  { value: "30", title: "30 天" },
+  { value: "forever", title: "永久" },
+] as const;
+
+type ShareExpiry = (typeof EXPIRY_OPTIONS)[number]["value"];
 
 type ShareLink = {
   id: string;
@@ -38,7 +50,7 @@ export function ShareDrawer({
   onClose: () => void;
 }) {
   const [permission, setPermission] = useState<"read" | "edit">("read");
-  const [expiry, setExpiry] = useState("7");
+  const [expiry, setExpiry] = useState<ShareExpiry>("7");
   const [links, setLinks] = useState<ShareLink[] | null>(null);
   const [created, setCreated] = useState<CreateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,9 +133,7 @@ export function ShareDrawer({
               {readonly ? "你以只读身份进入，无法邀请他人。" : "拿到链接的人可以进入这块板。"}
             </p>
           </div>
-          <button className="wb-drawer__close" type="button" onClick={onClose} aria-label="关闭">
-            <IconClose size={16} />
-          </button>
+          <DialogClose onClose={onClose} />
         </div>
 
         {readonly ? (
@@ -155,18 +165,27 @@ export function ShareDrawer({
               </div>
             </div>
 
-            <label className="wb-field">
-              <span className="wb-field__label">有效期</span>
-              <span className="wb-select-wrap">
-                <select className="wb-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}>
-                  <option value="7">7 天（默认）</option>
-                  <option value="30">30 天</option>
-                  <option value="forever">永久</option>
-                </select>
+            <div className="wb-field">
+              <span className="wb-field__label" id="wb-share-expiry-label">
+                有效期
               </span>
-            </label>
+              <ListSelect
+                value={expiry}
+                options={EXPIRY_OPTIONS}
+                onChange={setExpiry}
+                labelledBy="wb-share-expiry-label"
+                testId="share-expiry-trigger"
+                fullWidth
+                compact
+              />
+            </div>
 
-            <button className="wb-btn wb-btn--primary wb-btn--full" type="button" onClick={() => void create()} disabled={busy}>
+            <button
+              className="wb-btn wb-btn--primary wb-btn--pill wb-btn--full"
+              type="button"
+              onClick={() => void create()}
+              disabled={busy}
+            >
               {busy ? <span className="wb-spinner" aria-hidden /> : <IconShare size={14} />}
               {busy ? "正在创建…" : "创建链接"}
             </button>
@@ -184,7 +203,7 @@ export function ShareDrawer({
             {!readonly ? (
               <>
                 <span className="wb-banner__spacer" />
-                <button className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text" type="button" onClick={() => void load()}>
+                <button className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text" type="button" onClick={() => void load()}>
                   重试
                 </button>
               </>
@@ -200,7 +219,7 @@ export function ShareDrawer({
                 {window.location.origin + created.url}
               </span>
               <button
-                className="wb-btn wb-btn--ghost wb-btn--sm"
+                className="wb-btn wb-btn--ghost wb-btn--pill"
                 type="button"
                 onClick={() => void copy(window.location.origin + created.url)}
               >
@@ -244,7 +263,7 @@ export function ShareDrawer({
                     </div>
                     {link.revokedAt ? null : confirming === link.id ? (
                       <button
-                        className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text"
+                        className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
                         type="button"
                         onClick={() => void revoke(link.id)}
                       >
@@ -252,7 +271,7 @@ export function ShareDrawer({
                       </button>
                     ) : (
                       <button
-                        className="wb-btn wb-btn--ghost wb-btn--sm wb-btn--danger-text"
+                        className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
                         type="button"
                         onClick={() => setConfirming(link.id)}
                       >

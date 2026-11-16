@@ -132,10 +132,15 @@ async function main() {
       height: 950,
     });
     await openBoards(boardsPage);
+    // 12 块时首屏是 11 张 + 占位格：先展开再记录账号卡片
+    if (await boardsPage.$('[data-testid="boards-more"]')) {
+      await boardsPage.click('[data-testid="boards-more"]');
+      await until(async () => (await boardIds(boardsPage)).length === 12, { label: "展开到 12 张" });
+    }
     const oldIds = await boardIds(boardsPage);
     const home = await openHome(context, true);
 
-    await test("登录态 12 块：用户名位 / 容量 12 / 12 / 回收站入口都在", async () => {
+    await test("登录态 12 块：用户名位 / 计数「12 块」/ 回收站入口都在", async () => {
       eq(oldIds.length, 12, "登录态卡片数");
       const me = await user.api.get("/api/auth/me");
       eq(me.status, 200, "/api/auth/me 应 200");
@@ -144,7 +149,7 @@ async function main() {
       const count = await boardsPage.$eval(".wb-boards__count", (node) =>
         node.textContent.replace(/\s+/g, " ").trim(),
       );
-      eq(count, "12 / 12", "容量计数");
+      eq(count, "12 块", "登录账号计数不再固定 / 12");
       assert(await boardsPage.$('[data-testid="boards-trash-link"]'), "登录态应有回收站入口");
       await boardsPage.screenshot({ path: screenshotPath("logout-before-1440x950") });
     });

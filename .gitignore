@@ -23,3 +23,10 @@ apps/server/.storage/
 _preview/
 /_*.png
 /.tmp-*
+
+# 设计走查产物（设计稿 HTML 与多尺寸对比截图）与插件导出包
+/design/
+/.trae-html-share-packages/
+
+# 根目录遗留的旧版文档副本（正式文档在 docs/ 下）
+/实时协作白板_开发文档.md

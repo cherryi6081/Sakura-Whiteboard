@@ -18,19 +18,12 @@ export type ClaimPreview = {
   boards: { id: string; title: string; lastEditedAt: string }[];
   /** 当前浏览器是否仍持有效游客 cookie；false 时前端不弹提示 */
   guestActive: boolean;
-  /** 个人空间里我创建的、未删除未归档的板 */
-  used: number;
-  capacity: number;
-  /** 服务端算好的容量结论，前端只负责展示 */
-  canTransfer: boolean;
 };
 
 export type ClaimResult = {
   /** 本次实际转入的块数；重复提交时为 0 */
   transferred: number;
   boards: { id: string; title: string }[];
-  used: number;
-  capacity: number;
   userId: string;
 };
 

@@ -128,16 +128,16 @@ body {
 }
 
 .wb-btn--primary {
-  background: var(--accent);
-  color: var(--text-on-primary);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-ink);
 }
 
 .wb-btn--primary:hover:not(:disabled) {
-  background: var(--rose-700);
+  background: var(--btn-primary-bg-hover);
 }
 
 .wb-btn--primary:active:not(:disabled) {
-  background: var(--rose-800);
+  background: var(--btn-primary-bg-active);
 }
 
 .wb-btn--primary:disabled {
@@ -194,6 +194,17 @@ body {
   height: 32px;
   padding: 0 var(--space-3);
   font-size: var(--text-caption);
+}
+
+/* 胶囊主按钮：页头「新建白板」与空态「新建第一块」共用，
+   与空间设置那批主按钮同口径（32 高 / 999 胶囊 / 13 字 / 左右 12）。
+   颜色仍由 --btn-primary-* 决定，hover / active / focus-visible / disabled 沿用基础件。 */
+.wb-btn--pill {
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  line-height: 17px;
 }
 
 .wb-btn--full {
@@ -452,13 +463,37 @@ body {
   color: inherit;
 }
 
+/* 顶栏用户名胶囊：28px 胶囊 + 1px 描边，浅底贴在顶栏上，不用偏移投影。
+   hover / focus 只改底色与描边深浅，不做位移，
+   尺寸与顶栏高度都不变（我的白板 64 / 回收站 44）。 */
 .wb-user-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: none;
   min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
   color: var(--neutral-800);
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-user-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+}
+
+/* 聚焦：底色与描边同 hover，再叠全局双环，键盘用户能看出焦点落在胶囊上 */
+.wb-user-chip:focus-visible {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+  box-shadow: var(--focus-ring);
 }
 
 :root[data-theme="night"] .wb-user-chip {
@@ -496,6 +531,7 @@ body {
 }
 
 .wb-dialog {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

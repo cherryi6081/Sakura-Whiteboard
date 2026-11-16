@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
+import { EditorToolRail } from "../canvas/EditorToolRail";
 import type { CollabSnapshot } from "../collab/BoardCollab";
 import { GuestBadge, SaveToAccountBanner } from "../auth/GuestBadge";
 import {
@@ -16,8 +17,10 @@ import {
 } from "../boards/recentBoards";
 import { markBoardOpened } from "../boards/boardsApi";
 import { captureBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
-import { IconAlert, IconBack, IconCopy, IconImage, IconLock, IconShare } from "../ui/icons";
+import { IconAlert, IconBack, IconCopy, IconImage, IconLibrary, IconLock, IconShare } from "../ui/icons";
+import { UserMark } from "../ui/UserMark";
 import { ShareDrawer } from "./ShareDrawer";
+import { CloudLoadDialog } from "./CloudLoadDialog";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 import { resolveBackHref } from "./backTarget";
@@ -108,6 +111,109 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed());
   const [shareOpen, setShareOpen] = useState(false);
+  /** 云端载入弹窗（入口在库主菜单「打开…」旁边） */
+  const [cloudOpen, setCloudOpen] = useState(false);
+  /** 画布 API 提到 state：竖工具条要拿它 setActiveTool（ref 变化不会触发重渲染） */
+  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  /** 当前工具/工具锁/选中数/素材库侧栏开合：驱动竖工具条高亮与顶栏 Library 胶囊的按下态 */
+  const [uiState, setUiState] = useState({ tool: "selection", locked: false, selected: 0, library: false });
+  /** 右侧 272 列的折叠：收起后画布回到整宽，偏好写入 localStorage */
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(readInspectorCollapsed);
+
+  const toggleInspector = useCallback(() => {
+    setInspectorCollapsed((prev) => {
+      writeInspectorCollapsed(!prev);
+      return !prev;
+    });
+  }, []);
+
+  // 宽度变化后让库重算画布尺寸（滚轮缩放/元素命中都依赖 viewport 偏移）
+  useEffect(() => {
+    if (!api) return;
+    const frame = requestAnimationFrame(() => api.refresh());
+    return () => cancelAnimationFrame(frame);
+  }, [api, inspectorCollapsed]);
+
+  // 库的 onChange 只在场景变化时回调，纯选中/切工具不触发，所以低频率读一次 appState。
+  // 只取三个字段做浅比较，值没变就不 setState，避免拖动画布时反复重渲染外壳。
+  useEffect(() => {
+    if (!api) return;
+    let lastKey = "";
+    const sync = () => {
+      const appState = api.getAppState();
+      const next = {
+        tool: appState.activeTool.type,
+        locked: appState.activeTool.locked,
+        selected: Object.keys(appState.selectedElementIds).length,
+        library: appState.openSidebar?.name === "default",
+      };
+      const nextKey = `${next.tool}|${next.locked}|${next.selected}|${next.library}`;
+      if (nextKey === lastKey) return;
+      lastKey = nextKey;
+      setUiState(next);
+    };
+    sync();
+    const timer = window.setInterval(sync, 150);
+    return () => window.clearInterval(timer);
+  }, [api]);
+
+  /**
+   * 库自带的弹窗（Help、加载确认、导出、清空画布等）大多只留了 Esc / 点遮罩退出，
+   * 没有角上的关闭键。这里等弹窗挂载后给每张卡片补一颗统一的圆形关闭键
+   * （外观见 pages.css 的 `.wb-dialog-close`，位置见 excalidraw-theme.css 的 `.wb-modal-close`）。
+   * 几何与外观同时写进内联样式：弹窗是从库的 portal 里长出来的，样式表万一没命中
+   * （如定位父级/选择器上下文变化），按钮会退回文档流落到弹窗底部，内联值是兜底。
+   * 点击走 Esc 关闭，Esc 与遮罩点击保持库的原生行为不变。
+   */
+  useEffect(() => {
+    if (!api) return;
+    const inject = () => {
+      const modal = document.querySelector(".excalidraw-modal-container .Modal__content");
+      if (!modal) return;
+      const card = modal.querySelector(":scope > .Island") ?? modal;
+      if (card.querySelector("[data-wb-dialog-close]")) return;
+      // 库自己已经给了关闭键的弹窗（带 .Dialog__close）不重复加
+      if (card.querySelector(".Dialog__close")) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "wb-dialog-close wb-modal-close";
+      button.title = "关闭";
+      button.setAttribute("aria-label", "关闭");
+      button.setAttribute("data-wb-dialog-close", "1");
+      button.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>';
+      // 兜底只写几何（位置 + 点击区大小），颜色/描边/悬停/焦点环仍交给 `.wb-dialog-close`：
+      // 内联属性优先级高于样式表，若把外观也钉死，`:hover` 就再也改不动了。
+      Object.assign(button.style, {
+        position: "absolute",
+        top: "12px",
+        right: "12px",
+        zIndex: "2",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "32px",
+        height: "32px",
+        padding: "0",
+        boxSizing: "border-box",
+        cursor: "pointer",
+      });
+      // 「加载确认」这类弹窗的开合不走 appState.openDialog，Esc 是库内唯一通用的关闭入口。
+      // 库的 Esc 监听挂在 React 事件树上，必须把事件派发到弹窗内部（document 上不会进合成事件），
+      // 所以在卡片上派发一次 keydown/keyup，等价用户按 Esc。
+      const pressEscape = () => {
+        const options = { key: "Escape", code: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true };
+        card.dispatchEvent(new KeyboardEvent("keydown", options));
+        card.dispatchEvent(new KeyboardEvent("keyup", options));
+      };
+      button.addEventListener("click", pressEscape);
+      card.append(button);
+    };
+    inject();
+    const observer = new MutationObserver(inject);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [api]);
   /** 标题在身份握手完成后才能按归属读取本机记录，先渲染占位 */
   const [title, setTitle] = useState<string | null>(null);
   const displayTitle = title ?? "未命名白板";
@@ -138,6 +244,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   /** 只有登录且非只读才展示上传入口；服务端还会独立校验一次（Q5） */
   const canUpload = !readonly && !isGuest && Boolean(user);
+
+  /**
+   * 云端载入：游客没有服务端空间列表（接口 401），只读成员不能覆盖画布，
+   * 这两种情况下主菜单里不出现入口。
+   */
+  const canCloudLoad = !readonly && !isGuest && Boolean(user);
+  /** 当前空间：团队空间从 `?from=/boards?space=…` 带入；否则按个人空间查询 */
+  const cloudSpaceId = useMemo(readSpaceQuery, []);
 
   const pickerRef = useRef<HTMLInputElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -430,7 +544,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           <IconBack />
         </a>
 
-        <div style={{ minWidth: 0 }}>
+        <div className="wb-board__title" tabIndex={0}>
           <div className="wb-board__name" title={displayTitle}>
             {displayTitle}
           </div>
@@ -447,8 +561,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </span>
         ) : null}
         {!isGuest && user ? (
-          <span className="wb-badge wb-badge--neutral" data-testid="auth-user">
-            {user.displayName}
+          <span className="wb-user-chip" tabIndex={0} data-testid="auth-user">
+            <UserMark />
+            <span className="wb-caption">{user.displayName}</span>
           </span>
         ) : null}
 
@@ -479,7 +594,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </div>
         ) : null}
 
-        <span className="wb-board__status" data-testid="collab-status" data-status={status}>
+        <span className="wb-user-chip wb-board__status" data-testid="collab-status" data-status={status}>
           <span className={`wb-board__dot wb-board__dot--${statusTone}`} aria-hidden />
           <span className="wb-board__status-text">
             {statusText} · {role}
@@ -487,15 +602,20 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </span>
 
         {isGuest ? (
-          <a className="wb-link" data-testid="header-login" href={`/login?next=${encodeURIComponent(pageHref)}`}>
-            登录
+          <a
+            className="wb-user-chip"
+            data-testid="header-login"
+            href={`/login?next=${encodeURIComponent(pageHref)}`}
+          >
+            <UserMark />
+            <span className="wb-caption">登录</span>
           </a>
         ) : null}
 
         {canUpload ? (
           <>
             <button
-              className="wb-btn wb-btn--ghost wb-btn--sm wb-board__image"
+              className="wb-user-chip wb-board__image"
               type="button"
               data-testid="image-upload"
               aria-label="插入图片"
@@ -519,6 +639,27 @@ export function BoardPage({ boardId }: { boardId: string }) {
               }}
             />
           </>
+        ) : null}
+
+        {/* 素材库入口：原画布右上角那颗 Library 已隐藏，统一收到顶栏「图片」之后 */}
+        {api ? (
+          <button
+            className="wb-user-chip wb-board__library"
+            type="button"
+            data-testid="library-toggle"
+            aria-pressed={uiState.library}
+            aria-label="素材库"
+            title="素材库（Library）"
+            onClick={() =>
+              // 侧栏开着时，库会在 pointerdown 阶段先按「点在外面」把它关掉（见 useOutsideClick），
+              // 此刻再读实时状态会误判成「该打开」。所以按这一刻渲染出的开合态给 force：
+              // 之前是开的 → 关；之前是关的 → 开。
+              api.toggleSidebar({ name: "default", force: !uiState.library })
+            }
+          >
+            <IconLibrary />
+            <span className="wb-board__share-text">Library</span>
+          </button>
         ) : null}
 
         <button
@@ -578,7 +719,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
           );
         }}
       >
-        <div className="wb-canvas" style={{ height: "100%" }}>
+        <div
+          className={`wb-canvas${!readonly && !inspectorCollapsed ? " wb-canvas--docked" : ""}${
+            !readonly && inspectorCollapsed ? " wb-canvas--inspector-collapsed" : ""
+          }`}
+          style={{ height: "100%" }}
+        >
           <BoardCanvas
             initialElements={scene.elements}
             viewModeEnabled={readonly}
@@ -586,6 +732,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
             onApiReady={(api, handle) => {
               apiRef.current = api;
               bridgeRef.current = handle;
+              setApi(api);
               timingRef.current.canvasReadyAt = performance.now();
               storeRef.current?.notifyCanvasReady();
               if (window.__board) window.__board.ready = true;
@@ -598,8 +745,64 @@ export function BoardPage({ boardId }: { boardId: string }) {
               // 本地改动才需要更新卡片缩略图；远端回放不产生 op，不会触发
               refreshThumbSoon();
             }}
+            onCloudLoad={canCloudLoad ? () => setCloudOpen(true) : null}
           />
         </div>
+
+        {/* 左侧竖工具条：只做入口，工具切换仍走库的 setActiveTool；只读时整条隐藏 */}
+        {!readonly ? (
+          <EditorToolRail
+            api={api}
+            activeTool={uiState.tool}
+            locked={uiState.locked}
+            disabled={readonly}
+          />
+        ) : null}
+
+        {/* 右侧 272 列的折叠入口：面板/空态共用，只读态不出现 */}
+        {!readonly ? (
+          <button
+            type="button"
+            className={`wb-inspector-toggle${inspectorCollapsed ? " wb-inspector-toggle--collapsed" : ""}`}
+            data-testid="inspector-toggle"
+            aria-expanded={!inspectorCollapsed}
+            title={inspectorCollapsed ? "展开属性面板" : "收起属性面板"}
+            aria-label={inspectorCollapsed ? "展开属性面板" : "收起属性面板"}
+            onClick={toggleInspector}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ transform: inspectorCollapsed ? "rotate(180deg)" : undefined }}
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+        ) : null}
+
+        {/* 右侧属性槽：库面板只在选中元素时挂载，未选中时由外壳补空态，避免 272 列空着 */}
+        {!readonly && !inspectorCollapsed && uiState.selected === 0 ? (
+          <aside className="wb-board__inspector-empty" data-testid="inspector-empty">
+            <div className="wb-board__inspector-empty-title">样式</div>
+            <div className="wb-board__inspector-empty-sub">未选中元素</div>
+            <p className="wb-board__inspector-empty-hint">
+              在画布上选中一个元素，这里会显示描边、背景、线宽、线型、透明度与图层顺序；
+              文本、箭头还会多出各自的专属属性。
+            </p>
+            <p className="wb-board__inspector-empty-hint">
+              画框用 <span className="wb-board__inspector-empty-kbd">R</span>、文字用{" "}
+              <span className="wb-board__inspector-empty-kbd">T</span>、橡皮用{" "}
+              <span className="wb-board__inspector-empty-kbd">E</span>。
+            </p>
+          </aside>
+        ) : null}
 
         {uploads.dragActive ? (
           <div className="wb-board__dropzone" data-testid="image-dropzone">
@@ -729,8 +932,36 @@ export function BoardPage({ boardId }: { boardId: string }) {
       </footer>
 
       {shareOpen ? <ShareDrawer boardId={boardId} readonly={readonly} onClose={() => setShareOpen(false)} /> : null}
+
+      {cloudOpen && canCloudLoad ? (
+        <CloudLoadDialog
+          boardId={boardId}
+          spaceId={cloudSpaceId}
+          onClose={() => setCloudOpen(false)}
+          onLoaded={(title, elements) => {
+            bridgeRef.current?.replaceElements(elements);
+            setCloudOpen(false);
+            notify(`已从「${title}」载入画布`);
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+/**
+ * 当前空间 id：团队空间列表进板时会把 `?space=` 编码进 `?from=`；
+ * 个人空间不带参数（接口缺省即个人空间）。
+ */
+function readSpaceQuery(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const pick = (value: string | null) =>
+    value && /^sp_[A-Za-z0-9_-]{10,32}$/.test(value) ? value : undefined;
+  const direct = pick(params.get("space"));
+  if (direct) return direct;
+  const from = params.get("from");
+  if (!from) return undefined;
+  return pick(new URLSearchParams(from.split("?")[1] ?? "").get("space"));
 }
 
 function clamp01(value: number): number {
@@ -761,5 +992,24 @@ function readBannerDismissed(): boolean {
     return sessionStorage.getItem(BANNER_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+/** 右侧属性列的折叠偏好：跨会话记住（刷新/重进板都保持用户选择） */
+const INSPECTOR_COLLAPSED_KEY = "wb:inspectorCollapsed";
+
+function readInspectorCollapsed(): boolean {
+  try {
+    return localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeInspectorCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(INSPECTOR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    /* 隐私模式下写不进去就只在本次会话生效 */
   }
 }

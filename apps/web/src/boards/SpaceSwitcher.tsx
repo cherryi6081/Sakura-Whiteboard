@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { SpaceRole, SpaceSummary } from "@whiteboard/shared";
 import { createSpace } from "./spaceApi";
 import { IconCheck, IconPlus } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
 
 /**
  * 空间切换器（设计稿「我的白板 · 团队空间切换」§03/§08）。
@@ -308,6 +309,12 @@ export function SpaceSwitcher({ spaces, currentId, onSelect, onCreated, onOpenSe
               }
             }}
           >
+            <DialogClose
+              onClose={() => {
+                setCreateOpen(false);
+                setError(null);
+              }}
+            />
             <h2 className="wb-dialog__title" id="wb-space-create-title">
               新建团队空间
             </h2>

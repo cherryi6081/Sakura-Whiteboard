@@ -266,6 +266,15 @@
   --accent: var(--rose-600);
   --accent-hover: var(--rose-700);
   --accent-active: var(--rose-800);
+
+  /* 主按钮（.wb-btn--primary）：白天=主色实底 + 白字。
+     夜间按设计稿提亮成 #d39ab1 + 深纸字（design/space-role-select.html 夜间段落），
+     这两个值由下方 night 块改写；放在 token 层而不是选择器层，
+     是为了让登录/注册页那套「朱色印章」按钮（.wb-auth .wb-btn--primary）继续赢过基础件。 */
+  --btn-primary-bg: var(--accent);
+  --btn-primary-ink: var(--text-on-primary);
+  --btn-primary-bg-hover: var(--accent-hover);
+  --btn-primary-bg-active: var(--accent-active);
   --danger: var(--danger-text);
   --ok-fg: var(--success-text);
   --ok-bg: var(--success-bg);
@@ -351,6 +360,13 @@
   --ink-faint: #93a0ba;
   --ink-link: #d39ab1;
   --ink-link-hover: #e8c3d2;
+
+  /* 夜间主按钮：底 #d39ab1、字 #1c2438（= --surface-raised）、hover #e8c3d2；
+     按下态由两者混出，不另引色相 */
+  --btn-primary-bg: #d39ab1;
+  --btn-primary-ink: #1c2438;
+  --btn-primary-bg-hover: #e8c3d2;
+  --btn-primary-bg-active: color-mix(in srgb, #d39ab1 82%, #1c2438);
 
   --ok-fg: #9fd3bd;
   --ok-bg: #14231e;

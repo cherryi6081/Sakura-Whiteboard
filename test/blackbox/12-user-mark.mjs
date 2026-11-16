@@ -99,7 +99,7 @@ try {
     assert(facts.beforeName, "图标应在用户名之前");
     eq(facts.markText, "", "不应再有字母文字");
     eq(facts.markBg, "rgba(0, 0, 0, 0)", "不应有底色圆");
-    eq(facts.hostHeight, 44, "顶栏高度");
+    eq(facts.hostHeight, 64, "顶栏高度（我的白板按设计稿 .mk-topbar 为 64）");
     eq(facts.svgColor, facts.iconColor, "图标颜色应与回收站图标一致");
     eq(facts.svgStroke, facts.iconStroke, "图标描边应与回收站图标一致");
     eq(await page.$eval('[data-testid="boards-user"]', (el) => el.textContent), "林小满", "用户名文本保持");

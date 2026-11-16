@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ROLE_LABEL } from "./boardsApi";
 import type { SelectableCard } from "./selection";
 import { IconLock } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
 
 type Props = {
   /** 勾选顺序（视觉顺序），用于列表预览 */
@@ -87,6 +88,7 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, guest = false, 
         aria-describedby={descId}
         onKeyDown={trapTab}
       >
+        <DialogClose onClose={onCancel} disabled={busy} />
         <h2 id={titleId} className="wb-dialog__title">
           {title}
         </h2>

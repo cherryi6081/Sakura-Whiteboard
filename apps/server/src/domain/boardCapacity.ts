@@ -2,17 +2,15 @@ import type { PoolClient } from 'pg';
 import { BOARD_CAPACITY as SHARED_BOARD_CAPACITY } from '@whiteboard/shared';
 
 /**
- * 白板列表容量与淘汰（用户明确规则）。
+ * 游客（临时板）容量与淘汰。
  *
  * 规则：
- * - 一个列表作用域最多 12 块；第 13 块创建时先淘汰一块再插入。
+ * - **12 块上限只针对游客**；登录账号不设上限，建板/恢复都不做容量判定。
+ * - 游客第 13 块创建时先淘汰一块再插入。
  * - 淘汰按「打开次数升序、创建时间升序」取第一块。
  * - 置顶的、刚创建（10 分钟）的、最近编辑/进入过（10 分钟）的都不参与。
- * - 登录用户软删进回收站；游客没有回收站，物理删除。
- *
- * 作用域只覆盖**创建者自己的板**：
- * 团队空间里别人的板不参与淘汰，避免编辑者新建一块就把同事的板删掉。
- * 12 块全部被保护时不做任何删除，返回 429 让用户自己整理。
+ * - 游客没有回收站，淘汰即物理删除，审计仍写 `board_evictions`。
+ * - 12 块全部被保护时不做任何删除，返回 blocked，调用方返回 429。
  *
  * 容量数字只有一处权威来源（`@whiteboard/shared` 的 `BOARD_CAPACITY`），这里只做转出。
  */
@@ -48,10 +46,7 @@ export function isEvictionEligible(row: EvictionCandidate, options: EvictionOpti
   return true;
 }
 
-/**
- * 全部可淘汰候选，按「打开次数升序 → 创建时间升序 → id」排好。
- * 空数组表示这些板全在保护期（恢复时据此返回 CAPACITY_NO_EVICTABLE）。
- */
+/** 全部可淘汰候选，按「打开次数升序 → 创建时间升序 → id」排好。 */
 export function listEvictionCandidates<T extends EvictionCandidate>(
   rows: readonly T[],
   options: EvictionOptions = {},
@@ -78,9 +73,8 @@ export function pickEvictionCandidate<T extends EvictionCandidate>(
   return listEvictionCandidates(rows, options)[0] ?? null;
 }
 
-export type EvictionScope =
-  | { kind: 'user'; userId: string; spaceId: string; mode: 'trash' }
-  | { kind: 'guest'; guestId: string; pinnedIds: readonly string[]; mode: 'purged' };
+/** 容量只作用于游客：淘汰即物理删除。 */
+export type EvictionScope = { kind: 'guest'; guestId: string; pinnedIds: readonly string[] };
 
 export type EvictionResult = {
   id: string;
@@ -88,7 +82,6 @@ export type EvictionResult = {
   openedCount: number;
   lastOpenedAt: Date | null;
   createdAt: Date;
-  mode: 'trash' | 'purged';
 };
 
 /**
@@ -101,15 +94,6 @@ export type EvictionOutcome =
   | { kind: 'none' }
   | { kind: 'evicted'; board: EvictionResult }
   | { kind: 'blocked' };
-
-/** 恢复时由用户指定被淘汰的板：不区分「不在作用域」与「受保护」就无法给出准确错误码 */
-export type SpecificEvictionOutcome =
-  | { kind: 'evicted'; board: EvictionResult }
-  | { kind: 'not-found' }
-  | { kind: 'protected' };
-
-/** 审计里的触发来源：新建第 13 块，还是回收站恢复时的确认式替换 */
-export type EvictionTrigger = 'create' | 'restore';
 
 type EvictionRow = {
   id: string;
@@ -135,88 +119,67 @@ function toCandidate(row: EvictionRow): EvictionCandidate {
   };
 }
 
-function pinnedOf(scope: EvictionScope): ReadonlySet<string> | undefined {
-  return scope.kind === 'guest' ? new Set(scope.pinnedIds) : undefined;
+function pinnedOf(scope: EvictionScope): ReadonlySet<string> {
+  return new Set(scope.pinnedIds);
 }
 
 /** 只读查询用：池子与事务客户端都满足 */
 type Queryable = Pick<PoolClient, 'query'>;
 
-/** 读取作用域内全部未归档的板（可加行锁），供创建/恢复两条路径共用。 */
-export async function loadScopeBoards(
+/** 读取游客名下全部未归档的临时板（可加行锁）。 */
+export async function loadGuestBoards(
   client: Queryable,
-  scope: EvictionScope,
+  guestId: string,
   { forUpdate = false }: { forUpdate?: boolean } = {},
 ): Promise<EvictionCandidate[]> {
   const lock = forUpdate ? ' for update' : '';
-  const { rows } = scope.kind === 'user'
-    ? await client.query<EvictionRow>(
-        `select ${SELECT_COLUMNS}
-           from boards
-          where space_id = $1 and owner_id = $2
-            and deleted_at is null and archived_at is null
-          order by id${lock}`,
-        [scope.spaceId, scope.userId],
-      )
-    : await client.query<EvictionRow>(
-        `select ${SELECT_COLUMNS}
-           from boards
-          where owner_guest_id = $1
-            and deleted_at is null and archived_at is null
-          order by id${lock}`,
-        [scope.guestId],
-      );
+  const { rows } = await client.query<EvictionRow>(
+    `select ${SELECT_COLUMNS}
+       from boards
+      where owner_guest_id = $1
+        and deleted_at is null and archived_at is null
+      order by id${lock}`,
+    [guestId],
+  );
   return rows.map(toCandidate);
 }
 
-/** 删除 + 审计 + 日志：创建触发的自动淘汰与恢复触发的指定淘汰共用。 */
+/** 删除 + 审计 + 日志：游客没有回收站，直接物理删除。 */
 async function removeBoard(
   client: PoolClient,
   scope: EvictionScope,
   chosen: EvictionCandidate,
-  trigger: EvictionTrigger,
   triggerBoardId: string,
 ): Promise<EvictionResult> {
-  if (scope.mode === 'trash') {
-    await client.query('update boards set deleted_at = now() where id = $1 and deleted_at is null', [chosen.id]);
-  } else {
-    // 游客没有回收站：与现有游客删除语义一致，直接物理删除
-    await client.query('delete from boards where id = $1 and owner_guest_id = $2', [chosen.id, scope.guestId]);
-  }
+  await client.query('delete from boards where id = $1 and owner_guest_id = $2', [chosen.id, scope.guestId]);
 
   await client.query(
     `insert into board_evictions
-       (board_id, board_title, owner_id, owner_guest_id, space_id, trigger_board_id,
+       (board_id, board_title, owner_guest_id, trigger_board_id,
         policy, opened_count, last_opened_at, board_created_at, mode, trigger)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, 'purged', 'create')`,
     [
       chosen.id,
       chosen.title,
-      scope.kind === 'user' ? scope.userId : null,
-      scope.kind === 'guest' ? scope.guestId : null,
-      scope.kind === 'user' ? scope.spaceId : null,
+      scope.guestId,
       triggerBoardId,
       EVICTION_POLICY,
       chosen.openedCount,
       chosen.lastOpenedAt,
       chosen.createdAt,
-      scope.mode,
-      trigger,
     ],
   );
 
   console.info('[boards] capacity eviction', {
     boardId: chosen.id,
     title: chosen.title,
-    ownerId: scope.kind === 'user' ? scope.userId : null,
-    guestId: scope.kind === 'guest' ? scope.guestId : null,
-    spaceId: scope.kind === 'user' ? scope.spaceId : null,
+    guestId: scope.guestId,
     triggerBoardId,
-    trigger,
+    trigger: 'create',
     policy: EVICTION_POLICY,
     openedCount: chosen.openedCount,
     createdAt: chosen.createdAt.toISOString(),
-    mode: scope.mode,
+    mode: 'purged',
   });
 
   return {
@@ -225,14 +188,13 @@ async function removeBoard(
     openedCount: chosen.openedCount,
     lastOpenedAt: chosen.lastOpenedAt,
     createdAt: chosen.createdAt,
-    mode: scope.mode,
   };
 }
 
 /**
- * 在调用方的事务里执行「满 12 就淘汰一块」。
+ * 在调用方的事务里执行「游客满 12 就淘汰一块」。
  *
- * 调用方必须先拿 `pg_advisory_xact_lock`（按 owner 维度），否则并发创建会基于
+ * 调用方必须先拿 `pg_advisory_xact_lock`（游客维度），否则并发创建会基于
  * 过期计数同时挑中同一块板，或各自淘汰一块。
  *
  * 返回 `none` 表示还没满 12；`evicted` 表示已删除并写好审计；
@@ -242,33 +204,12 @@ export async function evictForCapacity(
   client: PoolClient,
   scope: EvictionScope,
   triggerBoardId: string,
-  trigger: EvictionTrigger = 'create',
 ): Promise<EvictionOutcome> {
-  const candidates = await loadScopeBoards(client, scope, { forUpdate: true });
+  const candidates = await loadGuestBoards(client, scope.guestId, { forUpdate: true });
   if (candidates.length < BOARD_CAPACITY) return { kind: 'none' };
 
   const chosen = pickEvictionCandidate(candidates, { pinnedIds: pinnedOf(scope) });
   if (!chosen) return { kind: 'blocked' };
 
-  return { kind: 'evicted', board: await removeBoard(client, scope, chosen, trigger, triggerBoardId) };
-}
-
-/**
- * 淘汰用户指定的那一块（恢复时的确认式替换）。
- *
- * 只认作用域内、未删除、且仍在可淘汰范围内的板：
- * 置顶 / 10 分钟内创建或编辑过的一律拒绝，避免用户误删正在用的板。
- */
-export async function evictSpecificBoard(
-  client: PoolClient,
-  scope: EvictionScope,
-  boardId: string,
-  triggerBoardId: string,
-): Promise<SpecificEvictionOutcome> {
-  const candidates = await loadScopeBoards(client, scope, { forUpdate: true });
-  const target = candidates.find((row) => row.id === boardId);
-  if (!target) return { kind: 'not-found' };
-  if (!isEvictionEligible(target, { pinnedIds: pinnedOf(scope) })) return { kind: 'protected' };
-
-  return { kind: 'evicted', board: await removeBoard(client, scope, target, 'restore', triggerBoardId) };
+  return { kind: 'evicted', board: await removeBoard(client, scope, chosen, triggerBoardId) };
 }

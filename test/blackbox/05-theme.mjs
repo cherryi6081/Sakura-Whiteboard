@@ -158,12 +158,37 @@ async function main() {
     });
     await test("空间设置下拉：自绘外壳随主题换色，尺寸不变、对比度 ≥ 4.5", async () => {
       const space = await user.api.createSpace(`theme-space-${Date.now()}`);
-      const read = (page) =>
+
+      /** 外壳（触发器）尺寸、配色、与「生成并复制链接」的对齐，以及品牌图标 */
+      const readShell = (page) =>
         page.evaluate(() => {
-          const el = document.querySelector(".wb-space-invite__role select");
-          const style = getComputedStyle(el);
-          const rect = el.getBoundingClientRect();
-          const rgb = (value) => value.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+          const trigger = document.querySelector(".wb-role-select__btn");
+          const shell = trigger.closest(".wb-role-select");
+          const style = getComputedStyle(trigger);
+          const rect = trigger.getBoundingClientRect();
+          const invite = document.querySelector(".wb-space-invite .wb-btn--primary");
+          const inviteRect = invite.getBoundingClientRect();
+          // color-mix() 在 Chromium 里可能序列化成 color(srgb r g b)（0–1 浮点），
+          // 与常见 rgb()/rgba() 一起归一，避免把 0.95 当成 0.95/255 算错对比度
+          const rgb = (value) => {
+            const legacy = value.match(/^rgba?\(([^)]+)\)/);
+            if (legacy) {
+              return legacy[1]
+                .split(/[\s,/]+/)
+                .filter(Boolean)
+                .slice(0, 3)
+                .map(Number);
+            }
+            const modern = value.match(/^color\(srgb\s+([^)]+)\)/);
+            if (modern) {
+              return modern[1]
+                .split(/[\s/]+/)
+                .filter(Boolean)
+                .slice(0, 3)
+                .map((part) => Number(part) * 255);
+            }
+            return [0, 0, 0];
+          };
           const lum = (value) => {
             const [r, g, b] = rgb(value).map((part) => {
               const c = part / 255;
@@ -171,18 +196,45 @@ async function main() {
             });
             return 0.2126 * r + 0.7152 * g + 0.0722 * b;
           };
-          const fg = lum(style.color);
-          const bg = lum(style.backgroundColor);
+          const contrast = (a, b) => {
+            const [x, y] = [lum(a), lum(b)];
+            return Number(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)).toFixed(2));
+          };
+          // --role-accent 是 var() 套 var()，用继承它的探针解析成最终 rgb
+          const probe = document.createElement("span");
+          probe.style.color = "var(--role-accent)";
+          shell.append(probe);
+          const accent = getComputedStyle(probe).color;
+          probe.remove();
+          const accentProbe = document.createElement("span");
+          accentProbe.style.color = "var(--accent)";
+          const inkLinkProbe = document.createElement("span");
+          inkLinkProbe.style.color = "var(--ink-link)";
+          shell.append(accentProbe, inkLinkProbe);
+          const tokens = {
+            accent: getComputedStyle(accentProbe).color,
+            inkLink: getComputedStyle(inkLinkProbe).color,
+          };
+          accentProbe.remove();
+          inkLinkProbe.remove();
           const mark = document.querySelector(".wb-brand__mark");
           const markRect = mark.getBoundingClientRect();
           return {
             w: Math.round(rect.width),
             h: Math.round(rect.height),
             radius: style.borderRadius,
-            appearance: style.appearance,
             bg: style.backgroundColor,
             color: style.color,
-            contrast: Number(((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05)).toFixed(2)),
+            border: style.borderTopColor,
+            contrast: contrast(style.color, style.backgroundColor),
+            accent,
+            tokens,
+            nativeSelects: document.querySelectorAll(".wb-space-invite__role select").length,
+            tag: trigger.tagName,
+            type: trigger.getAttribute("type"),
+            hasPopup: trigger.getAttribute("aria-haspopup"),
+            expanded: trigger.getAttribute("aria-expanded"),
+            bottomAligned: Math.abs(rect.bottom - inviteRect.bottom) <= 1,
             brand: {
               tag: mark.tagName,
               alt: mark.getAttribute("alt"),
@@ -190,6 +242,66 @@ async function main() {
               w: Math.round(markRect.width),
               h: Math.round(markRect.height),
             },
+          };
+        });
+
+      /** 展开后的菜单：listbox / option 结构、选中态主色、选项文字对比度 */
+      const readMenu = (page) =>
+        page.evaluate(() => {
+          const menu = document.querySelector(".wb-role-select__menu");
+          if (!menu) return null;
+          const trigger = menu.closest(".wb-role-select").querySelector(".wb-role-select__btn");
+          const options = [...menu.querySelectorAll(".wb-role-select__option")];
+          const selected = options.find((item) => item.getAttribute("aria-selected") === "true");
+          // color-mix() 在 Chromium 里可能序列化成 color(srgb r g b)（0–1 浮点），
+          // 与常见 rgb()/rgba() 一起归一，避免把 0.95 当成 0.95/255 算错对比度
+          const rgb = (value) => {
+            const legacy = value.match(/^rgba?\(([^)]+)\)/);
+            if (legacy) {
+              return legacy[1]
+                .split(/[\s,/]+/)
+                .filter(Boolean)
+                .slice(0, 3)
+                .map(Number);
+            }
+            const modern = value.match(/^color\(srgb\s+([^)]+)\)/);
+            if (modern) {
+              return modern[1]
+                .split(/[\s/]+/)
+                .filter(Boolean)
+                .slice(0, 3)
+                .map((part) => Number(part) * 255);
+            }
+            return [0, 0, 0];
+          };
+          const lum = (value) => {
+            const [r, g, b] = rgb(value).map((part) => {
+              const c = part / 255;
+              return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const contrast = (a, b) => {
+            const [x, y] = [lum(a), lum(b)];
+            return Number(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)).toFixed(2));
+          };
+          const menuBg = getComputedStyle(menu).backgroundColor;
+          const selectedBg = selected ? getComputedStyle(selected).backgroundColor : null;
+          const selectedTitle = selected
+            ? getComputedStyle(selected.querySelector(".wb-role-select__title")).color
+            : null;
+          return {
+            role: menu.getAttribute("role"),
+            optionRoles: options.map((item) => item.getAttribute("role")),
+            count: options.length,
+            minOptionH: Math.min(...options.map((item) => Math.round(item.getBoundingClientRect().height))),
+            radius: getComputedStyle(menu).borderRadius,
+            menuBg,
+            selectedBg,
+            selectedTitleContrast: selected ? contrast(selectedTitle, selectedBg) : 0,
+            selectedTinted: selectedBg !== menuBg,
+            openBorder: getComputedStyle(trigger).borderTopColor,
+            expanded: trigger.getAttribute("aria-expanded"),
           };
         });
 
@@ -205,27 +317,74 @@ async function main() {
             break;
           }
         }
-        await page.waitForSelector(".wb-space-invite__role select", { timeout: 5000 });
+        await page.waitForSelector(".wb-role-select__btn", { timeout: 5000 });
         await sleep(400);
-        return read(page);
+        const shell = await readShell(page);
+        await page.click(".wb-role-select__btn");
+        await page.waitForSelector(".wb-role-select__menu", { timeout: 3000 });
+        await sleep(250);
+        const menu = await readMenu(page);
+        await page.keyboard.press("Escape");
+        const closed = await page
+          .waitForFunction(() => !document.querySelector(".wb-role-select__menu"), { timeout: 3000 })
+          .then(() => true)
+          .catch(() => false);
+        return { shell, menu, closed };
       };
 
       const day = await openWithClock(browser, user.api.sessionCookie, AT("10:00"));
-      const dayState = await open(day);
+      const dayRun = await open(day);
       await day.context.close();
 
       const night = await openWithClock(browser, user.api.sessionCookie, AT("22:00"));
-      const nightState = await open(night);
+      const nightRun = await open(night);
       await night.context.close();
 
-      eq(dayState.appearance, "none", "原生外观应关闭");
-      eq(dayState.radius, "10px", "圆角沿用 radius token");
-      eq(dayState.h, 44, "下拉高度");
+      const dayState = dayRun.shell;
+      const nightState = nightRun.shell;
+      const dayMenu = dayRun.menu;
+      const nightMenu = nightRun.menu;
+
+      // —— 结构：自绘下拉取代原生 select ——
+      eq(dayState.nativeSelects, 0, "不应再出现原生 select");
+      eq(dayState.tag, "BUTTON", "外壳应为按钮");
+      eq(dayState.type, "button", "按钮 type");
+      eq(dayState.hasPopup, "listbox", "触发器声明 listbox 弹出");
+      eq(dayState.expanded, "false", "初始 aria-expanded=false");
+      eq(dayMenu.role, "listbox", "菜单 role");
+      eq(dayMenu.optionRoles, ["option", "option"], "选项 role");
+      eq(dayMenu.count, 2, "邀请角色选项数");
+      eq(dayMenu.expanded, "true", "展开后 aria-expanded=true");
+      assert(dayRun.closed && nightRun.closed, "Esc 应关闭菜单");
+
+      // —— 尺寸与对齐：32px 胶囊，与右侧按钮底边齐平；夜间不变 ——
+      eq(dayState.radius, "999px", "圆角沿用 radius-pill");
+      eq(dayState.h, 32, "触发器高度");
+      eq(dayState.w, 120, "触发器宽度");
+      assert(dayState.bottomAligned, "与「生成并复制链接」底边对齐");
+      assert(nightState.bottomAligned, "夜间仍与「生成并复制链接」底边对齐");
       eq(nightState.h, dayState.h, "夜间高度不变");
       eq(nightState.w, dayState.w, "夜间宽度不变");
+      eq(dayMenu.radius, "12px", "菜单圆角");
+      assert(dayMenu.minOptionH >= 44, `选项最小高度 ${dayMenu.minOptionH}`);
+
+      // —— 夜间 token：底色/文字/边框随主题变，主动色按 design 提到 --ink-link ——
       assert(dayState.bg !== nightState.bg, `底色应随主题变化：${dayState.bg} / ${nightState.bg}`);
+      assert(dayState.color !== nightState.color, `文字色应随主题变化：${dayState.color} / ${nightState.color}`);
+      assert(dayState.border !== nightState.border, `边框色应随主题变化：${dayState.border} / ${nightState.border}`);
+      eq(dayState.accent, dayState.tokens.accent, "白天主动色取 --accent");
+      eq(nightState.accent, nightState.tokens.inkLink, "夜间主动色取 --ink-link（设计稿 #d39ab1）");
+      assert(dayState.accent !== nightState.accent, "主动色应随主题变化");
+      eq(dayMenu.openBorder, dayState.accent, "展开时边框用白天主动色");
+      eq(nightMenu.openBorder, nightState.accent, "展开时边框用夜间主动色");
+      assert(dayMenu.selectedBg !== nightMenu.selectedBg, "选中项底色应随主题变化");
+      assert(dayMenu.selectedTinted, "选中项底色应带主动色倾向");
+
+      // —— 对比度阈值 ——
       assert(dayState.contrast >= 4.5, `白天对比度 ${dayState.contrast}`);
       assert(nightState.contrast >= 4.5, `夜间对比度 ${nightState.contrast}`);
+      assert(dayMenu.selectedTitleContrast >= 4.5, `白天选中项标题对比度 ${dayMenu.selectedTitleContrast}`);
+      assert(nightMenu.selectedTitleContrast >= 4.5, `夜间选中项标题对比度 ${nightMenu.selectedTitleContrast}`);
       eq(dayState.brand.tag, "IMG", "品牌图标应为图片");
       eq(dayState.brand.alt, "", "装饰性图标 alt 应为空");
       eq(dayState.brand.text, "Sakura", "品牌文案");

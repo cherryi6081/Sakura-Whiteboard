@@ -6,15 +6,12 @@ import { SakuraBranch } from "./SakuraBranch";
 import { UserMark } from "../ui/UserMark";
 import {
   emptyTrash,
-  fetchRestorePlan,
   fetchTrash,
   purgeBoard,
   restoreBoard,
-  type RestorePlan,
   type TrashBoardItem,
   type TrashFilter,
 } from "./boardsApi";
-import { BOARDS_CAPACITY } from "./boardList";
 import {
   formatDeletedAt,
   formatPurgeTitle,
@@ -25,6 +22,7 @@ import {
 } from "./trashMeta";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
 import { IconAlert, IconBoard, IconMore, IconRestore, IconTrash, IconUser } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
 import sakuraMark from "../assets/sakura-mark.png";
 
 /**
@@ -34,8 +32,7 @@ import sakuraMark from "../assets/sakura-mark.png";
  * - 紧凑行列表 72px 行高、占位缩略图、12 行一页「加载更多」；
  * - 保留期文案按**实际清理时刻**（每日 03:00）换算，7 天内 warning、24 小时内 danger；
  * - 恢复不弹窗，行内 loading 后直接消失；彻底删除与清空必须二次确认；
- * - 列表满 12 块时恢复改为「确认式替换」：先列可淘汰候选，选中后由服务端
- *   在同一事务里「移入回收站 + 恢复」，被替换的板随时能从回收站再恢复；
+ * - 登录账号不限白板数量：恢复**不会**因目标空间已满被拒，也没有「恢复并替换」；
  * - 390 窄屏行高 68px，操作收成图标 + 底部弹层。
  *
  * 状态矩阵：loading / ready / empty / error / guest，切筛选时保留旧行并降透明度，
@@ -45,14 +42,6 @@ import sakuraMark from "../assets/sakura-mark.png";
 type View = "loading" | "ready" | "error" | "guest";
 
 type Toast = { text: string; tone: "ok" | "error"; boardId?: string };
-
-/** 满容量时恢复：先让用户选一块腾位置 */
-type ReplaceState = { item: TrashBoardItem; plan: RestorePlan; pick: string };
-
-/** 这一行恢复时是否需要替换（服务端按同 owner + 同空间统计） */
-function needsReplace(item: TrashBoardItem): boolean {
-  return (item.activeInScope ?? 0) >= (item.capacity ?? BOARDS_CAPACITY);
-}
 
 export function TrashPage() {
   const [view, setView] = useState<View>("loading");
@@ -75,8 +64,6 @@ export function TrashPage() {
   const [emptyConfirmed, setEmptyConfirmed] = useState(false);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [sheetItem, setSheetItem] = useState<TrashBoardItem | null>(null);
-  const [replace, setReplace] = useState<ReplaceState | null>(null);
-  const [replaceBusy, setReplaceBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
 
   const requestIdRef = useRef(0);
@@ -178,76 +165,23 @@ export function TrashPage() {
     void load(next, 0, false);
   };
 
-  /** 满额时取候选；没有可淘汰的板就只提示，不删任何一块 */
-  const openReplace = async (item: TrashBoardItem, notice?: string) => {
-    const plan = await fetchRestorePlan(item.id);
-    if (!plan.ok) {
-      setToast({ text: "取不到可替换的白板，请稍后重试。", tone: "error" });
-      return;
-    }
-    if (!plan.data.needsEviction) {
-      // 别的标签页刚好删掉了一块：直接恢复，不再弹窗
-      await performRestore(item);
-      return;
-    }
-    if (plan.data.candidates.length === 0) {
-      setToast({
-        text: `${plan.data.capacity} 块白板都在置顶或最近使用中，暂时腾不出位置，请稍后再试。`,
-        tone: "error",
-      });
-      return;
-    }
-    setToast(notice ? { text: notice, tone: "error" } : null);
-    setReplace({ item, plan: plan.data, pick: plan.data.candidates[0]!.id });
-  };
-
-  const performRestore = async (item: TrashBoardItem, replaceBoardId?: string) => {
+  const performRestore = async (item: TrashBoardItem) => {
     setBusyId(item.id);
-    const result = await restoreBoard(item.id, replaceBoardId);
+    const result = await restoreBoard(item.id);
     setBusyId(null);
 
     if (!result.ok) {
-      if (result.code === "CAPACITY_FULL" || result.code === "CAPACITY_TARGET_GONE" || result.code === "CAPACITY_TARGET_PROTECTED") {
-        setReplace(null);
-        await openReplace(
-          item,
-          result.code === "CAPACITY_TARGET_PROTECTED"
-            ? "选中的白板在置顶或最近使用中，换一块再试。"
-            : "列表刚刚有变化，请重新选择要替换的白板。",
-        );
-        return;
-      }
-      if (result.code === "CAPACITY_NO_EVICTABLE") {
-        setReplace(null);
-        setToast({ text: `${BOARDS_CAPACITY} 块白板都在置顶或最近使用中，暂时腾不出位置，请稍后再试。`, tone: "error" });
-        return;
-      }
       setToast({ text: result.code === "NOT_FOUND" ? "这块白板已被清理，无法恢复。" : "恢复失败，请重试。", tone: "error" });
       void load(filter, 0, false);
       return;
     }
 
-    setReplace(null);
-    const evicted = result.data.evicted;
-    setItems((prev) =>
-      prev
-        .filter((row) => row.id !== item.id)
-        .map((row) =>
-          // 净增 1 块（没替换）或不变（替换掉一块），只影响同一空间的计数
-          row.spaceId === item.spaceId && !evicted
-            ? { ...row, activeInScope: Math.min(BOARDS_CAPACITY, (row.activeInScope ?? 0) + 1) }
-            : row,
-        ),
-    );
+    setItems((prev) => prev.filter((row) => row.id !== item.id));
     setTotal((value) => Math.max(0, value - 1));
     setAllTotal((value) => Math.max(0, value - 1));
     if (isExpiringSoon(item.purgeAt)) setExpiringSoon((value) => Math.max(0, value - 1));
     setToast({
-      text: evicted
-        ? `已恢复「${result.data.title}」，「${evicted.title}」已移入回收站，可在回收站再恢复。`
-        : result.data.renamed
-          ? `已恢复，并重命名为「${result.data.title}」`
-          : `已恢复「${result.data.title}」`,
+      text: result.data.renamed ? `已恢复，并重命名为「${result.data.title}」` : `已恢复「${result.data.title}」`,
       tone: "ok",
       boardId: item.id,
     });
@@ -256,21 +190,7 @@ export function TrashPage() {
   const handleRestore = async (item: TrashBoardItem) => {
     if (busyId) return;
     setSheetItem(null);
-    // 满额：先取候选，弹窗让用户选一块腾位置（不直接恢复）
-    if (needsReplace(item)) {
-      setBusyId(item.id);
-      await openReplace(item);
-      setBusyId(null);
-      return;
-    }
     await performRestore(item);
-  };
-
-  const confirmReplace = async () => {
-    if (!replace || replaceBusy) return;
-    setReplaceBusy(true);
-    await performRestore(replace.item, replace.pick);
-    setReplaceBusy(false);
   };
 
   const handlePurge = async () => {
@@ -339,7 +259,7 @@ export function TrashPage() {
           {allTotal > 0 ? <span className="wb-trash__badge wb-nums">{allTotal > 99 ? "99+" : allTotal}</span> : null}
         </span>
         {user ? (
-          <span className="wb-user-chip">
+          <span className="wb-user-chip" tabIndex={0}>
             <UserMark />
             <span className="wb-caption" data-testid="trash-user">
               {user.displayName}
@@ -526,10 +446,9 @@ export function TrashPage() {
                           disabled={busyId === item.id}
                           onClick={() => void handleRestore(item)}
                           data-testid="trash-restore"
-                          title={needsReplace(item) ? "列表已满，恢复前需要先选一块移入回收站" : undefined}
                         >
                           {busyId === item.id ? <span className="wb-spinner wb-spinner--sm" aria-hidden /> : <IconRestore size={14} />}
-                          {needsReplace(item) ? "恢复并替换…" : "恢复"}
+                          恢复
                         </button>
                         <button
                           className="wb-trash__act wb-trash__act--danger"
@@ -590,32 +509,6 @@ export function TrashPage() {
         ) : null}
       </div>
 
-      {replace ? (
-        <ConfirmDialog
-          title="空间已满，需要腾出一个位置"
-          description={`最多保留 ${replace.plan.capacity} 块白板。选一块移入回收站后再恢复「${replace.item.title}」，被替换的板随时可以再恢复。`}
-          confirmLabel="移入回收站并恢复"
-          busyLabel="正在恢复…"
-          busy={replaceBusy}
-          onCancel={() => setReplace(null)}
-          onConfirm={() => void confirmReplace()}
-        >
-          <div className="wb-trash__candidates" role="radiogroup" aria-label="选择要移入回收站的白板">
-            {replace.plan.candidates.map((candidate) => (
-              <label className="wb-trash__check" key={candidate.id}>
-                <input
-                  type="radio"
-                  name="wb-replace-board"
-                  checked={replace.pick === candidate.id}
-                  onChange={() => setReplace((prev) => (prev ? { ...prev, pick: candidate.id } : prev))}
-                />
-                <span>{candidate.title}</span>
-              </label>
-            ))}
-          </div>
-        </ConfirmDialog>
-      ) : null}
-
       {purgeTarget ? (
         <ConfirmDialog
           title={`彻底删除「${purgeTarget.title}」？`}
@@ -665,7 +558,7 @@ export function TrashPage() {
               onClick={() => void handleRestore(sheetItem)}
             >
               <IconRestore size={16} />
-              {needsReplace(sheetItem) ? "恢复并替换…" : "恢复白板"}
+              恢复白板
             </button>
             <button
               className="wb-sheet__item wb-sheet__item--danger"
@@ -703,8 +596,6 @@ function ConfirmDialog(props: {
   title: string;
   description: string;
   confirmLabel: string;
-  /** 进行中的文案：删除类默认「正在删除…」，恢复替换用「正在恢复…」 */
-  busyLabel?: string;
   busy: boolean;
   confirmDisabled?: boolean;
   onCancel: () => void;
@@ -734,6 +625,7 @@ function ConfirmDialog(props: {
         aria-label={props.title}
         onClick={(event) => event.stopPropagation()}
       >
+        <DialogClose onClose={props.onCancel} disabled={props.busy} />
         <h2 className="wb-dialog__title">{props.title}</h2>
         <p className="wb-dialog__desc">{props.description}</p>
         {props.children}
@@ -748,7 +640,7 @@ function ConfirmDialog(props: {
             onClick={props.onConfirm}
           >
             {props.busy ? <span className="wb-spinner wb-spinner--sm" aria-hidden /> : null}
-            {props.busy ? (props.busyLabel ?? "正在删除…") : props.confirmLabel}
+            {props.busy ? "正在删除…" : props.confirmLabel}
           </button>
         </div>
       </div>

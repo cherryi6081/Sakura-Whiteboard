@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
-import { CaptureUpdateAction, Excalidraw } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, MainMenu } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import type { AssetInfo } from "./assetApi";
 import { AssetApiError, fetchAssetAsDataUrl } from "./assetApi";
 import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
+import { IconBoard } from "../ui/icons";
 
 /** 画布内的中性配置：白底、新建元素默认描边为品牌色（视觉方案 §5.2）。网格默认关闭，不设 gridSize。 */
 const CANVAS_INITIAL_DATA = {
@@ -33,6 +34,12 @@ export type BoardCanvasHandle = {
    * `point` 是视口坐标（拖拽/按钮用），不传则落在视口中心。
    */
   insertImage: (asset: Pick<AssetInfo, "id" | "width" | "height" | "mime">, dataUrl: string, point?: { clientX: number; clientY: number } | null) => void;
+  /**
+   * 云端载入：整板替换当前画布。
+   * 走普通 `updateScene`（不重置派生基线），差异由 `onChange` 派生成本地 op 提交，
+   * 因此载入结果会像用户手动改画一样同步给协作者，而不是只在本标签页可见。
+   */
+  replaceElements: (elements: readonly any[]) => void;
 };
 
 type Props = {
@@ -43,6 +50,8 @@ type Props = {
   onApiReady?: (api: ExcalidrawImperativeAPI, handle: BoardCanvasHandle) => void;
   /** 一批合并后的元素级 op */
   onOps?: (ops: ElementOp[]) => void;
+  /** 云端载入入口（与库主菜单的「打开…」并列）；传 null 时不渲染，游客/只读看不到 */
+  onCloudLoad?: (() => void) | null;
 };
 
 let nonceSeed = 0;
@@ -64,7 +73,7 @@ const elementId = () =>
  * 远端/快照里的图片元素只带 `fileId`（= assetId），由这里按签名 URL 拉回字节补进 `addFiles`，
  * 元素先到、字节后到时会有背压重试，不会留下永久破图。
  */
-export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onApiReady, onOps }: Props) {
+export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onApiReady, onOps, onCloudLoad }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const deriverRef = useRef(createOpDeriver());
@@ -125,6 +134,15 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
         captureUpdate: CaptureUpdateAction.NEVER,
       });
       if (apiRef.current) ensureImageFiles(apiRef.current, 20);
+    },
+    replaceElements: (elements) => {
+      const api = apiRef.current;
+      if (!api) return;
+      api.updateScene({
+        elements: elements as any,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      ensureImageFiles(api, 20);
     },
     insertImage: (asset, dataUrl, point) => {
       const api = apiRef.current;
@@ -258,7 +276,31 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
           const ops = deriverRef.current.derive(elements as any);
           batcherRef.current.push(ops);
         }}
-      />
+      >
+        {/* 用库的 MainMenu 组合项替换默认菜单：默认菜单原样保留，
+            「从云端载入…」紧跟在「打开…」（本地文件）后面，两个来源并列。 */}
+        <MainMenu>
+          <MainMenu.DefaultItems.LoadScene />
+          {onCloudLoad ? (
+            <MainMenu.Item onSelect={onCloudLoad} icon={<IconBoard size={16} />}>
+              从云端载入…
+            </MainMenu.Item>
+          ) : null}
+          <MainMenu.DefaultItems.SaveToActiveFile />
+          <MainMenu.DefaultItems.Export />
+          <MainMenu.DefaultItems.SaveAsImage />
+          <MainMenu.DefaultItems.SearchMenu />
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.DefaultItems.ClearCanvas />
+          <MainMenu.Separator />
+          <MainMenu.Group title="Excalidraw links">
+            <MainMenu.DefaultItems.Socials />
+          </MainMenu.Group>
+          <MainMenu.Separator />
+          <MainMenu.DefaultItems.ToggleTheme />
+          <MainMenu.DefaultItems.ChangeCanvasBackground />
+        </MainMenu>
+      </Excalidraw>
     </div>
   );
 }

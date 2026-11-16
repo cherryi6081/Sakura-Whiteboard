@@ -291,7 +291,7 @@ async function runViewport(browser, viewport, ctx) {
       { label: '设置弹窗', selector: '.wb-space-settings' },
       { label: '成员列表', selector: '.wb-space-members' },
       { label: '成员行', selector: '.wb-space-members__row', all: true },
-      { label: '邀请角色选择', selector: '.wb-space-invite__role select' },
+      { label: '邀请角色选择', selector: '.wb-space-invite__role .wb-role-select__btn' },
       { label: '生成邀请链接按钮', selector: '.wb-space-invite .wb-btn--primary' },
       { label: '关闭按钮', selector: '.wb-space-settings__head .wb-btn' },
     ]);

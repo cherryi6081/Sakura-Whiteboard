@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { claimGuestBoards, type ClaimPreview, type ClaimResult } from "./authApi";
-import { IconAlert, IconClose } from "../ui/icons";
+import { IconAlert } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
 
 /**
- * 临时板转入账号（v1.8，全转或整体拒绝）。
+ * 临时板转入账号（全转，不做容量判定）。
  *
  * - 没有逐块勾选：要么「全部转入」，要么「暂不」；
- * - 容量由服务端判定：`已用 + N > 12` 时返回 `CAPACITY_FULL_TRANSFER`，弹窗给出准确文案；
+ * - 登录账号不限白板数量，转入不会因为「空间满」被拒，也不会淘汰/替换已有白板；
  * - 「暂不」不删 `wb_gid`，但这些板在登录状态下不可见，只有退出登录回到游客视图才会再出现。
  */
 
 const ERROR_TEXT: Record<string, string> = {
-  CAPACITY_FULL_TRANSFER: "空间已满，请先整理后再转入。",
   GUEST_COOKIE_INVALID: "游客身份已失效，无法确认哪些临时板属于这台浏览器。请退出后以游客身份打开一次，再重新登录转入。",
   UNAUTHENTICATED: "登录状态已失效，请重新登录后再转入。",
 };
@@ -20,18 +20,13 @@ export function ClaimDialog({
   preview,
   onClose,
   onClaimed,
-  onOrganize,
 }: {
   preview: ClaimPreview;
   onClose: () => void;
   onClaimed: (result: ClaimResult) => void;
-  /** 「去整理」：留在列表页腾名额，不跳转、不写「暂不」标记，腾完能直接重试 */
-  onOrganize: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [capacityBlocked, setCapacityBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const after = preview.used + preview.count;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -51,18 +46,13 @@ export function ClaimDialog({
       onClaimed(res.data);
       return;
     }
-    const detail = ERROR_TEXT[res.code];
-    setCapacityBlocked(res.code === "CAPACITY_FULL_TRANSFER");
-    setError(
-      res.code === "CAPACITY_FULL_TRANSFER"
-        ? `${detail}（已用 ${preview.used} / ${preview.capacity}，待转入 ${preview.count} 块，本次一块都没有转移）`
-        : detail ?? `转入失败（${res.code}），本次没有转移任何白板。`,
-    );
+    setError(ERROR_TEXT[res.code] ?? `转入失败（${res.code}），本次没有转移任何白板。`);
   };
 
   return (
     <div className="wb-overlay" data-testid="claim-dialog" role="dialog" aria-modal="true" aria-labelledby="claim-title">
       <div className="wb-dialog">
+        <DialogClose onClose={onClose} disabled={busy} />
         <div className="wb-dialog__head">
           <div style={{ flex: 1 }}>
             <h2 className="wb-title" id="claim-title">
@@ -72,19 +62,14 @@ export function ClaimDialog({
               临时板目前只存在这台浏览器，换设备或清缓存会丢失。全部转入后可在任何设备登录查看。
             </p>
           </div>
-          <button className="wb-drawer__close" type="button" onClick={onClose} aria-label="关闭" disabled={busy}>
-            <IconClose size={16} />
-          </button>
         </div>
 
         <p className="wb-caption" data-testid="claim-later-hint">
           选择「暂不」后，登录状态下看不到这些临时板，退出登录才会回来。
         </p>
 
-        <p className="wb-caption" data-testid="claim-capacity">
-          个人空间已用 <span className="wb-nums">{preview.used}</span> / <span className="wb-nums">{preview.capacity}</span>
-          ，全部转入后为 <span className="wb-nums">{after}</span> / <span className="wb-nums">{preview.capacity}</span>。
-          {preview.canTransfer ? null : " 超过上限时本次不会转移任何一块，也不会淘汰已有白板。"}
+        <p className="wb-caption" data-testid="claim-policy">
+          登录账号不限白板数量，全部转入不会替换或删除已有白板。
         </p>
 
         {error ? (
@@ -93,16 +78,6 @@ export function ClaimDialog({
             <span className="wb-inline-note__text" data-testid="claim-error">
               {error}
             </span>
-            {capacityBlocked ? (
-              <button
-                className="wb-link wb-inline-note__action"
-                type="button"
-                data-testid="claim-organize"
-                onClick={onOrganize}
-              >
-                去整理
-              </button>
-            ) : null}
           </div>
         ) : null}
 

@@ -12,7 +12,7 @@ import {
   batchPinBoards,
   batchTrashBoards,
   createShareLink,
-  fetchBoards,
+  fetchAllBoards,
   fetchTrashCount,
   renameBoard,
   reorderBoard,
@@ -52,6 +52,7 @@ import { SakuraBranch } from "./SakuraBranch";
 import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
 import { IconAlert, IconBoard, IconCheck, IconFlower, IconLogout, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
+import { DialogClose } from "../ui/DialogClose";
 import { UserMark } from "../ui/UserMark";
 import sakuraMark from "../assets/sakura-mark.png";
 import type { SpaceSummary } from "@whiteboard/shared";
@@ -63,13 +64,13 @@ import { SpaceSettings } from "./SpaceSettings";
 /**
  * 我的白板列表（视觉方案 §4.2）。
  *
- * - 登录用户：`GET /api/boards`（置顶优先，其次最近编辑倒序）；游客 401 → 展示本机"最近打开"。
+ * - 登录用户：`GET /api/boards`（置顶优先，其次最近编辑倒序），按页拉全，不限数量；游客 401 → 展示本机"最近打开"。
  * - 背景 A：天空渐变前四档在 420px 内淡回 `--bg`，右上角一枝樱花；<700px 隐藏枝条。
  * - 卡片缩略图来自进板首帧快照（IndexedDB `wb-cache/thumbs`），没有快照时回退线稿图标。
  * - 骨架与真实卡片同盒模型（16:10 缩略图 / 22px 标题行 / 24px 元信息行）；
  *   加载超过 200ms 才显示骨架，数据到达时两者交叉淡出淡入，首屏不闪白、不位移。
- * - 一页最多 12 张（4 列 × 3 行），不翻页；服务端在创建第 13 块时淘汰一块，
- *   所以正常情况下列表永远不超过 12。
+ * - 登录账号不限量：`fetchAllBoards` 按页拉全，超过一屏时网格自然续行、页面可滚动；
+ *   `BOARDS_CAPACITY` 只用于游客视图的「N / 12」计数。
  */
 
 type ViewState =
@@ -78,7 +79,12 @@ type ViewState =
   | { kind: "user"; items: BoardListItem[]; user: { displayName: string } }
   | { kind: "error"; message: string }
   /** `?space=` 指向的空间不存在 / 已不是成员：404 面板，不自动回退 */
-  | { kind: "missing" };
+  | { kind: "missing" }
+  /**
+   * 身份未知：`/api/auth/me` 网络失败 / 超时（不是 401）。
+   * 既不能当登录用户，也不能当游客——不渲染游客视图，不写任何本机记录。
+   */
+  | { kind: "unknown" };
 
 type CardModel = {
   id: string;
@@ -136,8 +142,6 @@ type TrashConfirm = {
 
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
-/** 列表容量 15（桌面 4 列 × 3 行只能完整显示 12 张，多出的续到第 4 行、页面可滚动） */
-const FETCH_LIMIT = BOARDS_CAPACITY;
 /** 700 以下交给 CSS 单列滚动，不再按宽度均分 */
 const MOBILE_BREAKPOINT = 700;
 const SPACE_ROLE_LABEL: Record<string, string> = {
@@ -202,6 +206,8 @@ export function BoardsPage() {
   // 拖拽排序：组内接管（方案 B），置顶组与普通组固定，不跨组
   const [sortMode, setSortModeState] = useState<BoardSortMode>("auto");
   const [previewIds, setPreviewIds] = useState<string[] | null>(null);
+  // 每 12 格展开一次：首屏 11 张 + 第 12 格占位，点一次再追加 11 张
+  const [expandedRounds, setExpandedRounds] = useState(0);
   const [drag, setDrag] = useState<DragSession | null>(null);
   const [movedId, setMovedId] = useState<string | null>(null);
   const [sortBusy, setSortBusy] = useState(false);
@@ -228,8 +234,8 @@ export function BoardsPage() {
     owner,
   });
 
-  const load = useCallback(async (targetSpace?: string) => {
-    setView({ kind: "loading" });
+  const load = useCallback(async (targetSpace?: string, quiet = false) => {
+    if (!quiet) setView({ kind: "loading" });
     setSelectMode(false);
     setSelected(new Set());
     setAllScope(false);
@@ -243,7 +249,15 @@ export function BoardsPage() {
     previewGroupsRef.current = null;
     const me = await fetchMe();
     if (!me.ok) {
-      // 未登录：列表完全来自本机临时板，不保留任何服务端列表/空间/计数状态
+      if (me.status !== 401) {
+        // 网络失败 / 超时 / 服务端不可达：身份未知。
+        // 保留 owner、空间与本地最近记录（不清、不改成游客），只换成「身份未知」态；
+        // 游客视图的建板、认领横幅等写操作在这个分支下一律不渲染。
+        setClaimBarVisible(false);
+        setView({ kind: "unknown" });
+        return;
+      }
+      // 401：确实未登录，列表完全来自本机临时板，不保留任何服务端列表/空间/计数状态
       setActiveOwner(GUEST_OWNER);
       setOwner(GUEST_OWNER);
       setSpaces([]);
@@ -276,7 +290,7 @@ export function BoardsPage() {
     spaceIdRef.current = candidate;
     setSpaceId(candidate);
 
-    const list = await fetchBoards(FETCH_LIMIT, 0, candidate);
+    const list = await fetchAllBoards(candidate);
     if (!list.ok) {
       setView(list.status === 404 ? { kind: "missing" } : { kind: "error", message: "列表没刷新成功" });
       return;
@@ -301,6 +315,26 @@ export function BoardsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 身份未知态自动重试：联网恢复立即试一次，服务端恢复靠 6s 轮询；
+  // quiet 重试不切回骨架，面板原地变成正常登录视图。
+  useEffect(() => {
+    if (view.kind !== "unknown") return;
+    let inflight = false;
+    const retry = () => {
+      if (inflight) return;
+      inflight = true;
+      void load(undefined, true).finally(() => {
+        inflight = false;
+      });
+    };
+    window.addEventListener("online", retry);
+    const timer = window.setInterval(retry, 6_000);
+    return () => {
+      window.removeEventListener("online", retry);
+      window.clearInterval(timer);
+    };
+  }, [view.kind, load]);
 
   // 前进 / 后退按地址栏重新加载；切空间用 pushState，刷新后仍停在同一个空间
   useEffect(() => {
@@ -528,30 +562,42 @@ export function BoardsPage() {
   const skeletonActive = view.kind === "loading" || (listReady && cards.length > 0 && !thumbsReady);
   const skeletonPhase = useSkeletonPhase(skeletonActive);
 
-  // 容量 12：服务端已按容量淘汰，这里再截一次兜底（脏数据/竞态时不渲染第 13 张）
-  const paged = cards.slice(0, BOARDS_CAPACITY);
-  // 拖拽中的乐观顺序：只在预览里重排，松手保存成功后才回落到服务端顺序
+  // 登录账号不限量，列表已按页拉全，不再截断
   const visible = previewIds
     ? (() => {
-        const byId = new Map(paged.map((card) => [card.id, card]));
+        const byId = new Map(cards.map((card) => [card.id, card]));
         const ordered = previewIds
           .map((id) => byId.get(id))
           .filter((card): card is CardModel => Boolean(card));
         const seen = new Set(ordered.map((card) => card.id));
-        return [...ordered, ...paged.filter((card) => !seen.has(card.id))];
+        return [...ordered, ...cards.filter((card) => !seen.has(card.id))];
       })()
-    : paged;
+    : cards;
+
+  // 占位格只在「总数超过 12」时出现：12 张及以内一律完整展示，末位就是那块白板。
+  // 超过 12 时一屏 12 格 = 11 张卡 + 第 12 格占位；点一次补上第 12 块再追加 11 块，
+  // 因此每轮显示数增加 12（11 → 23 → 35），占位落在 12 / 24 / 36 格，最后一批铺满即消失。
+  const collapsed = visible.length <= BOARDS_CAPACITY;
+  const shownCount = collapsed
+    ? visible.length
+    : BOARDS_CAPACITY - 1 + expandedRounds * BOARDS_CAPACITY;
+  const shownCards = visible.slice(0, shownCount);
+  const remainingCount = visible.length - shownCards.length;
+  useEffect(() => {
+    setExpandedRounds(0);
+  }, [currentSpace?.id]);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
   // 只读成员不能批量选择（批量动作全是写操作）；游客可以，但只保留物理删除
   const isSelectable = isGuest || (view.kind === "user" && !readOnly);
   const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly;
-  const groupsNow = splitGroups(visible);
+  const groupsNow = splitGroups(shownCards);
   const groupIdsOf = (group: DragGroupKey): string[] =>
     (group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card) => card.id);
 
   /**
    * 桌面端宽度优先：卡片宽度只由列宽决定，四列均分内容区并铺满，不因高度不足而缩小。
-   * 页头留白收一档（上下 16、网格上边距 8）当作软预算；三行仍放不下时让页面滚动。
+   * 顶栏按设计稿抬到 64px 给空间切换条留呼吸（见 pages.css），多出的 20px 从页头留白里回收：
+   * 上下 8、网格上边距 4，正好抵消，一屏卡片数与改动前一致，不额外引出滚动条。
    */
   const cardCount = groupsNow.pinned.length + groupsNow.others.length;
   useLayoutEffect(() => {
@@ -575,9 +621,9 @@ export function BoardsPage() {
       }
       const width = grid.clientWidth;
       if (!(width > 0)) return;
-      container?.style.setProperty("padding-top", "16px");
-      container?.style.setProperty("padding-bottom", "16px");
-      wrapper?.style.setProperty("margin-top", "8px");
+      container?.style.setProperty("padding-top", "8px");
+      container?.style.setProperty("padding-bottom", "8px");
+      wrapper?.style.setProperty("margin-top", "4px");
       const { cardWidth, columns } = boardsLayout({ width });
       grid.style.setProperty("--wb-card-w", `${cardWidth}px`);
       grid.style.setProperty("--wb-cols", String(columns));
@@ -642,7 +688,7 @@ export function BoardsPage() {
   };
 
   const extendSelection = (id: string) => {
-    const order = visible.map((card) => card.id);
+    const order = shownCards.map((card) => card.id);
     const range = rangeIds(order, anchorId ?? id, id);
     setSelected((current) => new Set([...current, ...range]));
     setAllScope(false);
@@ -656,7 +702,7 @@ export function BoardsPage() {
     if (!isSelectable) return;
     setSelectMode(true);
     if (extend) {
-      const order = visible.map((card) => card.id);
+      const order = shownCards.map((card) => card.id);
       setSelected((current) => new Set([...current, ...rangeIds(order, anchorId ?? id, id)]));
     } else {
       setSelected((current) => new Set([...current, id]));
@@ -668,7 +714,7 @@ export function BoardsPage() {
   };
 
   const toggleAll = () => {
-    const ids = visible.map((card) => card.id);
+    const ids = shownCards.map((card) => card.id);
     if (selectionState(ids, selected) === "all") {
       setSelected((current) => {
         const next = new Set(current);
@@ -694,11 +740,11 @@ export function BoardsPage() {
     setSelected(new Set());
     setAllScope(false);
     setAnchorId(null);
-    setFocusedId(visible[0]?.id ?? null);
+    setFocusedId(shownCards[0]?.id ?? null);
   };
 
   const invertVisible = () => {
-    const ids = visible.map((card) => card.id);
+    const ids = shownCards.map((card) => card.id);
     setSelected((current) => {
       const next = new Set(current);
       ids.forEach((id) => (next.has(id) ? next.delete(id) : next.add(id)));
@@ -712,7 +758,7 @@ export function BoardsPage() {
     if (!id) return;
     setFocusedId(id);
     if (extend) {
-      const order = visible.map((card) => card.id);
+      const order = shownCards.map((card) => card.id);
       const range = rangeIds(order, anchorId ?? id, id);
       setSelected((current) => new Set([...current, ...range]));
       setAllScope(false);
@@ -740,7 +786,7 @@ export function BoardsPage() {
     const target = event.target as HTMLElement;
     const current =
       target.closest<HTMLElement>("[data-select-check]")?.dataset.selectCheck ?? null;
-    const order = visible.map((card) => card.id);
+    const order = shownCards.map((card) => card.id);
     const index = current ? order.indexOf(current) : -1;
 
     if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -849,7 +895,7 @@ export function BoardsPage() {
   };
 
   const refreshList = useCallback(async () => {
-    const list = await fetchBoards(FETCH_LIMIT, 0, spaceIdRef.current || undefined);
+    const list = await fetchAllBoards(spaceIdRef.current || undefined);
     if (!list.ok) return;
     setSortModeState(list.data.sortMode);
     setView((current) =>
@@ -1663,7 +1709,7 @@ export function BoardsPage() {
           </a>
         ) : null}
         {view.kind === "user" ? (
-          <span className="wb-user-chip">
+          <span className="wb-user-chip" tabIndex={0}>
             <UserMark />
             <span className="wb-caption" data-testid="boards-user">
               {view.user.displayName}
@@ -1696,7 +1742,7 @@ export function BoardsPage() {
       ) : null}
 
       <div className="wb-container wb-container--boards">
-        {selectMode && isSelectable ? (
+        {view.kind === "unknown" ? null : selectMode && isSelectable ? (
           <BatchSelectionBar
             cards={cards}
             visible={visible}
@@ -1734,12 +1780,18 @@ export function BoardsPage() {
                   </span>
                 ) : null}
                 {listReady ? (
-                  <span
-                    className={`wb-boards__count wb-nums${view.items.length >= BOARDS_CAPACITY ? " is-full" : ""}`}
-                    title={`最多 ${BOARDS_CAPACITY} 块，满了之后新建会先淘汰一块最早未使用的`}
-                  >
-                    {view.items.length} / {BOARDS_CAPACITY}
-                  </span>
+                  isGuest ? (
+                    <span
+                      className={`wb-boards__count wb-nums${view.items.length >= BOARDS_CAPACITY ? " is-full" : ""}`}
+                      title={`游客最多 ${BOARDS_CAPACITY} 块，满了之后新建会先淘汰一块最早未使用的；登录后不限数量`}
+                    >
+                      {view.items.length} / {BOARDS_CAPACITY}
+                    </span>
+                  ) : (
+                    <span className="wb-boards__count wb-nums" title="当前空间的白板总数">
+                      {view.items.length} 块
+                    </span>
+                  )
                 ) : null}
               </div>
             </div>
@@ -1785,7 +1837,7 @@ export function BoardsPage() {
                 </span>
               ) : (
                 <button
-                  className="wb-btn wb-btn--primary"
+                  className="wb-btn wb-btn--primary wb-btn--pill"
                   type="button"
                   onClick={() => void start()}
                   disabled={busy}
@@ -1822,6 +1874,23 @@ export function BoardsPage() {
             </button>
             <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={dismissClaimBar} data-testid="claim-banner-later">
               暂不
+            </button>
+          </div>
+        ) : null}
+
+        {view.kind === "unknown" ? (
+          <div className="wb-panel--error" style={{ marginTop: "var(--space-6)" }} role="status" data-testid="boards-unknown">
+            <h2 className="wb-subtitle">连不上服务器，暂时无法确认登录状态</h2>
+            <p className="wb-caption">
+              你的白板与最近记录都还在本地。恢复网络后会自动重试，也可以点下面的按钮立即重试。
+            </p>
+            <button
+              className="wb-btn wb-btn--primary"
+              type="button"
+              onClick={() => void load()}
+              data-testid="boards-unknown-retry"
+            >
+              重试
             </button>
           </div>
         ) : null}
@@ -1896,6 +1965,23 @@ export function BoardsPage() {
                   </>
                 ) : null}
                 {groupsNow.others.map(renderBoardCard)}
+                {remainingCount > 0 ? (
+                  <button
+                    className="wb-card wb-board-card wb-board-card--more"
+                    type="button"
+                    data-testid="boards-more"
+                    aria-label={`展开剩余 ${remainingCount} 块白板`}
+                    onClick={() => setExpandedRounds((round) => round + 1)}
+                  >
+                    <span className="wb-board-card__thumb wb-board-card__thumb--more" aria-hidden>
+                      <span className="wb-board-card__more-count wb-nums">+{remainingCount}</span>
+                    </span>
+                    <span className="wb-board-card__title">还有 {remainingCount} 块白板</span>
+                    <span className="wb-board-card__meta">
+                      <span>点击展开</span>
+                    </span>
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
@@ -2021,6 +2107,7 @@ export function BoardsPage() {
               }
             }}
           >
+            <DialogClose onClose={() => setGuestTrash(null)} disabled={guestTrashBusy} />
             <h2 className="wb-dialog__title" id="wb-guest-trash-title">
               删除临时板「{guestTrash.title}」？
             </h2>
@@ -2097,16 +2184,6 @@ export function BoardsPage() {
           onClose={() => {
             setDialogOpen(false);
             setClaimBarVisible(false);
-          }}
-          onOrganize={() => {
-            // 留在本页腾名额：不写「暂不」标记、不清 preview，横幅与「全部转入」都还在，
-            // 删掉白板后 refreshClaimPreview 会刷新用量，可以直接重试。
-            setDialogOpen(false);
-            setToast(`请先删除至少 ${preview.count - (preview.capacity - preview.used)} 块白板腾出名额，再点横幅上的「全部转入」。`);
-            void refreshClaimPreview();
-            window.requestAnimationFrame(() => {
-              document.querySelector('[data-testid="claim-banner"]')?.scrollIntoView({ block: "nearest" });
-            });
           }}
           onClaimed={(result) => {
             setDialogOpen(false);
@@ -2584,7 +2661,7 @@ function EmptyState({
       <h2 className="wb-title">{title}</h2>
       <p className="wb-caption">{hint}</p>
       <div className="wb-empty__actions">
-        <button className="wb-btn wb-btn--primary" type="button" onClick={onNew}>
+        <button className="wb-btn wb-btn--primary wb-btn--pill" type="button" onClick={onNew}>
           新建第一块
         </button>
         {onLogin ? (

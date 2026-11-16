@@ -99,12 +99,12 @@ describe('pickEvictionCandidate', () => {
     expect(EVICTION_POLICY).toBe('opened_count asc, created_at asc, id asc');
   });
 
-  it('容量是共享常量里的 12（全仓唯一来源）', () => {
+  it('容量是共享常量里的 12（游客上限，全仓唯一来源）', () => {
     expect(BOARD_CAPACITY).toBe(12);
   });
 });
 
-describe('listEvictionCandidates（恢复时的替换候选）', () => {
+describe('listEvictionCandidates（游客建板淘汰候选）', () => {
   it('按打开次数 → 创建时间 → id 排好，供弹窗直接展示', () => {
     const rows = full().map((row) => ({ ...row, openedCount: 5 }));
     rows[4] = { ...rows[4]!, openedCount: 0 };

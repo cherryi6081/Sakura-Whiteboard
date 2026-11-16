@@ -6,12 +6,11 @@ import { boardIds, launchBrowser, newPage } from "../lib/browser.mjs";
 import { closePool, query } from "../lib/db.mjs";
 
 /**
- * 游客临时板转入账号（v1.8，全转或整体拒绝）：
+ * 游客临时板转入账号（上限只针对游客，登录账号不限量）：
  * - 3 + 5 → 全转入，列表 8 块，缩略图与本机「最近打开」一起搬家，刷新保持；
- * - 5 + 10 → 429 CAPACITY_FULL_TRANSFER，账号仍 10 块、游客板一块没动；
- *   去整理不跳转，删够 3 块后横幅仍在，重新发起可转入满 12；
- * - 12 + 0 → 12 块刚好转入，重复提交返回 transferred:0；
- * - 两个标签同时提交，最终 ≤12 且不重复；
+ * - 5 + 10 → 全部转入 15 块（超过 12 也能进），不再有「容量不足 / 去整理 / 暂不」分支；
+ * - 12 + 0 → 12 块全部转入，重复提交返回 transferred:0；
+ * - 两个标签同时提交，最终 12 块且不重复；
  * - 游客 cookie 缺失/失效 → 409 GUEST_COOKIE_INVALID；请求里夹带别人的 boardIds 无效。
  */
 
@@ -211,6 +210,21 @@ async function waitCards(page, count, label) {
   await until(async () => (await boardIds(page)).length === count, { label, timeout: 25_000 });
 }
 
+/** 超过 11 块时点掉「更多」占位格，直到全部卡片可见（同时等待异步刷新落定） */
+async function revealAll(page, count, label) {
+  await until(
+    async () => {
+      if ((await boardIds(page)).length === count) return true;
+      const more = await page.$('[data-testid="boards-more"]');
+      if (!more) return false;
+      await more.click();
+      await sleep(200);
+      return false;
+    },
+    { label, timeout: 25_000 },
+  );
+}
+
 async function openClaimDialogFromBanner(page) {
   await page.waitForSelector('[data-testid="claim-banner"]', { timeout: 20_000 });
   await page.click('[data-testid="claim-banner-open"]');
@@ -247,8 +261,8 @@ async function main() {
       await waitCards(page, 5, "账号 5 块");
       await openClaimDialogFromBanner(page);
 
-      const capacity = await page.$eval('[data-testid="claim-capacity"]', (node) => node.textContent ?? "");
-      assert(capacity.includes("5") && capacity.includes("8"), `容量文案应含 5 与 8：${capacity}`);
+      const policy = await page.$eval('[data-testid="claim-policy"]', (node) => node.textContent ?? "");
+      assert(policy.includes("不限"), `弹窗应说明账号不限数量：${policy}`);
       await page.click('[data-testid="claim-submit"]');
       await page.waitForFunction(
         () => (document.querySelector(".wb-toast")?.textContent ?? "").includes("已转入 3 块"),
@@ -308,16 +322,16 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
-    // B. 游客 5 + 账号 10 → 429，账号仍 10 块、游客 5 块未动；390 夜间弹窗
+    // B. 游客 5 + 账号 10 → 无条件全部转入 15 块；390 夜间弹窗不溢出
     // ---------------------------------------------------------------
-    await test("游客 5 + 账号 10：整体拒绝，双方数量不变；390 夜间弹窗不溢出", async () => {
+    await test("游客 5 + 账号 10：全部转入 15 块，无容量拒绝分支；390 夜间弹窗不溢出", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
       const first = await createGuestBoard(page);
       const guestId = await guestIdOf(first);
       const seeded = await seedGuestBoards(guestId, 4, "B种子");
       assert(seeded.length === 4, "种子板 4 块");
-      await registerViaUi(page, `claim.b.${Date.now()}@example.com`, "满容量");
+      await registerViaUi(page, `claim.b.${Date.now()}@example.com`, "超十二块");
       await page.click('[data-testid="claim-later"]');
       await page.waitForSelector('[data-testid="boards-empty"]', { timeout: 25_000 });
       await createBoardsThroughApi(page, 10, "B账号");
@@ -325,14 +339,11 @@ async function main() {
       await page.reload({ waitUntil: "networkidle2" });
       await waitCards(page, 10, "账号 10 块");
       await openClaimDialogFromBanner(page);
-      await page.click('[data-testid="claim-submit"]');
-      await page.waitForSelector('[data-testid="claim-error"]', { timeout: 25_000 });
-      const message = await page.$eval('[data-testid="claim-error"]', (node) => node.textContent ?? "");
-      assert(message.includes("空间已满"), `应提示空间已满：${message}`);
-      assert(message.includes("10 / 12") && message.includes("5 块"), `文案应含用量与块数：${message}`);
-      assert(await page.$('[data-testid="claim-organize"]'), "容量不足时应给「去整理」入口");
+      const policy = await page.$eval('[data-testid="claim-policy"]', (node) => node.textContent ?? "");
+      assert(policy.includes("不限"), `弹窗应说明账号不限数量：${policy}`);
+      eq(await page.$('[data-testid="claim-organize"]'), null, "不应再出现「去整理」入口");
 
-      // 390 × 夜间：错误态弹窗不横向溢出（弹窗保持打开，切视口与主题即可）
+      // 390 × 夜间：弹窗不横向溢出（提交前）
       await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
       await page.evaluate(() => {
         document.documentElement.dataset.theme = "night";
@@ -341,7 +352,7 @@ async function main() {
       const metrics = await page.evaluate(() => {
         const dialog = document.querySelector('[data-testid="claim-dialog"] .wb-dialog');
         const rect = dialog?.getBoundingClientRect();
-        const btn = document.querySelector('[data-testid="claim-organize"]');
+        const btn = document.querySelector('[data-testid="claim-submit"]');
         return {
           width: Math.round(rect?.width ?? 0),
           left: Math.round(rect?.left ?? 0),
@@ -355,39 +366,28 @@ async function main() {
       assert(metrics.width > 0 && metrics.width <= metrics.innerWidth, `弹窗宽 ${metrics.width} 超出 ${metrics.innerWidth}`);
       assert(metrics.left >= 0, `弹窗左边距 ${metrics.left}`);
       assert(metrics.scrollWidth <= metrics.innerWidth, `横向溢出：${metrics.scrollWidth} > ${metrics.innerWidth}`);
-      assert(metrics.buttonHeight < 30, `「去整理」被折行：高 ${metrics.buttonHeight}px`);
+      assert(metrics.buttonHeight > 30 && metrics.buttonHeight <= 44, `「全部转入」按钮高度异常：${metrics.buttonHeight}px`);
       eq(metrics.theme, "night", "应处于夜间主题");
       await page.screenshot({ path: screenshotPath("claim-390-night") });
 
-      // 去整理：不跳转、关闭弹窗、横幅保留，并提示还需腾几块
       await page.setViewport({ width: 1440, height: 950, deviceScaleFactor: 1 });
       await page.evaluate(() => {
         delete document.documentElement.dataset.theme;
       });
       await sleep(300);
-      await page.click('[data-testid="claim-organize"]');
-      await until(async () => !(await page.$('[data-testid="claim-dialog"]')), { label: "去整理关闭弹窗", timeout: 10_000 });
-      eq(new URL(page.url()).pathname, "/boards", "去整理留在列表页");
-      assert(await page.$('[data-testid="claim-banner"]'), "去整理后横幅仍在，可继续转入");
-      const hint = await page.$eval(".wb-toast", (node) => node.textContent ?? "");
-      assert(hint.includes("3"), `提示应说明还需腾 3 块：${hint}`);
-      eq(await countBoards("owner_guest_id", guestId), 5, "游客板一块都没动");
-      await page.screenshot({ path: screenshotPath("claim-rejected") });
-
-      // 续传：腾出名额后横幅还在，重新「全部转入」→ 12 块
-      const toFree = (await boardIds(page)).slice(0, 3);
-      for (const id of toFree) {
-        await page.click(`[data-board-id="${id}"] .wb-board-card__more`);
-        await page.waitForSelector('[data-menu-key="trash"]', { timeout: 8_000 });
-        await page.click('[data-menu-key="trash"]');
-        await sleep(600);
-      }
-      await waitCards(page, 7, "删 3 块后账号 7 块");
-      assert(await page.$('[data-testid="claim-banner"]'), "删板后横幅仍在");
-      await openClaimDialogFromBanner(page);
       await page.click('[data-testid="claim-submit"]');
-      await waitCards(page, 12, "续传后 12 块");
-      eq(await countBoards("owner_guest_id", guestId), 0, "腾出名额后游客板应全部转入");
+      await revealAll(page, 15, "转入后 15 块");
+      eq(await countBoards("owner_guest_id", guestId), 0, "游客板应全部转入，一块不剩");
+
+      const me = await currentUser(page);
+      eq(await countBoards("owner_id", me.id), 15, "账号侧 15 块全部到位");
+      const placed = await Promise.all(seeded.map((id) => boardRow(id)));
+      eq(
+        placed.every((row) => row && row.owner_id === me.id && row.owner_guest_id === null && row.space_id),
+        true,
+        "转入后归属与个人空间都写入",
+      );
+      await page.screenshot({ path: screenshotPath("claim-transfer-over-12") });
       await context.close();
     });
 
@@ -405,7 +405,7 @@ async function main() {
       assert(title.includes("12"), `弹窗应显示 12 块：${title}`);
       await page.click('[data-testid="claim-submit"]');
       await page.waitForSelector('[data-testid="boards-grid"]', { timeout: 25_000 });
-      await waitCards(page, 12, "转入后 12 块");
+      await revealAll(page, 12, "转入后 12 块");
       eq(await countBoards("owner_guest_id", guestId), 0, "游客板应清空");
       const me = await currentUser(page);
       eq(await countBoards("owner_id", me.id), 12, "账号侧 12 块");
@@ -417,14 +417,14 @@ async function main() {
       eq(repeat.status, 200, "重复提交仍返回 200");
       eq(repeat.body.transferred, 0, "重复提交不翻倍");
       await page.reload({ waitUntil: "networkidle2" });
-      await waitCards(page, 12, "刷新后仍 12 块");
+      await revealAll(page, 12, "刷新后仍 12 块");
       await context.close();
     });
 
     // ---------------------------------------------------------------
     // D. 两个标签同时提交
     // ---------------------------------------------------------------
-    await test("两个标签同时点「全部转入」：结果 ≤12 且不重复", async () => {
+    await test("两个标签同时点「全部转入」：最终 12 块且不重复", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
       const first = await createGuestBoard(page);
@@ -455,11 +455,16 @@ async function main() {
         second.evaluate(() => document.querySelector('[data-testid="claim-submit"]')?.click()),
       ]);
 
+      // 后台标签页在 headless 下会被节流，后续 reload / evaluate 可能挂到 protocolTimeout；
+      // 并发提交已经完成，关掉第二页再收尾，避免整段卡死。
+      await page.bringToFront();
+      await second.close();
+
       const me = await currentUser(page);
       await until(async () => (await countBoards("owner_id", me.id)) === 12, { label: "最终 12 块", timeout: 25_000 });
       eq(await countBoards("owner_guest_id", guestId), 0, "游客板应清空");
       await page.reload({ waitUntil: "networkidle2" });
-      await waitCards(page, 12, "双标签最终 12 块");
+      await revealAll(page, 12, "双标签最终 12 块");
       const ids = await boardIds(page);
       eq(new Set(ids).size, ids.length, "不应出现重复卡片");
       await page.bringToFront();

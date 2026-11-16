@@ -10,6 +10,8 @@ import {
   type SpaceInvite,
   type SpaceMember,
 } from "./spaceApi";
+import { DialogClose } from "../ui/DialogClose";
+import { ListSelect } from "../ui/ListSelect";
 
 /**
  * 空间设置（设计稿 §07）。
@@ -36,6 +38,14 @@ type Props = {
 };
 
 type ConfirmKind = "leave" | "dissolve" | "transfer";
+
+/** 邀请链接的两种角色；取值与后端 createSpaceInvite 保持一致 */
+const INVITE_ROLE_OPTIONS = [
+  { value: "editor", title: "编辑者", description: "可创建、编辑和删除白板" },
+  { value: "viewer", title: "只读", description: "只能查看，不能修改" },
+] as const;
+
+type InviteRole = (typeof INVITE_ROLE_OPTIONS)[number]["value"];
 
 function actionErrorText(code: string): string {
   switch (code) {
@@ -64,13 +74,12 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
   const [members, setMembers] = useState<SpaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("viewer");
+  const [inviteRole, setInviteRole] = useState<InviteRole>("viewer");
   const [invite, setInvite] = useState<SpaceInvite | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [transferTo, setTransferTo] = useState("");
-  const [dissolveText, setDissolveText] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -145,7 +154,6 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
   const openConfirm = (kind: ConfirmKind) => {
     setConfirm(kind);
     setActionError(null);
-    setDissolveText("");
   };
 
   const runLeave = async () => {
@@ -163,7 +171,7 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
   };
 
   const runDissolve = async () => {
-    if (actionBusy || dissolveText.trim() !== space.name) return;
+    if (actionBusy) return;
     setActionBusy(true);
     setActionError(null);
     const result = await dissolveSpace(space.id);
@@ -230,10 +238,8 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
               {space.memberCount} 位成员 · 你的角色：{ROLE_TEXT[space.role]}
             </p>
           </div>
-          <button className="wb-btn wb-btn--ghost" type="button" onClick={onClose}>
-            关闭
-          </button>
         </div>
+        <DialogClose onClose={onClose} />
 
         <section className="wb-space-settings__section" aria-labelledby="wb-space-members-title">
           <h3 className="wb-space-settings__subtitle" id="wb-space-members-title">
@@ -272,19 +278,19 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
           {owner ? (
             <>
               <div className="wb-space-invite">
-                <label className="wb-field wb-space-invite__role">
-                  <span className="wb-field__label">加入后角色</span>
-                  <span className="wb-select-wrap">
-                    <select
-                      className="wb-select wb-select--lg"
-                      value={inviteRole}
-                      onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
-                    >
-                      <option value="viewer">只读</option>
-                      <option value="editor">编辑者</option>
-                    </select>
+                <div className="wb-field wb-space-invite__role">
+                  <span className="wb-field__label" id="wb-space-invite-role-label">
+                    加入后角色
                   </span>
-                </label>
+                  <ListSelect
+                    value={inviteRole}
+                    options={INVITE_ROLE_OPTIONS}
+                    onChange={setInviteRole}
+                    labelledBy="wb-space-invite-role-label"
+                    disabled={inviteBusy}
+                    testId="invite-role-trigger"
+                  />
+                </div>
                 <button className="wb-btn wb-btn--primary" type="button" onClick={() => void generate()} disabled={inviteBusy}>
                   {inviteBusy ? "生成中…" : invite ? "重新生成" : "生成并复制链接"}
                 </button>
@@ -437,6 +443,7 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
             }
           }}
         >
+          <DialogClose onClose={() => setConfirm(null)} disabled={actionBusy} />
           {confirm === "leave" ? (
             <>
               <h2 className="wb-dialog__title" id="wb-space-confirm-title">
@@ -475,23 +482,11 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
               <p className="wb-dialog__desc">
                 空间本身无法恢复。所有白板会移到你的个人空间并进入回收站，30 天内可恢复；其他成员会立即失去访问权限。
               </p>
-              <label className="wb-field">
-                <span className="wb-field__label">输入空间名称「{space.name}」确认</span>
-                <input
-                  className="wb-input"
-                  value={dissolveText}
-                  autoFocus
-                  onChange={(event) => {
-                    setDissolveText(event.target.value);
-                    if (actionError) setActionError(null);
-                  }}
-                  data-testid="space-dissolve-input"
-                />
-              </label>
               <div className="wb-dialog__actions">
                 <button
                   className="wb-btn wb-btn--ghost"
                   type="button"
+                  autoFocus
                   onClick={() => setConfirm(null)}
                   disabled={actionBusy}
                 >
@@ -501,7 +496,7 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
                   className="wb-btn wb-btn--danger"
                   type="button"
                   onClick={() => void runDissolve()}
-                  disabled={actionBusy || dissolveText.trim() !== space.name}
+                  disabled={actionBusy}
                   data-testid="space-dissolve-confirm"
                 >
                   {actionBusy ? "解散中…" : "确认解散"}

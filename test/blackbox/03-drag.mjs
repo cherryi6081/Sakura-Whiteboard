@@ -55,7 +55,15 @@ async function main() {
   const browser = await launchBrowser();
   try {
     const { page } = await newPage(browser, { cookie: user.api.sessionCookie, width: 1440, height: 950 });
-    await openBoards(page);
+    // 12 块时首屏是 11 张 + 占位格，先展开到全部 12 张再测拖拽
+    const openAll = async () => {
+      await openBoards(page);
+      if (await page.$('[data-testid="boards-more"]')) {
+        await page.click('[data-testid="boards-more"]');
+        await until(async () => (await boardIds(page)).length === 12, { label: "展开到 12 张" });
+      }
+    };
+    await openAll();
     const original = await boardIds(page);
     eq(original.length, 12, "初始卡片数");
     eq((await page.$$eval('[data-testid="boards-grid"] .wb-boards__group-title', (nodes) => nodes.length)), 0, "无置顶分组");
@@ -120,7 +128,7 @@ async function main() {
       const apiList = await user.api.list();
       eq(apiList.json.sortMode, "manual", "首次拖拽后切换为手动顺序");
       eq(apiList.json.boards.map((board) => board.id), beforeReload, "API 顺序与界面一致");
-      await openBoards(page);
+      await openAll();
       eq(await boardIds(page), beforeReload, "刷新后顺序不变");
     });
 
