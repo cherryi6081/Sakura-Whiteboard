@@ -154,11 +154,16 @@ async function main() {
       await boardsPage.screenshot({ path: screenshotPath("logout-before-1440x950") });
     });
 
-    await test("退出瞬间：首帧即游客视图，全程无旧账号内容", async () => {
+    await test("退出瞬间：首帧即游客视图，先落到公共板，全程无旧账号内容", async () => {
       await watchFrames(boardsPage);
       await logoutFromHome(home);
       await boardsPage.waitForSelector('[data-testid="boards-login"]', { timeout: 15_000 });
-      await until(async () => (await boardsPage.$('[data-testid="boards-empty"]')) !== null, { label: "游客空态" });
+      const guestIds = await until(async () => {
+        const ids = await boardIds(boardsPage);
+        return ids.length === 1 ? ids : false;
+      }, { label: "游客公共板", timeout: 15_000 });
+      eq(guestIds.length, 1, "游客视图只有一块公共板");
+      assert(!oldIds.includes(guestIds[0]), "公共板不应是账号里的任何一块");
       const frames = await readFrames(boardsPage);
       const flip = frames.findIndex((frame) => frame.user === null);
       assert(flip >= 0, `应记录到退出后的帧，实得 ${frames.length} 帧`);
@@ -166,46 +171,46 @@ async function main() {
       assert(after.every((frame) => frame.user === null), "退出后不应再出现用户名");
       const leaked = after.flatMap((frame) => frame.cards).filter((id) => oldIds.includes(id));
       eq(leaked, [], "退出后任何一帧都不应出现旧账号的板");
-      // 首帧证据：退出后的第一次 DOM 提交就是游客空态，容量归零
+      // 首帧证据：退出后的第一次 DOM 提交就已切到游客视图
       const first = frames[flip];
-      eq(first.empty, true, "退出首帧应为游客空态");
       eq(first.login, true, "退出首帧应显示登录入口");
       eq(first.space, false, "退出首帧应收掉空间胶囊");
       eq(first.trash, false, "退出首帧应收掉回收站入口");
-      eq(first.count, "0 / 12", "退出首帧容量计数归零");
       console.log(
         `      首帧：${JSON.stringify(first)}\n      前 3 帧：${JSON.stringify(frames.slice(Math.max(0, flip - 1), flip + 2))}`,
       );
-      // 本机没有游客临时板：空态要同时给「新建」和「登录」两个入口
-      assert(await boardsPage.$('[data-testid="boards-empty-login"]'), "空态应有登录入口");
-      const newButton = await boardsPage.$eval('[data-testid="boards-empty"]', (node) => node.textContent);
-      assert(/新建第一块/.test(newButton), `空态应有新建入口：${newButton}`);
-      await boardsPage.screenshot({ path: screenshotPath("logout-after-empty-1440x950") });
+      const name = await boardsPage.$eval(".wb-boards__count", (node) =>
+        node.textContent.replace(/\s+/g, " ").trim(),
+      );
+      eq(name, "任何人可编辑", "游客视图显示公共板说明");
+      await boardsPage.screenshot({ path: screenshotPath("logout-after-guest-1440x950") });
     });
 
-    await test("退出后：/api/auth/me 401、用户名位回登录、容量计数与列表一致", async () => {
+    await test("退出后：/api/auth/me 401、用户名位回登录、列表只剩公共板", async () => {
       const status = await boardsPage.evaluate(() => fetch("/api/auth/me").then((res) => res.status));
       eq(status, 401, "/api/auth/me");
       eq(await boardsPage.$('[data-testid="boards-user"]'), null, "不应再有顶栏用户名");
       assert(await boardsPage.$('[data-testid="boards-login"]'), "应显示「登录 / 注册」");
       eq(await boardsPage.$('[data-testid="boards-trash-link"]'), null, "游客不应有回收站入口");
+      eq((await boardIds(boardsPage)).length, 1, "游客视图只有一块公共板");
       const count = await boardsPage.$eval(".wb-boards__count", (node) =>
         node.textContent.replace(/\s+/g, " ").trim(),
       );
-      eq(count, "0 / 12", "容量计数");
+      eq(count, "任何人可编辑", "游客视图容量说明");
       const keys = await storageKeys(boardsPage);
       assert(!keys.includes(LEGACY_KEY), `不应残留旧全局 key：${keys.join(",")}`);
+      assert(!keys.includes(GUEST_KEY), `游客不再累积本机最近打开：${keys.join(",")}`);
       assert(
         keys.every((key) => !key.startsWith("wb:recentBoards:user:") || key !== "wb:recentBoards:user:"),
         "身份 key 需带 userId",
       );
     });
 
-    await test("退出后刷新：仍是游客空态，不会因缓存回到登录态列表", async () => {
+    await test("退出后刷新：仍是游客视图，不会因缓存回到登录态列表", async () => {
       await boardsPage.reload({ waitUntil: "networkidle2" });
       await boardsPage.waitForSelector('[data-testid="boards-login"]', { timeout: 15_000 });
-      await boardsPage.waitForSelector('[data-testid="boards-empty"]', { timeout: 15_000 });
-      eq(await boardIds(boardsPage), [], "刷新后卡片数");
+      await boardsPage.waitForSelector('[data-testid="board-card"]', { timeout: 15_000 });
+      eq((await boardIds(boardsPage)).length, 1, "刷新后只有公共板");
       eq(await boardsPage.$('[data-testid="boards-user"]'), null, "刷新后不应出现用户名");
       const me = await boardsPage.evaluate(() => fetch("/api/auth/me").then((res) => res.status));
       eq(me, 401, "刷新后 /api/auth/me");
@@ -223,10 +228,10 @@ async function main() {
     await openBoards(guestPage);
     const home2 = await openHome(guestContext, false);
 
-    await test("游客临时板写入游客 key，登录后不显示为账号的板", async () => {
+    await test("游客只展示公共板，不累积本机最近打开", async () => {
       eq(await boardIds(guestPage), [guestBoardId], "游客卡片");
       const keys = await storageKeys(guestPage);
-      assert(keys.includes(GUEST_KEY), `应有游客 key：${keys.join(",")}`);
+      assert(!keys.includes(GUEST_KEY), `游客不应再写最近打开：${keys.join(",")}`);
       assert(!keys.some((key) => key.startsWith("wb:recentBoards:user:")), "不应生成账号 key");
       // 缩略图按身份落盘：刚打开过的游客板应写入 owner=guest 的记录
       await until(async () => (await thumbStoreInfo(guestPage)).owners.includes("guest"), {
@@ -239,7 +244,10 @@ async function main() {
       await until(async () => (await guestPage.$('[data-testid="boards-empty"]')) !== null, { label: "账号空态" });
       eq(await boardIds(guestPage), [], "登录后的账号列表不应包含游客板");
       const stillGuest = await storageKeys(guestPage);
-      assert(stillGuest.includes(GUEST_KEY), "游客记录应原样保留");
+      assert(
+        !stillGuest.some((key) => key.startsWith("wb:recentBoards:user:")),
+        "登录后不应把游客记录写成账号的",
+      );
       assert(!stillGuest.includes(LEGACY_KEY), "不应出现旧全局 key");
     });
 
@@ -256,7 +264,7 @@ async function main() {
       const count = await guestPage.$eval(".wb-boards__count", (node) =>
         node.textContent.replace(/\s+/g, " ").trim(),
       );
-      eq(count, "1 / 12", "容量计数回到游客");
+      eq(count, "任何人可编辑", "游客视图显示公共板说明");
       await guestPage.screenshot({ path: screenshotPath("logout-guest-1440x950") });
       await home3.close();
     });
@@ -333,7 +341,7 @@ async function main() {
       await inlinePage.focus('[data-testid="boards-logout"]');
       await inlinePage.keyboard.press("Enter");
       await inlinePage.waitForSelector('[data-testid="boards-login"]', { timeout: 15_000 });
-      await inlinePage.waitForSelector('[data-testid="boards-empty"]', { timeout: 15_000 });
+      await inlinePage.waitForSelector('[data-testid="board-card"]', { timeout: 15_000 });
       const frames = await readFrames(inlinePage);
       const flip = frames.findIndex((frame) => frame.user === null);
       assert(flip >= 0, "应记录到退出后的帧");
@@ -341,18 +349,22 @@ async function main() {
       assert(after.every((frame) => frame.user === null), "退出后不应再出现用户名");
       assert(after.every((frame) => frame.space === false), "退出后不应再有空间胶囊");
       assert(after.every((frame) => frame.trash === false), "退出后不应再有回收站入口");
-      eq(after.flatMap((frame) => frame.cards), [], "退出后任何一帧都不应有账号的板");
+      eq(
+        after.flatMap((frame) => frame.cards).filter((id) => oldIds.includes(id)),
+        [],
+        "退出后任何一帧都不应有账号的板",
+      );
       const me = await inlinePage.evaluate(() => fetch("/api/auth/me").then((res) => res.status));
       eq(me, 401, "顶栏退出后 /api/auth/me");
       eq(await inlinePage.$('[data-testid="boards-logout"]'), null, "游客不应显示退出入口");
       const count = await inlinePage.$eval(".wb-boards__count", (node) =>
         node.textContent.replace(/\s+/g, " ").trim(),
       );
-      eq(count, "0 / 12", "容量计数");
+      eq(count, "任何人可编辑", "游客视图显示公共板说明");
     });
 
-    await test("空态登录入口：进入登录页并带回跳参数", async () => {
-      await inlinePage.click('[data-testid="boards-empty-login"]');
+    await test("游客页头登录入口：进入登录页并带回跳参数", async () => {
+      await inlinePage.click('[data-testid="boards-login"]');
       await inlinePage.waitForFunction(() => location.pathname === "/login", { timeout: 15_000 });
       const url = new URL(inlinePage.url());
       eq(url.searchParams.get("next"), "/boards", "登录后回跳 /boards");
@@ -376,7 +388,7 @@ async function main() {
       // A 没有任何导航，只靠 BroadcastChannel 广播切换
       await pageA.waitForSelector('[data-testid="boards-login"]', { timeout: 15_000 });
       eq(new URL(pageA.url()).pathname, "/boards", "A 仍停在列表页，未跳转");
-      eq(await pageA.$$eval('[data-testid="board-card"]', (nodes) => nodes.length), 0, "A 不应再显示账号的板");
+      eq(await pageA.$$eval('[data-testid="board-card"]', (nodes) => nodes.length), 1, "A 应只剩公共板");
       eq(await pageA.$('[data-testid="boards-logout"]'), null, "A 不应再有退出入口");
       eq(await pageA.$('[data-testid="space-switcher"]'), null, "A 不应再有空间胶囊");
       eq(await pageA.evaluate(() => fetch("/api/auth/me").then((res) => res.status)), 401, "A 的会话已失效");
@@ -449,21 +461,22 @@ async function main() {
 
     await test("升级首启：旧全局 key 丢弃、v2 缩略图清空重建，列表可继续使用", async () => {
       await openBoards(legacyPage);
-      await legacyPage.waitForSelector('[data-testid="boards-empty"]', { timeout: 20_000 });
+      await legacyPage.waitForSelector('[data-testid="board-card"]', { timeout: 20_000 });
       const keys = await storageKeys(legacyPage);
       assert(!keys.includes(LEGACY_KEY), `旧全局 key 应被丢弃：${keys.join(",")}`);
-      eq(await boardIds(legacyPage), [], "旧记录不应被当成游客临时板");
+      const initial = await boardIds(legacyPage);
+      eq(initial.length, 1, "旧记录不应变成额外卡片，只剩公共板");
       const info = await thumbStoreInfo(legacyPage);
       eq(info.keyPath, ["owner", "boardId"], "thumbs 升级后主键");
       eq(info.owners, [], "旧的 v2 缩略图应清空");
 
-      // 清空后的缓存链路仍可用：新建一块会重新写入游客记录，缩略图按需重拍
+      // 清空后的缓存链路仍可用：进入公共板画一笔，缩略图按需重拍
       await legacyPage.click('[data-testid="boards-new"]');
       await legacyPage.waitForFunction(() => location.pathname.startsWith("/board/"), { timeout: 20_000 });
       await drawRectangle(legacyPage);
       await openBoards(legacyPage);
       const ids = await boardIds(legacyPage);
-      eq(ids.length, 1, "新建后游客列表");
+      eq(ids, initial, "游客列表仍然只有这一块公共板");
       await until(async () => (await thumbStoreInfo(legacyPage)).owners.includes("guest"), {
         label: "升级后重拍游客缩略图",
         timeout: 20_000,

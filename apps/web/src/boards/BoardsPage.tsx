@@ -17,6 +17,7 @@ import {
   fetchTrashCount,
   renameBoard,
   reorderBoard,
+  resetPublicBoard,
   restoreBoard,
   ROLE_LABEL,
   setBoardPinned,
@@ -38,7 +39,6 @@ import { edgeScrollStep } from "./autoScroll";
 import { loadThumbUrls } from "./boardThumb";
 import {
   GUEST_OWNER,
-  listRecentBoards,
   ownerTag,
   removeRecentBoard,
   renameRecentBoard,
@@ -57,7 +57,7 @@ import { DialogClose } from "../ui/DialogClose";
 import { UserMark } from "../ui/UserMark";
 import sakuraMark from "../assets/sakura-mark.png";
 import type { SpaceSummary } from "@whiteboard/shared";
-import { LIMITS } from "@whiteboard/shared";
+import { LIMITS, PUBLIC_BOARD_ID, PUBLIC_BOARD_TITLE } from "@whiteboard/shared";
 import { fetchSpaces } from "./spaceApi";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SpaceSettings } from "./SpaceSettings";
@@ -96,6 +96,8 @@ type CardModel = {
   badgeTone: "role" | "readonly" | "guest" | "member";
   role: string;
   guest?: boolean;
+  /** 公共临时板：唯一一张游客卡片，不能删除/置顶/改名，只能进入或用页头"清空" */
+  publicBoard?: boolean;
   /** 团队空间：这块板是不是我创建的 */
   isOwn?: boolean;
 };
@@ -143,6 +145,24 @@ type TrashConfirm = {
 
 const CLAIM_DISMISSED_KEY = "wb:boardsClaimDismissed";
 const SAVE_BANNER_KEY = "wb:saveBannerDismissed";
+
+/**
+ * 游客视图只有一张卡：所有人共用的公共临时板。
+ *
+ * 不再读取 `localStorage` 的游客"最近打开"——临时板已经收敛成固定 id，
+ * 本机不再累积多块板，也不会出现"卡片在但打不开"的旧条目。
+ * 历史游客板仍留在服务端（可按认领流程转入账号），只是不在这里展示。
+ */
+function guestBoardItems(): RecentBoard[] {
+  return [
+    {
+      id: PUBLIC_BOARD_ID,
+      title: PUBLIC_BOARD_TITLE,
+      lastEditedAt: new Date().toISOString(),
+      pinned: false,
+    },
+  ];
+}
 /** 700 以下交给 CSS 单列滚动，不再按宽度均分 */
 const MOBILE_BREAKPOINT = 700;
 const SPACE_ROLE_LABEL: Record<string, string> = {
@@ -206,6 +226,9 @@ export function BoardsPage() {
   /** 游客删除临时板：物理删除不可恢复，先确认再走接口 */
   const [guestTrash, setGuestTrash] = useState<CardModel | null>(null);
   const [guestTrashBusy, setGuestTrashBusy] = useState(false);
+  /** 清空公共临时板：破坏性且影响所有人，必须先二次确认 */
+  const [publicResetOpen, setPublicResetOpen] = useState(false);
+  const [publicResetBusy, setPublicResetBusy] = useState(false);
   const selectEntryRef = useRef<HTMLButtonElement>(null);
   // 拖拽排序：组内接管（方案 B），置顶组与普通组固定，不跨组
   const [sortMode, setSortModeState] = useState<BoardSortMode>("auto");
@@ -272,7 +295,7 @@ export function BoardsPage() {
       setTrashCount(0);
       setMeUser(null);
       setAccountOpen(false);
-      setView({ kind: "guest", items: listRecentBoards(GUEST_OWNER) });
+      setView({ kind: "guest", items: guestBoardItems() });
       return;
     }
     const currentOwner = userOwner(me.data.user.id);
@@ -404,7 +427,7 @@ export function BoardsPage() {
   const switchToGuest = useCallback(() => {
     setActiveOwner(GUEST_OWNER);
     setOwner(GUEST_OWNER);
-    setView({ kind: "guest", items: listRecentBoards(GUEST_OWNER) });
+    setView({ kind: "guest", items: guestBoardItems() });
     setSpaces([]);
     setSpaceId("");
     spaceIdRef.current = "";
@@ -568,11 +591,12 @@ export function BoardsPage() {
           id: item.id,
           title: item.title,
           lastEditedAt: item.lastEditedAt,
-          pinned: isPinned(item),
-          badge: "临时板",
+          pinned: false,
+          badge: "公共板",
           badgeTone: "guest",
-          role: "owner",
+          role: "editor",
           guest: true,
+          publicBoard: true,
         }));
 
   const cardsReady = listReady && thumbsReady;
@@ -605,8 +629,8 @@ export function BoardsPage() {
     setExpandedRounds(0);
   }, [currentSpace?.id]);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
-  // 只读成员不能批量选择（批量动作全是写操作）；游客可以，但只保留物理删除
-  const isSelectable = isGuest || (view.kind === "user" && !readOnly);
+  // 游客只有一块公共板，没有"删除/置顶/改名"这类单板操作，批量选择也关掉
+  const isSelectable = view.kind === "user" && !readOnly;
   const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly;
   const groupsNow = splitGroups(shownCards);
   const groupIdsOf = (group: DragGroupKey): string[] =>
@@ -859,6 +883,8 @@ export function BoardsPage() {
   };
 
   const openMenu = (board: CardModel, anchor: MenuAnchor, trigger: HTMLElement | null) => {
+    // 公共板没有单板操作（改名/置顶/删除都会破坏"所有人共用一块"的语义）
+    if (board.publicBoard) return;
     setMenu({ board, anchor, trigger });
   };
 
@@ -964,6 +990,21 @@ export function BoardsPage() {
     await trashBoard(board);
     setGuestTrashBusy(false);
     setGuestTrash(null);
+  };
+
+  /** 清空公共板：服务端按正常 delete op 落库并广播，在线/离线客户端都会收敛 */
+  const confirmPublicReset = async () => {
+    if (publicResetBusy) return;
+    setPublicResetBusy(true);
+    const result = await resetPublicBoard();
+    setPublicResetBusy(false);
+    if (!result.ok) {
+      setToast("没清空成功，稍后再试。");
+      return;
+    }
+    setPublicResetOpen(false);
+    setThumbEpoch((epoch) => epoch + 1);
+    setToast(result.data.cleared > 0 ? `已清空 ${result.data.cleared} 个元素` : "这本来就是一块空板");
   };
 
   const undoLast = async () => {
@@ -1565,7 +1606,7 @@ export function BoardsPage() {
   };
 
   const startRename = (board: CardModel) => {
-    if (readOnly) return;
+    if (readOnly || board.publicBoard) return;
     editRef.current = { id: board.id, value: board.title, original: board.title, cancelled: false };
     setEditingId(board.id);
     setEditValue(board.title);
@@ -1794,14 +1835,14 @@ export function BoardsPage() {
             <div className="wb-boards__headline">
               <p className="wb-boards__eyebrow">
                 {isGuest
-                  ? "本机临时板"
+                  ? "所有人共用的一块板"
                   : currentSpace?.kind === "team"
                     ? `团队空间 · ${currentSpace.memberCount} 位成员`
                     : "个人空间 · 只有你能看到"}
               </p>
               <div className="wb-boards__titleline">
                 <h1 className="wb-display">
-                  {isGuest ? "最近打开" : currentSpace?.kind === "team" ? currentSpace.name : "我的白板"}
+                  {isGuest ? "公共临时板" : currentSpace?.kind === "team" ? currentSpace.name : "我的白板"}
                 </h1>
                 {!isGuest && currentSpace ? (
                   <span className={`wb-space-role wb-space-role--${role}`} data-testid="space-role">
@@ -1811,10 +1852,10 @@ export function BoardsPage() {
                 {listReady ? (
                   isGuest ? (
                     <span
-                      className={`wb-boards__count wb-nums${view.items.length >= BOARDS_CAPACITY ? " is-full" : ""}`}
-                      title={`游客最多 ${BOARDS_CAPACITY} 块，满了之后新建会先淘汰一块最早未使用的；登录后不限数量`}
+                      className="wb-boards__count"
+                      title="所有未登录访客打开的都是这一块板，任何人的清空都会影响所有人"
                     >
-                      {view.items.length} / {BOARDS_CAPACITY}
+                      任何人可编辑
                     </span>
                   ) : (
                     <span className="wb-boards__count wb-nums" title="当前空间的白板总数">
@@ -1865,16 +1906,35 @@ export function BoardsPage() {
                   只读空间 · 可浏览、复制到个人空间
                 </span>
               ) : (
-                <button
-                  className="wb-btn wb-btn--primary wb-btn--pill"
-                  type="button"
-                  onClick={() => void start()}
-                  disabled={busy}
-                  data-testid="boards-new"
-                >
-                  {busy ? <span className="wb-spinner" aria-hidden /> : <IconPlus />}
-                  {busy ? (slow ? "还在连接…" : "正在新建…") : "新建白板"}
-                </button>
+                <>
+                  {isGuest ? (
+                    <button
+                      className="wb-btn wb-btn--ghost"
+                      type="button"
+                      onClick={() => setPublicResetOpen(true)}
+                      data-testid="boards-reset-public"
+                    >
+                      <IconTrash />
+                      清空
+                    </button>
+                  ) : null}
+                  <button
+                    className="wb-btn wb-btn--primary wb-btn--pill"
+                    type="button"
+                    onClick={() => void start()}
+                    disabled={busy}
+                    data-testid="boards-new"
+                  >
+                    {busy ? <span className="wb-spinner" aria-hidden /> : <IconPlus />}
+                    {busy
+                      ? slow
+                        ? "还在连接…"
+                        : "正在打开…"
+                      : isGuest
+                        ? "打开公共板"
+                        : "新建白板"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -2162,6 +2222,57 @@ export function BoardsPage() {
                 onClick={() => void confirmGuestTrash()}
               >
                 {guestTrashBusy ? "删除中…" : "删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {publicResetOpen ? (
+        <div
+          className="wb-overlay"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && !publicResetBusy) setPublicResetOpen(false);
+          }}
+        >
+          <div
+            className="wb-dialog wb-trash__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wb-public-reset-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !publicResetBusy) {
+                event.preventDefault();
+                setPublicResetOpen(false);
+              }
+            }}
+          >
+            <DialogClose onClose={() => setPublicResetOpen(false)} disabled={publicResetBusy} />
+            <h2 className="wb-dialog__title" id="wb-public-reset-title" title="清空公共临时板？">
+              <span>清空公共临时板？</span>
+            </h2>
+            <p className="wb-dialog__desc">
+              这是所有人共用的一块板，清空会删掉所有人当前画布上的内容，且无法恢复；正在编辑的人会立刻看到画布被清空。
+              历史游客板与账号里的白板不受影响。
+            </p>
+            <div className="wb-dialog__actions">
+              <button
+                className="wb-btn wb-btn--ghost"
+                type="button"
+                autoFocus
+                disabled={publicResetBusy}
+                onClick={() => setPublicResetOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                className="wb-btn wb-btn--danger"
+                type="button"
+                disabled={publicResetBusy}
+                onClick={() => void confirmPublicReset()}
+                data-testid="boards-reset-confirm"
+              >
+                {publicResetBusy ? "清空中…" : "确认清空"}
               </button>
             </div>
           </div>

@@ -215,28 +215,17 @@ try {
     eq(list.json.boards.find((row) => row.id === teamBoard.json.id)?.title, "团队改名后", "服务端标题");
   });
 
-  // 游客：改自己的临时板，标题同步本机
+  // 游客：公共板是所有人共用的一块，不提供单板改名/菜单
   const guest = await registerGuest();
-  const guestId = guest.firstBoard.id;
 
-  await test("游客：改名可用，刷新后本机标题不回退", async () => {
+  await test("游客：公共板固定标题，不提供单板改名", async () => {
     const { page: guestPage } = await newPage(browser, { cookie: guest.api.sessionCookie });
-    // 只在本机列表为空时注入种子，reload 时不覆盖刚改好的标题
-    await guestPage.evaluateOnNewDocument((id) => {
-      if (localStorage.getItem("wb:recentBoards:guest")) return;
-      localStorage.setItem(
-        "wb:recentBoards:guest",
-        JSON.stringify([{ id, title: "游客旧名", lastEditedAt: new Date().toISOString() }]),
-      );
-    }, guestId);
     await openBoards(guestPage);
-    await startRename(guestPage, guestId);
-    await setInputValue(guestPage, '[data-testid="rename-input"]', "游客新名");
-    await guestPage.keyboard.press("Enter");
-    await until(async () => (await cardTitle(guestPage, guestId)) === "游客新名", { label: "游客卡片标题" });
-    await guestPage.reload({ waitUntil: "networkidle2" });
-    await guestPage.waitForSelector('[data-testid="board-card"]');
-    eq(await cardTitle(guestPage, guestId), "游客新名", "刷新后本机标题");
+    eq(await cardTitle(guestPage, guest.firstBoard.id), "公共临时板", "固定标题");
+    await guestPage.hover(`[data-board-id="${guest.firstBoard.id}"]`);
+    await guestPage.click(`[data-board-id="${guest.firstBoard.id}"] .wb-board-card__more`);
+    await sleep(400);
+    eq(await guestPage.$('[data-menu-key="rename"]'), null, "公共板不提供改名菜单");
   });
 } finally {
   await browser.close();

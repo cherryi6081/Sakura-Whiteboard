@@ -137,19 +137,26 @@ export function batchTrashBoards(boardIds: string[]): Promise<ApiResult<BatchTra
   });
 }
 
-export function createBoard(
-  title?: string,
-  spaceId?: string,
-  pinnedIds?: string[],
-): Promise<ApiResult<CreatedBoard>> {
-  const body: { title?: string; spaceId?: string; pinnedIds?: string[] } = {};
+export function createBoard(title?: string, spaceId?: string): Promise<ApiResult<CreatedBoard>> {
+  const body: { title?: string; spaceId?: string } = {};
   if (title) body.title = title;
   if (spaceId) body.spaceId = spaceId;
-  // 游客的置顶只在本机：带上去让服务端淘汰时排除（登录用户服务端会忽略）
-  if (pinnedIds && pinnedIds.length > 0) body.pinnedIds = pinnedIds;
   return request<CreatedBoard>("/api/boards", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/**
+ * 清空公共临时板（所有人共用的一块）。
+ *
+ * 破坏性操作：服务端要求 `confirm: true`，调用方必须先让用户二次确认。
+ * 清空按正常的 delete op 落库并广播给在线客户端，不删板、不影响历史游客板。
+ */
+export function resetPublicBoard(): Promise<ApiResult<{ boardId: string; cleared: number }>> {
+  return request<{ boardId: string; cleared: number }>("/api/public-board/reset", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true }),
   });
 }
 

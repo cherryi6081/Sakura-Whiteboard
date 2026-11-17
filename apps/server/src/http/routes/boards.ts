@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { can, LIMITS } from '@whiteboard/shared';
 import { pool } from '../../infra/db.js';
-import { ensureRedisConnected, redis } from '../../infra/redis.js';
 import { AppError } from '../middlewares/error.js';
 import { boardIdSchema, needsResync, opsQuerySchema, paginatePage } from '../../domain/opPage.js';
 import { identityOf } from '../../auth/identity.js';
@@ -13,13 +12,13 @@ import { resolveBoardAccess } from '../../domain/access.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
 import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
-import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H, evictForCapacity } from '../../domain/boardCapacity.js';
+import { ensurePublicBoard } from '../../domain/publicBoard.js';
 
 /**
  * 白板 REST（M5-1）。
  *
- * - `POST /api/boards`：登录用户 `owner_id = userId`，**不限数量**；无会话时按游客建板
- *   （`owner_guest_id` 取签名 cookie），满足 §4.5.3 配额（24h 3 块 / 未归档 ≤12）。
+ * - `POST /api/boards`：登录用户 `owner_id = userId`，**不限数量**；无会话时**不再建新板**，
+ *   统一返回公共临时板（所有匿名访客共用同一块，见 `domain/publicBoard.ts`）。
  * - `GET /api/boards`：**仅登录用户**，游客 401（游客列表只在本机）。
  * - `GET /api/boards/:id/ops|snapshot`：身份与权限统一由 `resolveBoardAccess` 推导，
  *   不再按"share_mode != private"放行；陌生人访问 private 板一律 404。
@@ -33,19 +32,12 @@ const handle =
     fn(req, res).catch(next);
   };
 
-const GUEST_UNARCHIVED_MAX = BOARD_CAPACITY;
-
 const spaceIdSchema = z.string().regex(/^sp_[A-Za-z0-9_-]{10,32}$/);
 
 const createBoardSchema = z.object({
   title: z.string().trim().min(1).max(LIMITS.boardTitleMax).optional(),
-  /** 建到哪个空间；缺省为个人空间 */
+  /** 建到哪个空间；缺省为个人空间（匿名请求忽略此字段） */
   spaceId: spaceIdSchema.optional(),
-  /**
-   * 游客的置顶只存在本机 localStorage，服务端拿不到；
-   * 建板时把本机置顶的 id 带上来，淘汰时排除它们。只作用于自己的游客板，安全。
-   */
-  pinnedIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{12}$/)).max(50).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -73,72 +65,15 @@ const renameSchema = z.object({
   title: z.string().trim().min(1).max(LIMITS.boardTitleMax),
 });
 
-async function enforceGuestQuota(guestId: string): Promise<void> {
-  const { rows } = await pool.query<{ unarchived: number }>(
-    `select count(*)::int as unarchived from boards
-      where owner_guest_id = $1 and archived_at is null and deleted_at is null`,
-    [guestId],
-  );
-  if ((rows[0]?.unarchived ?? 0) >= GUEST_UNARCHIVED_MAX) {
-    throw new AppError(429, 'QUOTA_EXCEEDED', `游客最多保留 ${GUEST_UNARCHIVED_MAX} 块未归档白板，请归档或注册后继续`);
-  }
-
-  let created: number;
-  try {
-    await ensureRedisConnected();
-    const key = `rl:board:create:${guestId}`;
-    created = await redis.incr(key);
-    if (created === 1) await redis.expire(key, 24 * 60 * 60);
-  } catch {
-    // Redis 不可用时退回 PG 计数（降级路径必须打日志，不能静默）
-    const { rows: fallback } = await pool.query<{ created: number }>(
-      `select count(*)::int as created from boards
-        where owner_guest_id = $1 and created_at > now() - interval '24 hours' and deleted_at is null`,
-      [guestId],
-    );
-    created = fallback[0]?.created ?? 0;
-    console.warn('[boards] redis 配额计数不可用，已退回 PG 计数', { guestId });
-  }
-
-  if (created > GUEST_BOARDS_PER_24H) {
-    // 超限时把多计的一次退回，避免持续请求把窗口越撑越紧
-    try {
-      await ensureRedisConnected();
-      await redis.decr(`rl:board:create:${guestId}`);
-    } catch {
-      /* ignore */
-    }
-    throw new AppError(429, 'QUOTA_EXCEEDED', `游客每 24 小时最多新建 ${GUEST_BOARDS_PER_24H} 块白板，请稍后再试或注册`);
-  }
-}
-
-/**
- * 游客建板前的额度检查。
- *
- * 已经满 12 块时交给事务内的淘汰逻辑处理（先淘汰再建），此时不再套 24h 限流，
- * 否则「满容量先淘汰一块」这条规则会被限流挡在门外；总量始终由游客上限兜住。
- * 登录账号不经过这个函数，也不做任何容量判定。
- */
-async function enforceGuestCreation(guestId: string): Promise<void> {
-  const { rows } = await pool.query<{ used: number }>(
-    `select count(*)::int as used from boards
-      where owner_guest_id = $1 and archived_at is null and deleted_at is null`,
-    [guestId],
-  );
-  if ((rows[0]?.used ?? 0) >= BOARD_CAPACITY) return;
-  await enforceGuestQuota(guestId);
-}
-
-/** `POST /api/boards` —— 无会话按游客建板（必要时签发 `wb_gid`）。 */
+/** `POST /api/boards` —— 登录用户建板；无会话返回公共临时板（不再按游客建新板）。 */
 boardsRouter.post(
   '/boards',
   handle(async (req, res) => {
-    const { title, spaceId, pinnedIds } = createBoardSchema.parse(req.body ?? {});
+    const { title, spaceId } = createBoardSchema.parse(req.body ?? {});
     const identity = identityOf(req);
     const boardTitle = title ?? '未命名白板';
 
     let ownerId: string | null = null;
-    let ownerGuestId: string | null = null;
     let targetSpaceId: string | null = null;
 
     if (identity.userId) {
@@ -153,10 +88,19 @@ boardsRouter.post(
         targetSpaceId = (await ensurePersonalSpace(identity.userId)).id;
       }
     } else {
-      let guestId = identity.guestId;
-      if (!guestId) guestId = issueGuestCookie(res);
-      await enforceGuestCreation(guestId);
-      ownerGuestId = guestId;
+      // 匿名建板统一落到公共临时板：同一个 id、同一个协作房间，不新建行。
+      // 仍签发/刷新签名 guest cookie，历史游客板的认领与匿名身份展示继续可用。
+      if (!identity.guestId) issueGuestCookie(res);
+      const publicBoard = await ensurePublicBoard();
+      res.status(201).json({
+        id: publicBoard.id,
+        title: publicBoard.title,
+        ownerType: 'guest',
+        quota: null,
+        public: true,
+        createdAt: new Date().toISOString(),
+      });
+      return;
     }
 
     const boardId = nanoid(12);
@@ -164,9 +108,7 @@ boardsRouter.post(
     try {
       await client.query('begin');
       // 同一 owner 的创建串行：避免并发请求基于同一份旧计数各自淘汰一块
-      const lockKey = ownerId
-        ? `board-create:user:${ownerId}:${targetSpaceId}`
-        : `board-create:guest:${ownerGuestId}`;
+      const lockKey = `board-create:user:${ownerId}:${targetSpaceId}`;
       await client.query('select pg_advisory_xact_lock(hashtext($1))', [lockKey]);
 
       // 与空间退出/解散串行：锁住空间与成员行，避免在空间刚被解散后又插进一块
@@ -182,29 +124,11 @@ boardsRouter.post(
         if (!liveRows[0]) throw new AppError(404, 'NOT_FOUND', 'space not found');
       }
 
-      // 只有游客有 12 块上限：满额时先淘汰一块（物理删除），审计写在同一事务里；
-      // 登录账号不限数量，直接插入，不触发淘汰、不写 board_evictions
-      const eviction =
-        ownerId === null
-          ? await evictForCapacity(
-              client,
-              { kind: 'guest', guestId: ownerGuestId ?? '', pinnedIds: pinnedIds ?? [] },
-              boardId,
-            )
-          : { kind: 'none' as const };
-      if (eviction.kind === 'blocked') {
-        throw new AppError(
-          429,
-          'CAPACITY_ALL_PROTECTED',
-          `${BOARD_CAPACITY} 块白板都在置顶或最近使用中，先整理掉一块再新建`,
-        );
-      }
-
       const { rows } = await client.query<{ id: string; title: string; created_at: Date }>(
         `insert into boards (id, title, owner_id, owner_guest_id, share_mode, space_id)
-         values ($1, $2, $3, $4, 'private', $5)
+         values ($1, $2, $3, null, 'private', $4)
          returning id, title, created_at`,
-        [boardId, boardTitle, ownerId, ownerGuestId, targetSpaceId],
+        [boardId, boardTitle, ownerId, targetSpaceId],
       );
       const row = rows[0];
       if (!row) throw new AppError(500, 'INTERNAL', 'board insert returned no row');
@@ -213,10 +137,8 @@ boardsRouter.post(
       res.status(201).json({
         id: row.id,
         title: row.title,
-        ownerType: ownerId ? 'user' : 'guest',
-        quota: ownerGuestId
-          ? { per24h: GUEST_BOARDS_PER_24H, unarchivedMax: GUEST_UNARCHIVED_MAX }
-          : null,
+        ownerType: 'user',
+        quota: null,
         createdAt: row.created_at.toISOString(),
       });
     } catch (err) {
@@ -653,7 +575,9 @@ type OpRow = {
 };
 
 /**
- * 分享 token 的来源（M5-2）：`?share=` 或 `x-share-token` 头。
+ * 分享 token 的来源（M5-2）：`x-share-token` 头（正式），`?share=` 仅为老客户端兼容保留。
+ * 分享**链接**已改为 fragment（`/board/:id#share=`），不会进服务端日志；
+ * 这里的 query 读取会在下个版本移除，新客户端一律走头。
  * 它不是身份，只用于"匿名凭链接进入"；权限仍由 `resolveBoardAccess` 统一判定。
  */
 function shareTokenOf(req: Request): string | null {

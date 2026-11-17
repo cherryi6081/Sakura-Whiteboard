@@ -7,24 +7,19 @@ import { PASSWORD, WEB } from "../lib/config.mjs";
 const spec = "permissions";
 
 async function main() {
-  await test("游客只能删自己的板", async () => {
+  await test("游客共用一块公共板：不能删除，但可以直接读写", async () => {
     const a = await registerGuest();
     const b = await registerGuest();
     const own = await b.api.createBoard({ title: "B 的板" });
     eq(own.status, 201, "B 建板");
+    eq(own.json.id, a.firstBoard.id, "不同游客拿到同一块公共板");
 
-    const foreign = await b.api.removeBoard(a.firstBoard.id);
-    eq(foreign.status, 404, "删除他人板应 404");
-    const stillThere = await a.api.list();
-    eq(stillThere.status, 401, "游客没有列表接口");
-    const ops = await a.api.get(`/api/boards/${a.firstBoard.id}/snapshot`);
-    eq(ops.status, 200, "A 的板仍在（快照可读）");
-
-    const removed = await b.api.removeBoard(own.json.id);
-    eq(removed.status, 200, "删除自己的板");
-    eq(removed.json?.mode, "purged", "游客删除是物理删除");
-    const gone = await b.api.get(`/api/boards/${own.json.id}/snapshot`);
-    eq(gone.status, 404, "删后不可访问");
+    // 公共板不归属任何浏览器，单板删除（物理删除）必须被拒
+    const removed = await b.api.removeBoard(a.firstBoard.id);
+    assert([403, 404].includes(removed.status), `删除公共板应被拒：${removed.status}`);
+    const snapshot = await a.api.get(`/api/boards/${a.firstBoard.id}/snapshot`);
+    eq(snapshot.status, 200, "公共板仍可访问");
+    eq((await a.api.list()).status, 401, "游客仍没有服务端列表");
   });
 
   await test("未登录访问受限页：/boards 开放，/boards/trash 跳登录并登录后回跳", async () => {

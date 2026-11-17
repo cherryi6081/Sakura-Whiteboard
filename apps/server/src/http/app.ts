@@ -7,6 +7,7 @@ import { healthRouter } from './routes/health.js';
 import { boardsRouter } from './routes/boards.js';
 import { authRouter } from './routes/auth.js';
 import { guestRouter } from './routes/guest.js';
+import { publicBoardRouter } from './routes/publicBoard.js';
 import { sharesRouter } from './routes/shares.js';
 import { assetsRouter } from './routes/assets.js';
 import { avatarRouter } from './routes/avatar.js';
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api', authRouter);
   app.use('/api', avatarRouter);
   app.use('/api', guestRouter);
+  app.use('/api', publicBoardRouter);
   app.use('/api', sharesRouter);
   app.use('/api', assetsRouter);
   // 必须在 boardsRouter 之前：/boards/trash 不能被 /boards/:id 抢先解析

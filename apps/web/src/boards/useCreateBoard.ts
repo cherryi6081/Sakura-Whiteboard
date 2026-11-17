@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H } from "@whiteboard/shared";
 import { createBoard } from "./boardsApi";
 import { boardHref, currentListHref } from "../board/backTarget";
-import { listRecentBoards, recordRecentBoard, type RecentOwner } from "./recentBoards";
+import { activeOwnerOf, recordRecentBoard, type RecentOwner } from "./recentBoards";
 
 /**
  * 「新建一块白板」的共用逻辑：调 `POST /api/boards` → 写入本机最近列表 → 整页跳到
@@ -31,9 +30,9 @@ type UseCreateBoardOptions = {
 };
 
 const DEFAULT_MESSAGES: Record<CreateBoardFailureKind, string> = {
-  // 3 块是 24h 内的新建频率，不是总量；总量是 12 块，满后会先淘汰再建
-  quota: `游客每 24 小时最多新建 ${GUEST_BOARDS_PER_24H} 块临时板，登录后可以继续。`,
-  capacity: `临时板已满 ${BOARD_CAPACITY} 块，且都在置顶或最近使用中；先整理掉一块再新建。`,
+  // 临时板已收敛为一块公共板：匿名"新建"只会进入同一块板，旧的 12 块 / 24h 3 块不再成立
+  quota: "临时板已改为所有人共用的一块公共板，直接打开就能画。",
+  capacity: "临时板已改为所有人共用的一块公共板，直接打开就能画。",
   offline: "连不上服务器，恢复网络后再试。",
   error: "没开成，再试一次。",
 };
@@ -101,11 +100,8 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(true);
     slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
 
-    // 游客的置顶只存在本机；满额淘汰时把本机置顶的板排除掉（登录用户由服务端忽略该字段）
-    const pinnedIds = listRecentBoards(owner)
-      .filter((item) => item.pinned)
-      .map((item) => item.id);
-    const result = await createBoard(undefined, spaceId, pinnedIds);
+    const effectiveOwner = owner ?? activeOwnerOf();
+    const result = await createBoard(undefined, spaceId);
 
     if (slowTimer.current !== null) {
       window.clearTimeout(slowTimer.current);
@@ -116,7 +112,10 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     setBusy(false);
 
     if (result.ok) {
-      recordRecentBoard({ id: result.data.id, title: result.data.title }, owner);
+      // 游客侧不再累积"最近打开"：公共板恒指向同一 id，列表由服务端/常量决定
+      if (effectiveOwner.kind === "user") {
+        recordRecentBoard({ id: result.data.id, title: result.data.title }, effectiveOwner);
+      }
       window.location.href = boardHref(result.data.id, currentListHref());
       return;
     }

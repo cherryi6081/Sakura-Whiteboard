@@ -6,18 +6,23 @@ import { boardIds, launchBrowser, newPage } from "../lib/browser.mjs";
 import { closePool, query } from "../lib/db.mjs";
 
 /**
- * 游客临时板转入账号（上限只针对游客，登录账号不限量）：
- * - 3 + 5 → 全转入，列表 8 块，缩略图与本机「最近打开」一起搬家，刷新保持；
+ * 历史游客板转入账号（登录账号不限量）：
+ * - 3 + 5 → 全转入，列表 8 块；
  * - 5 + 10 → 全部转入 15 块（超过 12 也能进），不再有「容量不足 / 去整理 / 暂不」分支；
  * - 12 + 0 → 12 块全部转入，重复提交返回 transferred:0；
  * - 两个标签同时提交，最终 12 块且不重复；
- * - 游客 cookie 缺失/失效 → 409 GUEST_COOKIE_INVALID；请求里夹带别人的 boardIds 无效。
+ * - 游客 cookie 缺失/失效 → 409 GUEST_COOKIE_INVALID；请求里夹带别人的 boardIds 无效；
+ * - **公共临时板不参与转入**：转入前后 owner 都为空，匿名仍可直接访问。
+ *
+ * 临时板已收敛为一块公共板，匿名侧不再能"新建多块"；历史游客板通过 SQL 播种，
+ * 转入逻辑本身仍按 `owner_guest_id → owner_id + 个人空间` 原地搬家。
  */
 
 const spec = "claim";
 
 const GUEST_KEY = "wb:recentBoards:guest";
 const DISMISSED_KEY = "wb:boardsClaimDismissed";
+const PUBLIC_BOARD_ID = "pub_temp_001";
 
 function seedId() {
   return crypto.randomBytes(9).toString("base64url").slice(0, 12);
@@ -147,18 +152,26 @@ async function openBoardsPage(page) {
   await sleep(400);
 }
 
-/** 游客身份下新建一块板（可画一笔留下缩略图），返回列表后拿到它的 id */
-async function createGuestBoard(page, { draw = false } = {}) {
-  await page.click('[data-testid="boards-new"]');
-  await page.waitForSelector(".excalidraw__canvas.interactive", { timeout: 25_000 });
-  await sleep(900);
-  if (draw) await drawRectangle(page);
-  await page.click('[data-testid="board-back"]');
-  await page.waitForSelector('[data-testid="board-card"], [data-testid="boards-empty"]', { timeout: 25_000 });
-  await sleep(600);
-  const ids = await boardIds(page);
-  assert(ids.length > 0, "新建后列表应有卡片");
-  return ids[0];
+async function guestIdFromPage(page) {
+  return page.evaluate(async () => {
+    const res = await fetch("/api/guest/me");
+    return (await res.json()).guestId;
+  });
+}
+
+/** 匿名态下给这台浏览器播种 N 块"历史游客板"（公共板不算在内） */
+async function seedForPage(page, count, tag) {
+  const guestId = await guestIdFromPage(page);
+  assert(guestId, "游客 cookie 应已下发");
+  const ids = await seedGuestBoards(guestId, count, tag);
+  return { guestId, ids };
+}
+
+async function publicBoardRow() {
+  const { rows } = await query("select owner_id, owner_guest_id, is_public from boards where id = $1", [
+    PUBLIC_BOARD_ID,
+  ]);
+  return rows[0] ?? null;
 }
 
 async function registerViaUi(page, email, displayName = "认领测试") {
@@ -235,16 +248,13 @@ async function main() {
   const browser = await launchBrowser();
   try {
     // ---------------------------------------------------------------
-    // A. 游客 3 + 账号 5 → 全部转入；缩略图 / 本机记录一起搬家
+    // A. 历史游客板 3 + 账号 5 → 全部转入；公共板不参与
     // ---------------------------------------------------------------
-    await test("游客 3 + 账号 5：全部转入 8 块，缩略图与本机记录搬家", async () => {
+    await test("历史游客板 3 + 账号 5：全部转入 8 块，公共板不参与", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
-      const withThumb = await createGuestBoard(page, { draw: true });
-      await createGuestBoard(page);
-      await createGuestBoard(page);
-      const guestId = await guestIdOf(withThumb);
-      assert(guestId, "游客板应有 owner_guest_id");
+      const { ids: seeded } = await seedForPage(page, 3, "A种子");
+      const withThumb = seeded[0];
       await registerViaUi(page, `claim.a.${Date.now()}@example.com`);
 
       // 弹窗内容：3 块、说明「暂不」的后果
@@ -272,7 +282,6 @@ async function main() {
 
       const me = await currentUser(page);
       assert(me, "应能读到当前用户");
-      const owner = `user:${me.id}`;
       const movedRow = await boardRow(withThumb);
       eq(
         { ownerId: movedRow.owner_id, guest: movedRow.owner_guest_id, hasSpace: Boolean(movedRow.space_id) },
@@ -280,27 +289,20 @@ async function main() {
         "转入后归属与空间",
       );
 
-      // 缩略图：guest 键消失、user 键出现且能读到 640×400 的图
-      const thumb = await until(() => readThumb(page, owner, withThumb), { label: "账号侧缩略图", timeout: 15_000 });
-      assert(thumb.size > 1000, `缩略图体积 ${thumb.size}`);
-      const keys = await thumbKeys(page);
-      assert(
-        !keys.some((key) => Array.isArray(key) && key[0] === "guest" && key[1] === withThumb),
-        "guest 键应被搬走",
+      // 公共板不参与：归属仍为空，匿名侧仍能直接打开
+      const pub = await publicBoardRow();
+      eq(
+        { ownerId: pub.owner_id, guest: pub.owner_guest_id, isPublic: pub.is_public },
+        { ownerId: null, guest: null, isPublic: true },
+        "公共板转入后仍不归属任何账号/浏览器",
       );
-
-      // 本机最近打开：游客那份清掉，账号那份含这块板
-      await sleep(500);
-      const recents = await readRecents(page);
-      assert(!recents.guest.some((item) => item.id === withThumb), "游客 recentBoards 不应再含已转板");
-      const userRecents = recents.users[`wb:recentBoards:${owner}`] ?? [];
-      assert(userRecents.some((item) => item.id === withThumb), "账号 recentBoards 应含已转板");
+      const anon = new Api("claim.public");
+      const anonSnapshot = await anon.get(`/api/boards/${PUBLIC_BOARD_ID}/snapshot`);
+      eq(anonSnapshot.status, 200, "匿名仍可直接访问公共板");
 
       // 刷新保持
       await page.reload({ waitUntil: "networkidle2" });
       await waitCards(page, 8, "刷新后 8 块");
-      const src = await page.$eval(`[data-board-id="${withThumb}"] img`, (img) => img.getAttribute("src"));
-      assert(src?.startsWith("blob:"), `刷新后卡片应有缩略图：${src}`);
       await page.screenshot({ path: screenshotPath("claim-after-transfer") });
 
       // 重复提交不翻倍：协议层再打两次
@@ -327,10 +329,8 @@ async function main() {
     await test("游客 5 + 账号 10：全部转入 15 块，无容量拒绝分支；390 夜间弹窗不溢出", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
-      const first = await createGuestBoard(page);
-      const guestId = await guestIdOf(first);
-      const seeded = await seedGuestBoards(guestId, 4, "B种子");
-      assert(seeded.length === 4, "种子板 4 块");
+      const { guestId, ids: seeded } = await seedForPage(page, 5, "B种子");
+      assert(seeded.length === 5, "种子板 5 块");
       await registerViaUi(page, `claim.b.${Date.now()}@example.com`, "超十二块");
       await page.click('[data-testid="claim-later"]');
       await page.waitForSelector('[data-testid="boards-empty"]', { timeout: 25_000 });
@@ -397,9 +397,7 @@ async function main() {
     await test("游客 12 + 账号 0：刚好转入 12 块，重复提交不翻倍", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
-      const first = await createGuestBoard(page);
-      const guestId = await guestIdOf(first);
-      await seedGuestBoards(guestId, 11, "C种子");
+      const { guestId } = await seedForPage(page, 12, "C种子");
       await registerViaUi(page, `claim.c.${Date.now()}@example.com`, "十二块");
       const title = await page.$eval('[data-testid="claim-dialog"]', (node) => node.textContent ?? "");
       assert(title.includes("12"), `弹窗应显示 12 块：${title}`);
@@ -427,9 +425,7 @@ async function main() {
     await test("两个标签同时点「全部转入」：最终 12 块且不重复", async () => {
       const { page, context } = await newPage(browser, { width: 1440, height: 950 });
       await openBoardsPage(page);
-      const first = await createGuestBoard(page);
-      const guestId = await guestIdOf(first);
-      await seedGuestBoards(guestId, 2, "D种子");
+      const { guestId } = await seedForPage(page, 3, "D种子");
       await registerViaUi(page, `claim.d.${Date.now()}@example.com`, "双标签");
       await page.click('[data-testid="claim-later"]');
       await page.waitForSelector('[data-testid="boards-empty"]', { timeout: 25_000 });
@@ -486,10 +482,14 @@ async function main() {
       eq(invalid.json.error.code, "GUEST_COOKIE_INVALID", "错误码");
       assert(invalid.json.error.message.includes("游客身份已失效"), `文案：${invalid.json.error.message}`);
 
-      // 另一个游客名下的板：登录态夹带 boardIds 也不能转
+      // 另一个游客名下的历史板：登录态夹带 boardIds 也不能转
       const stranger = new Api("claim.stranger");
-      const created = await stranger.post("/api/boards", { title: "别人的临时板" });
-      const strangerBoard = created.json.id;
+      const strangerMe = await stranger.get("/api/guest/me");
+      const strangerBoard = seedId();
+      await query("insert into boards (id, title, owner_guest_id) values ($1, '别人的临时板', $2)", [
+        strangerBoard,
+        strangerMe.json.guestId,
+      ]);
       await lonely.api.post("/api/guest/claim", { boardIds: [strangerBoard] });
       const strangerRow = await boardRow(strangerBoard);
       eq(strangerRow.owner_id, null, "他人游客板仍无 owner_id");

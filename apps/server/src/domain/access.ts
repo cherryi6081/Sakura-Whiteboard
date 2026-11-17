@@ -11,6 +11,8 @@ import { resolveSpaceRole } from './spaceAccess.js';
  * `guestId` / `role`。规则：
  *
  * 1. 板不存在 / 已归档 / 已在回收站 → `not_found`（软删除后分享链接与协作者一律失效）；
+ * 1.5. **公共临时板**（`is_public=true`）→ 任何人都是 `editor`：它就是"所有人的同一间房"，
+ *    匿名访客与登录用户都能直接读写，不需要分享 token；
  * 2. **归入空间的板**：角色取 `space_members`（owner / editor / viewer），
  *    `boards.owner_id` 不再直接等于 owner —— 编辑者创建的板在空间里仍是 editor；
  * 3. 无空间的旧板：会话用户是 `owner_id` → `owner`；
@@ -33,6 +35,9 @@ export async function resolveBoardAccess(
 ): Promise<AccessResult> {
   const board = await getBoardForJoin(boardId);
   if (!board || board.archived_at || board.deleted_at) return { ok: false, reason: 'not_found' };
+
+  // 公共临时板不归属任何账号/浏览器：所有身份一视同仁，直接可编辑
+  if (board.is_public) return { ok: true, board, role: 'editor' };
 
   // 空间成员优先：这是团队白板的唯一权限来源
   if (board.space_id && identity.userId) {

@@ -5,17 +5,20 @@ import { AppError } from '../middlewares/error.js';
 import { identityOf } from '../../auth/identity.js';
 import { issueGuestCookie } from '../../auth/guestCookie.js';
 import { ensurePersonalSpace } from '../../domain/spaceAccess.js';
-import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H } from '../../domain/boardCapacity.js';
+import { BOARD_CAPACITY } from '../../domain/boardCapacity.js';
+import { ensurePublicBoard } from '../../domain/publicBoard.js';
 
 /**
  * 游客接口（开发文档 §7.1.7）。
  *
  * - `GET /api/guest/me`：前端启动时调用一次，确保签名 `wb_gid` 已下发（HttpOnly，JS 读不到），
- *   并返回游客徽标与配额进度。已登录时仍返回 guestId —— 它是"待认领临时板"的凭据。
+ *   并返回游客徽标与**公共临时板**信息。已登录时仍返回 guestId —— 它是"历史游客板"的认领凭据。
  * - `GET /api/guest/claim-preview` / `POST /api/guest/claim`：需会话；认领的凭据是
  *   **会话里的 userId + 当前请求 cookie 里的 guestId**，不接受任何跨用户传递。
  * - 转入口径：**全部转入**，不接收前端 id 列表、不做部分转入、不淘汰已有板；
  *   登录账号不限量，因此转入**不做任何容量判定**，转入目标固定为当前账号的个人空间。
+ * - **公共临时板不参与转入**：它没有 owner_guest_id（也不属于任何浏览器），
+ *   `owner_guest_id = $guestId` 的筛选天然把它排除在外。
  */
 
 export const guestRouter = Router();
@@ -54,13 +57,7 @@ guestRouter.get(
       }
     }
 
-    const { rows: counts } = await pool.query<{ unarchived: number; created_24h: number }>(
-      `select count(*) filter (where archived_at is null and deleted_at is null)::int as unarchived,
-              count(*) filter (where created_at > now() - interval '24 hours' and deleted_at is null)::int as created_24h
-         from boards
-        where owner_guest_id = $1`,
-      [guestId],
-    );
+    const publicBoard = await ensurePublicBoard();
 
     res.json({
       guestId,
@@ -69,12 +66,12 @@ guestRouter.get(
       isGuest: !identity.userId,
       authenticated: Boolean(identity.userId),
       user,
-      quota: {
-        unarchivedMax: BOARD_CAPACITY,
-        unarchivedUsed: counts[0]?.unarchived ?? 0,
-        per24h: GUEST_BOARDS_PER_24H,
-        created24h: counts[0]?.created_24h ?? 0,
-      },
+      /**
+       * 临时板已收敛为一块公共板：不再有「N / 12」「24h 3 块」这类配额，
+       * 前端游客视图只渲染这一块（`publicBoard`）。
+       */
+      quota: null,
+      publicBoard,
     });
   }),
 );
