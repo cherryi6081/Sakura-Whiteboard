@@ -62,9 +62,8 @@ function thumbFrameFor(api: ExcalidrawImperativeAPI, boardId: string): ThumbFram
  * 跳过条件：同一块板已有快照且内容指纹一致 → 直接返回，反复进出不重拍。
  * 失败回退：导出/写盘任何一步失败都只打日志，卡片继续用线稿占位，不影响画布。
  *
- * 为什么不放服务端 assets：缩略图是纯展示、可重建的派生物，上传会多一条
- * 鉴权 + 存储 + 清理链路；`boards.thumbnail_url` 字段保留未用，日后要做跨设备
- * 缩略图再补上传接口即可。
+ * 服务端副本：离开白板时把这里写好的 Blob 上传一次（`PUT /api/boards/:id/thumbnail`），
+ * 列表页优先用 `boards.thumbnail_url`，跨设备也能看到卡片图；上传失败仍回退本机副本。
  */
 export function scheduleThumbCapture(
   api: ExcalidrawImperativeAPI,
@@ -115,6 +114,17 @@ export async function captureBoardThumb(
 
 const thumbQueue = new Map<string, Promise<void>>();
 
+/**
+ * 最近一次拍好的 Blob 在内存里留一份：`pagehide` 阶段 IndexedDB 的异步读取
+ * 大概率来不及跑完（文档卸载会打断事务），上传兜底必须能在事件里**同步**拿到字节。
+ */
+const thumbMemory = new Map<string, Blob>();
+
+/** 同步取本次会话已拍好的缩略图；没有则 `null`（调用方再走异步拍摄/读盘）。 */
+export function peekBoardThumb(owner: string, boardId: string): Blob | null {
+  return thumbMemory.get(`${owner}:${boardId}`) ?? null;
+}
+
 async function captureBoardThumbNow(
   api: ExcalidrawImperativeAPI,
   owner: string,
@@ -158,6 +168,7 @@ async function captureBoardThumbNow(
     const blob = await rasterize(svg);
     if (!(blob instanceof Blob) || blob.size === 0) return;
     await writeBoardThumb({ owner, boardId, blob, signature });
+    thumbMemory.set(frameKey, blob);
   } catch (err) {
     console.warn("[boards] 首帧缩略图失败，卡片回退线稿占位", err);
   }

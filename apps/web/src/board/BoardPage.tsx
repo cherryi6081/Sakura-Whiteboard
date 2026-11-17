@@ -15,9 +15,10 @@ import {
   userOwner,
   type RecentOwner,
 } from "../boards/recentBoards";
-import { markBoardOpened } from "../boards/boardsApi";
+import { markBoardOpened, uploadBoardThumbnail } from "../boards/boardsApi";
 import { request } from "../auth/authApi";
-import { captureBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
+import { captureBoardThumb, peekBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
+import { readBoardThumb } from "../store/cacheDb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLibrary, IconLock, IconShare } from "../ui/icons";
 import { UserMark } from "../ui/UserMark";
 import { ShareDrawer } from "./ShareDrawer";
@@ -304,8 +305,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
   useEffect(() => {
     if (!collabState?.memberRemoved || memberRemovedNotified.current) return;
     memberRemovedNotified.current = true;
-    notify("你已被移出该白板，当前为只读");
-  }, [collabState?.memberRemoved, notify]);
+    notify(
+      collabState.memberRemovedScope === "space"
+        ? "你已被移出该空间，当前为只读"
+        : "你已被移出该白板，当前为只读",
+    );
+  }, [collabState?.memberRemoved, collabState?.memberRemovedScope, notify]);
 
   // 老链接兼容一个版本：`?share=` 仍可读，但离开 query 是既定方向，给一次提示
   const legacyShareNotified = useRef(false);
@@ -481,13 +486,49 @@ export function BoardPage({ boardId }: { boardId: string }) {
     [],
   );
 
+  /**
+   * 离板时把本机缩略图上传到服务端一次（覆盖旧副本），换设备/换浏览器也能看到卡片图。
+   *
+   * 游客与只读观众不上传：前者没有服务端账号，后者没有写权限；失败静默，
+   * 列表页仍能回退到本机 IndexedDB 的副本。
+   */
+  const flushThumbUpload = useCallback(
+    async (tag: string): Promise<void> => {
+      if (!tag.startsWith("user:")) return;
+      if (storeRef.current?.snapshot().collab?.role === "viewer") return;
+      const record = await readBoardThumb(tag, boardId).catch(() => null);
+      if (!record || !(record.blob instanceof Blob) || record.blob.size === 0) return;
+      await uploadBoardThumbnail(boardId, record.blob);
+    },
+    [boardId],
+  );
+
+  /** 已经有 Blob 时的直传（pagehide 用）：不 await 任何异步前置，fetch 在事件里同步发出。 */
+  const flushThumbBlob = useCallback(
+    async (tag: string, blob: Blob): Promise<void> => {
+      if (!tag.startsWith("user:")) return;
+      if (storeRef.current?.snapshot().collab?.role === "viewer") return;
+      if (!(blob instanceof Blob) || blob.size === 0) return;
+      await uploadBoardThumbnail(boardId, blob);
+    },
+    [boardId],
+  );
+
   // 页面隐藏/离开（点返回、切标签、刷新）再兜一次：导出是异步的，尽力而为，
   // 正常路径由 refreshThumbSoon 的防抖保证已经写完。
   useEffect(() => {
     const flush = () => {
       const api = apiRef.current;
       const tag = ownerTagRef.current;
-      if (api && tag) void captureBoardThumb(api, tag, boardId);
+      if (!api || !tag) return;
+      // 卸载阶段 IndexedDB 读取会被打断：内存里有现成 Blob 就立刻发 keepalive 请求；
+      // 没有才退回「异步拍摄 → 读盘 → 上传」的尽力而为路径。
+      const cached = peekBoardThumb(tag, boardId);
+      if (cached) {
+        void flushThumbBlob(tag, cached);
+        return;
+      }
+      void captureBoardThumb(api, tag, boardId).then(() => flushThumbUpload(tag));
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -498,7 +539,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [boardId]);
+  }, [boardId, flushThumbUpload, flushThumbBlob]);
 
   /**
    * 返回列表前把最新画面写进缩略图再跳转。
@@ -523,7 +564,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
     leavingRef.current = true;
     const tag = ownerTagRef.current;
     try {
-      if (tag) await captureBoardThumb(api, tag, boardId);
+      if (tag) {
+        await captureBoardThumb(api, tag, boardId);
+        // 上传是尽力而为：网络慢时最多等 1.5s，不能因为缩略图卡住「返回」
+        await Promise.race([
+          flushThumbUpload(tag),
+          new Promise((resolve) => window.setTimeout(resolve, 1500)),
+        ]);
+      }
     } finally {
       // 用 replace 而不是 push：返回是"上移一层"，不该在历史里再留一条白板页，
       // 否则返回列表后再按浏览器后退键会又回到白板，与页面内返回的行为不一致。

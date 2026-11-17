@@ -66,7 +66,8 @@ function webpSize(buf: Buffer): { width: number; height: number } | null {
   }
 
   if (chunk === 'VP8 ') {
-    if (!(buf[20] === 0x9d && buf[21] === 0x01 && buf[22] === 0x2a)) return null;
+    // 20..22 是 3 字节帧标签，起始码 0x9d 0x01 0x2a 在其后
+    if (!(buf[23] === 0x9d && buf[24] === 0x01 && buf[25] === 0x2a)) return null;
     return {
       width: (buf[26]! | (buf[27]! << 8)) & 0x3fff,
       height: (buf[28]! | (buf[29]! << 8)) & 0x3fff,

@@ -156,9 +156,13 @@ async function main() {
       await second.context.close();
     });
 
-    await test("列表卡片显示缩略图（img src 为 blob）", async () => {
+    await test("列表卡片优先显示服务端缩略图", async () => {
       const src = await page.$eval(`[data-board-id="${boardId}"] img`, (img) => img.getAttribute("src"));
-      assert(src?.startsWith("blob:"), `缩略图 src：${src}`);
+      // 离开白板时已把本机副本上传到服务端，列表应直接用 boards.thumbnail_url（可跨设备）
+      assert(src?.startsWith(`/api/boards/${boardId}/thumbnail?v=`), `缩略图 src：${src}`);
+      await until(async () =>
+        page.$eval(`[data-board-id="${boardId}"] img`, (img) => img.complete && img.naturalWidth > 0),
+      );
       const natural = await page.$eval(`[data-board-id="${boardId}"] img`, (img) => ({
         w: img.naturalWidth,
         h: img.naturalHeight,

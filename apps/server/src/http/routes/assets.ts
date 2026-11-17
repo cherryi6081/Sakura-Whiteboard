@@ -36,7 +36,7 @@ const handle =
 const rawImage = express.raw({ type: () => true, limit: LIMITS.assetMaxBytes, inflate: false });
 
 /** 分享 token 只用于"匿名凭链接进入"，不是身份；上传仍要求登录。 */
-function shareTokenOf(req: Request): string | null {
+export function shareTokenOf(req: Request): string | null {
   const fromQuery = typeof req.query.share === 'string' ? req.query.share : null;
   const fromHeader = typeof req.headers['x-share-token'] === 'string' ? req.headers['x-share-token'] : null;
   return fromQuery ?? fromHeader;
