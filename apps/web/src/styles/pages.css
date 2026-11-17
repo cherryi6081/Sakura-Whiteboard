@@ -6477,6 +6477,33 @@ button.wb-sortchip:hover {
   white-space: nowrap;
 }
 
+/* ---------- 成员行内操作（所有者：改角色 / 移除） ---------- */
+.wb-space-members__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.wb-space-members__role-select {
+  width: auto;
+  min-width: 84px;
+  height: 28px;
+  padding: 0 calc(var(--space-2) * 2 + 9px) 0 var(--space-2);
+  font-size: var(--text-caption);
+}
+
+.wb-space-members__remove {
+  height: 28px;
+  padding: 0 8px;
+  font-size: var(--text-caption);
+  color: var(--ink-muted);
+}
+
+.wb-space-members__remove:hover:not(:disabled) {
+  color: var(--danger-text);
+}
+
 .wb-space-invite {
   display: flex;
   align-items: flex-end;

@@ -5,8 +5,10 @@ import {
   dissolveSpace,
   fetchSpaceMembers,
   leaveSpace,
+  removeSpaceMember,
   revokeSpaceInvite,
   transferSpaceOwner,
+  updateSpaceMemberRole,
   type SpaceInvite,
   type SpaceMember,
 } from "./spaceApi";
@@ -16,8 +18,10 @@ import { ListSelect } from "../ui/ListSelect";
 /**
  * 空间设置（设计稿 §07）。
  *
- * 成员列表 + 邀请链接（7 天、可撤销）+ 生命周期（退出 / 转让 / 解散）。
- * 角色调整与移除成员仍未做，不在界面上留假入口。
+ * 成员列表与成员管理（所有者可把成员在编辑者/只读之间调整、可移除成员）
+ * + 邀请链接（7 天、可撤销）+ 生命周期（退出 / 转让 / 解散）。
+ *
+ * 权限口径与后端一致：owner 不在行内调整，只能走「转让」；个人空间不提供成员管理。
  */
 
 const ROLE_TEXT: Record<SpaceRole, string> = {
@@ -37,7 +41,7 @@ type Props = {
   onTransferred: (spaceId: string, newOwnerId: string) => void;
 };
 
-type ConfirmKind = "leave" | "dissolve" | "transfer";
+type ConfirmKind = "leave" | "dissolve" | "transfer" | "remove-member";
 
 /** 邀请链接的两种角色；取值与后端 createSpaceInvite 保持一致 */
 const INVITE_ROLE_OPTIONS = [
@@ -61,6 +65,12 @@ function actionErrorText(code: string): string {
       return "个人空间不能转让。";
     case "ALREADY_OWNER":
       return "你已经是这个空间的所有者。";
+    case "CANNOT_MANAGE_PERSONAL":
+      return "个人空间不能管理成员。";
+    case "CANNOT_CHANGE_OWNER":
+      return "所有者的身份只能通过「转让所有权」变更。";
+    case "INVALID_INPUT":
+      return "不能对自己执行这个操作，请换个成员。";
     case "FORBIDDEN":
       return "当前角色没有权限执行这个操作。";
     case "NOT_FOUND":
@@ -83,9 +93,16 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  /** 成员行内操作：正在提交的成员 id（同一时刻只允许一个） */
+  const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<SpaceMember | null>(null);
+  const [memberNotice, setMemberNotice] = useState<string | null>(null);
+  const [memberError, setMemberError] = useState<string | null>(null);
   const owner = can(space.role, "invite");
   const isOwner = can(space.role, "transferSpace");
   const isPersonal = space.kind === "personal";
+  /** 只有所有者能管理成员；个人空间没有成员管理 */
+  const canManageMembers = isOwner && !isPersonal;
   const otherMembers = members.filter((member) => member.role !== "owner");
   const transferTarget = members.find((member) => member.userId === transferTo) ?? null;
 
@@ -184,6 +201,60 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
     onDissolved(space);
   };
 
+  /** 行内改角色：editor ↔ viewer，就地生效（后端会实时更新该成员连接上的 role） */
+  const changeMemberRole = async (member: SpaceMember, role: "editor" | "viewer") => {
+    if (memberBusyId || member.role === role) return;
+    setMemberBusyId(member.userId);
+    setMemberError(null);
+    setMemberNotice(null);
+    const result = await updateSpaceMemberRole(space.id, member.userId, role);
+    setMemberBusyId(null);
+    if (!result.ok) {
+      setMemberError(actionErrorText(result.code));
+      return;
+    }
+    setMembers((current) =>
+      current.map((item) => (item.userId === member.userId ? { ...item, role } : item)),
+    );
+    setMemberNotice(
+      result.data.changed
+        ? `已把 ${member.displayName} 的角色改为${ROLE_TEXT[role]}。`
+        : `${member.displayName} 已经是${ROLE_TEXT[role]}。`,
+    );
+  };
+
+  /** 成员行「移除」：先弹二次确认，确认后才真正调用 DELETE */
+  const openRemoveMember = (member: SpaceMember) => {
+    setRemoveTarget(member);
+    setActionError(null);
+    setConfirm("remove-member");
+  };
+
+  const runRemoveMember = async () => {
+    if (actionBusy || !removeTarget) return;
+    setActionBusy(true);
+    setActionError(null);
+    setMemberError(null);
+    setMemberNotice(null);
+    const target = removeTarget;
+    const result = await removeSpaceMember(space.id, target.userId);
+    setActionBusy(false);
+    if (!result.ok) {
+      setActionError(actionErrorText(result.code));
+      return;
+    }
+    setMembers((current) => current.filter((item) => item.userId !== target.userId));
+    // 被移除者若占着「转让给」的选中项，交给既有的默认选中逻辑重新挑一位
+    setTransferTo((current) => (current === target.userId ? "" : current));
+    setConfirm(null);
+    setRemoveTarget(null);
+    setMemberNotice(
+      result.data.boardsKept > 0
+        ? `已把 ${target.displayName} 移出空间；其创建的 ${result.data.boardsKept} 个白板保留在空间里。`
+        : `已把 ${target.displayName} 移出空间。`,
+    );
+  };
+
   const runTransfer = async () => {
     if (actionBusy || !transferTarget) return;
     setActionBusy(true);
@@ -249,26 +320,69 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
             <p className="wb-caption">正在加载成员…</p>
           ) : (
             <ul className="wb-space-members">
-              {members.map((member) => (
-                <li className="wb-space-members__row" key={member.userId}>
-                  <span
-                    className="wb-space-members__avatar"
-                    style={{ background: member.color }}
-                    aria-hidden
-                  >
-                    {member.displayName.slice(0, 1)}
-                  </span>
-                  <span className="wb-space-members__text">
-                    <span className="wb-space-members__name">{member.displayName}</span>
-                    <span className="wb-space-members__meta">{member.email ?? "未填写邮箱"}</span>
-                  </span>
-                  <span className={`wb-space-role wb-space-role--${member.role}`}>
-                    {ROLE_TEXT[member.role]}
-                  </span>
-                </li>
-              ))}
+              {members.map((member) => {
+                // owner 不可在行内降级：只能走「转让所有权」
+                const manageable = canManageMembers && member.role !== "owner";
+                return (
+                  <li className="wb-space-members__row" key={member.userId}>
+                    <span
+                      className="wb-space-members__avatar"
+                      style={{ background: member.color }}
+                      aria-hidden
+                    >
+                      {member.displayName.slice(0, 1)}
+                    </span>
+                    <span className="wb-space-members__text">
+                      <span className="wb-space-members__name">{member.displayName}</span>
+                      <span className="wb-space-members__meta">{member.email ?? "未填写邮箱"}</span>
+                    </span>
+                    {manageable ? (
+                      <span className="wb-space-members__actions">
+                        <span className="wb-select-wrap">
+                          <select
+                            className="wb-select wb-space-members__role-select"
+                            aria-label={`${member.displayName} 的角色`}
+                            value={member.role}
+                            disabled={memberBusyId === member.userId}
+                            onChange={(event) =>
+                              void changeMemberRole(member, event.target.value as "editor" | "viewer")
+                            }
+                            data-testid={`space-member-role-${member.userId}`}
+                          >
+                            <option value="editor">编辑者</option>
+                            <option value="viewer">只读</option>
+                          </select>
+                        </span>
+                        <button
+                          className="wb-btn wb-btn--ghost wb-space-members__remove"
+                          type="button"
+                          disabled={memberBusyId === member.userId}
+                          onClick={() => openRemoveMember(member)}
+                          data-testid={`space-member-remove-${member.userId}`}
+                        >
+                          移除
+                        </button>
+                      </span>
+                    ) : (
+                      <span className={`wb-space-role wb-space-role--${member.role}`}>
+                        {ROLE_TEXT[member.role]}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
+          {memberNotice ? (
+            <p className="wb-space-lifecycle__notice" role="status">
+              {memberNotice}
+            </p>
+          ) : null}
+          {memberError ? (
+            <p className="wb-rename__error" role="alert">
+              {memberError}
+            </p>
+          ) : null}
         </section>
 
         <section className="wb-space-settings__section" aria-labelledby="wb-space-invite-title">
@@ -530,6 +644,36 @@ export function SpaceSettings({ space, onClose, onLeft, onDissolved, onTransferr
                   data-testid="space-transfer-confirm"
                 >
                   {actionBusy ? "转让中…" : "确认转让"}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {confirm === "remove-member" ? (
+            <>
+              <h2 className="wb-dialog__title" id="wb-space-confirm-title">
+                把 {removeTarget?.displayName ?? "该成员"} 移出「{space.name}」？
+              </h2>
+              <p className="wb-dialog__desc">
+                移出后对方会立即失去这个空间所有白板的访问权限。其创建的白板会保留在空间里，不会迁走或删除；其创建的有效邀请链接会一并失效。
+              </p>
+              <div className="wb-dialog__actions">
+                <button
+                  className="wb-btn wb-btn--ghost"
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  disabled={actionBusy}
+                >
+                  取消
+                </button>
+                <button
+                  className="wb-btn wb-btn--danger"
+                  type="button"
+                  onClick={() => void runRemoveMember()}
+                  disabled={actionBusy || !removeTarget}
+                  data-testid="space-member-remove-confirm"
+                >
+                  {actionBusy ? "移出中…" : "确认移出"}
                 </button>
               </div>
             </>

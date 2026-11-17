@@ -77,6 +77,50 @@ export function acceptSpaceInvite(token: string): Promise<ApiResult<AcceptInvite
 }
 
 /* ------------------------------------------------------------------------------------------
+ * 成员管理（§13.6）
+ *
+ * 角色只在 editor ↔ viewer 之间调整，owner 只能走「转让」；移除成员时对方创建的
+ * 白板保留在空间里（与「退出」同口径），其创建的有效邀请链接一并吊销。
+ * ---------------------------------------------------------------------------------------- */
+
+export type UpdateSpaceMemberResult = {
+  spaceId: string;
+  userId: string;
+  role: "editor" | "viewer";
+  /** false 表示目标本来就是该角色，无需变更（不算失败） */
+  changed: boolean;
+};
+
+export function updateSpaceMemberRole(
+  spaceId: string,
+  userId: string,
+  role: "editor" | "viewer",
+): Promise<ApiResult<UpdateSpaceMemberResult>> {
+  return request<UpdateSpaceMemberResult>(
+    `/api/spaces/${encodeURIComponent(spaceId)}/members/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify({ role }) },
+  );
+}
+
+export type RemoveSpaceMemberResult = {
+  spaceId: string;
+  userId: string;
+  removed: true;
+  /** 被移除者创建、仍留在空间里的白板数（不迁走、不删除） */
+  boardsKept: number;
+};
+
+export function removeSpaceMember(
+  spaceId: string,
+  userId: string,
+): Promise<ApiResult<RemoveSpaceMemberResult>> {
+  return request<RemoveSpaceMemberResult>(
+    `/api/spaces/${encodeURIComponent(spaceId)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/* ------------------------------------------------------------------------------------------
  * 生命周期
  * ---------------------------------------------------------------------------------------- */
 
