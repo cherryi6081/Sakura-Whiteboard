@@ -366,23 +366,71 @@
   position: relative;
 }
 
+/* Help 弹窗的尺寸刻度：文案 14（原 11.5）、键帽 12（原 10）、标题 18（原 16）、
+   分组标题 14.5、按钮 13，整体明显大一号。
+   左栏 40 行快捷键是高度上限；实测 900 高时内容区只放得下约 769px，
+   因此矮一档只把行距收到 16（字号不变），950 以上用 17，两档都不出现滚动条。
+   行分隔线用不占位的内阴影，避免 40 行各叠 1px 的 border 高度。 */
+.excalidraw-modal-container .HelpDialog {
+  --wb-help-title-size: 18px;
+  --wb-help-title-leading: 24px;
+  --wb-help-title-pad-top: 12px;
+  --wb-help-title-pad-bottom: 10px;
+  --wb-help-pad-top: 8px;
+  --wb-help-pad-bottom: 10px;
+  --wb-help-content-mb: 6px;
+  --wb-help-btn-size: 13px;
+  --wb-help-btn-leading: 17px;
+  --wb-help-btn-pad-y: 5px;
+  --wb-help-h3-size: 14.5px;
+  --wb-help-h3-leading: 19px;
+  --wb-help-h3-mt: 6px;
+  --wb-help-h3-mb: 3px;
+  --wb-help-h4-size: 13.5px;
+  --wb-help-h4-leading: 18px;
+  --wb-help-h4-mb: 0;
+  --wb-help-row-size: 14px;
+  --wb-help-row-leading: 17px;
+  --wb-help-key-size: 12px;
+  --wb-help-key-leading: 14.5px;
+  --wb-help-islands-gap: 18px;
+  --wb-help-islands-row-gap: 4px;
+}
+
+/* 900 高左右（≤939）：字号保持不变，只把行距 17 → 16、上下留白收紧，
+   整卡约 797 高，900 高仍有约 20px 余量，不出现滚动条 */
+@media (max-height: 939px) {
+  .excalidraw-modal-container .HelpDialog {
+    --wb-help-pad-top: 6px;
+    --wb-help-pad-bottom: 6px;
+    --wb-help-content-mb: 4px;
+    --wb-help-h3-mb: 2px;
+    --wb-help-h4-leading: 17px;
+    --wb-help-row-size: 13.5px;
+    --wb-help-row-leading: 16px;
+    --wb-help-key-size: 11.5px;
+    --wb-help-key-leading: 14px;
+    --wb-help-islands-gap: 16px;
+  }
+}
+
 .excalidraw-modal-container .HelpDialog .Dialog__title {
   flex: none;
   margin: 0;
   /* 右侧留出关闭按钮的宽度，标题不再与它挤在一起 */
-  padding: 12px 56px 10px 20px;
+  padding: var(--wb-help-title-pad-top) 56px var(--wb-help-title-pad-bottom) 20px;
   border-bottom: 1px solid var(--dialog-border-color);
-  font-size: 16px;
-  line-height: 22px;
+  font-size: var(--wb-help-title-size);
+  line-height: var(--wb-help-title-leading);
 }
 
 .excalidraw-modal-container .HelpDialog .Dialog__content {
   flex: 1 1 auto;
   min-height: 0;
   /* 滚动条只在这块里跑；上下各留出圆角半径的活动余量，轨道不会顶到弹窗圆角 */
-  margin: 0 0 8px;
+  margin: 0 0 var(--wb-help-content-mb);
   overflow-y: auto;
-  padding: 10px 20px 14px;
+  padding: var(--wb-help-pad-top) 20px var(--wb-help-pad-bottom);
   scrollbar-width: thin;
 }
 
@@ -452,49 +500,54 @@
   box-shadow: var(--focus-ring) !important;
 }
 
-/* 字号/行距/区块间距：行高 21 → 16、标题层级同步收紧，
-   让 77 条快捷键在 900 高的窗口里一屏放下（不再需要滚两屏）。 */
 .excalidraw-modal-container .HelpDialog__header {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 7px;
+  margin-bottom: var(--wb-help-h3-mt);
 }
 
 .excalidraw-modal-container .HelpDialog__btn {
-  padding: 4px 9px;
-  font-size: 11.5px;
-  line-height: 15px;
+  padding: var(--wb-help-btn-pad-y) 10px;
+  font-size: var(--wb-help-btn-size);
+  line-height: var(--wb-help-btn-leading);
 }
 
 .excalidraw-modal-container .HelpDialog h3 {
-  margin: 6px 0 3px;
-  font-size: 12.5px;
-  line-height: 17px;
+  margin: var(--wb-help-h3-mt) 0 var(--wb-help-h3-mb);
+  font-size: var(--wb-help-h3-size);
+  line-height: var(--wb-help-h3-leading);
 }
 
 .excalidraw-modal-container .HelpDialog__islands-container {
-  grid-column-gap: 16px;
-  grid-row-gap: 6px;
+  grid-column-gap: var(--wb-help-islands-gap);
+  grid-row-gap: var(--wb-help-islands-row-gap);
 }
 
 .excalidraw-modal-container .HelpDialog__island h4 {
-  margin-bottom: 2px;
-  font-size: 11.5px;
-  line-height: 15px;
+  margin-bottom: var(--wb-help-h4-mb);
+  font-size: var(--wb-help-h4-size);
+  line-height: var(--wb-help-h4-leading);
 }
 
 .excalidraw-modal-container .HelpDialog__shortcut {
-  padding: 0 8px;
-  column-gap: 6px;
-  font-size: 11.5px;
-  line-height: 15px;
+  padding: 0 9px;
+  column-gap: 7px;
+  border-bottom: 0;
+  /* 1px 分隔线画在行内（inset），不占布局高度，行距可独立放大 */
+  box-shadow: inset 0 -1px 0 var(--dialog-border-color);
+  font-size: var(--wb-help-row-size);
+  line-height: var(--wb-help-row-leading);
+}
+
+.excalidraw-modal-container .HelpDialog__shortcut:last-child {
+  box-shadow: none;
 }
 
 .excalidraw-modal-container .HelpDialog__key {
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 12px;
+  padding: 0 5px;
+  font-size: var(--wb-help-key-size);
+  line-height: var(--wb-help-key-leading);
 }
 
 /* ---------- 「Load from file」确认弹窗 ----------

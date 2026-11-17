@@ -500,6 +500,12 @@ body {
   color: var(--ink-strong);
 }
 
+/* 胶囊作为按钮时（我的白板顶栏账号入口）：沿用胶囊外观，补回按钮语义与手型 */
+.wb-user-chip--action {
+  font: inherit;
+  cursor: pointer;
+}
+
 /* ---------- 骨架 ---------- */
 .wb-skeleton {
   /* 白天 #efe4e8 在纸面上能看出形状（--neutral-100 几乎与白同色，骨架会“消失”） */

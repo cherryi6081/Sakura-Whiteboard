@@ -1,6 +1,10 @@
 import { hostname } from 'node:os';
 import { z } from 'zod';
 
+/** `.env` 里的空字符串按“未配置”处理（本地默认文件保留了占位空值）。 */
+const optionalString = () =>
+  z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), z.string().min(1).optional());
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -36,6 +40,24 @@ const EnvSchema = z.object({
   ASSET_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
   /** 前端静态产物目录（生产镜像由 API 同源托管）；缺省不托管，交给 Vite dev server。 */
   WEB_DIST: z.string().min(1).optional(),
+  /** GitHub OAuth：三项齐备才启用；缺任意一项时登录页不展示入口。 */
+  GITHUB_CLIENT_ID: optionalString(),
+  GITHUB_CLIENT_SECRET: optionalString(),
+  /** 注册到 GitHub 的回调地址；缺省按请求的 proto/host 推导。 */
+  GITHUB_REDIRECT_URI: optionalString(),
+  /**
+   * 前端来源：开发环境填 http://localhost:5173，生产可留空（按请求同源）。
+   * 只用于 OAuth 回调后的最终 302，不参与接口路由。
+   */
+  WEB_APP_ORIGIN: optionalString(),
+  /**
+   * 服务端访问 GitHub 的出站代理（Node 自带 fetch 不读系统代理与 HTTPS_PROXY）。
+   * 缺省回落到进程环境里的 HTTPS_PROXY / HTTP_PROXY；都为空则直连。
+   */
+  GITHUB_PROXY: optionalString(),
+  /** 仅测试用：把 OAuth 站点与 API 指到本地假 provider。 */
+  GITHUB_OAUTH_BASE_URL: z.string().url().default('https://github.com'),
+  GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

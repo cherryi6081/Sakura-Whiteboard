@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchMe, logout, type AuthUser } from "../auth/authApi";
+import { AccountSettingsDialog } from "../auth/AccountSettingsDialog";
 import { publishLogout } from "../auth/authEvents";
 import { useCreateBoard } from "../boards/useCreateBoard";
 import { GUEST_OWNER, setActiveOwner, userOwner } from "../boards/recentBoards";
@@ -21,6 +22,7 @@ export function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [account, setAccount] = useState<AccountState>({ status: "pending" });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const accountRef = useRef<HTMLDivElement | null>(null);
   const userButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -73,6 +75,15 @@ export function HomePage() {
       setActiveOwner(GUEST_OWNER);
       publishLogout();
     }
+  };
+
+  /** 销号成功：服务端已作废会话，本页切回游客并广播，其它标签页同步登出。 */
+  const handleAccountDeleted = () => {
+    setAccountSettingsOpen(false);
+    setUserMenuOpen(false);
+    setAccount({ status: "anon" });
+    setActiveOwner(GUEST_OWNER);
+    publishLogout();
   };
 
   return (
@@ -128,6 +139,18 @@ export function HomePage() {
                     type="button"
                     role="menuitem"
                     className="wb-home__user-menu-item"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setAccountSettingsOpen(true);
+                    }}
+                    data-testid="home-account-settings"
+                  >
+                    账号设置
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wb-home__user-menu-item"
                     onClick={() => void handleLogout()}
                     disabled={loggingOut}
                     data-testid="home-logout"
@@ -179,6 +202,15 @@ export function HomePage() {
         <span aria-hidden>·</span><span>画布渲染 Built on Excalidraw</span>
         <span className="wb-home__foot-note">富士山下，樱花落时。</span>
       </footer>
+
+      {accountSettingsOpen && account.status === "authed" ? (
+        <AccountSettingsDialog
+          user={account.user}
+          onClose={() => setAccountSettingsOpen(false)}
+          onUserChange={(user) => setAccount({ status: "authed", user })}
+          onDeleted={handleAccountDeleted}
+        />
+      ) : null}
     </div>
   );
 }

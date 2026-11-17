@@ -27,7 +27,7 @@ export type ClaimResult = {
   userId: string;
 };
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string };
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message?: string };
 
 export async function request<T>(url: string, init: RequestInit = {}): Promise<ApiResult<T>> {
   try {
@@ -37,9 +37,14 @@ export async function request<T>(url: string, init: RequestInit = {}): Promise<A
       ...init,
     });
     const text = await res.text();
-    const body = text ? (JSON.parse(text) as (T & { error?: { code?: string } }) | null) : null;
+    const body = text ? (JSON.parse(text) as (T & { error?: { code?: string; message?: string } }) | null) : null;
     if (!res.ok) {
-      return { ok: false, status: res.status, code: body?.error?.code ?? `HTTP_${res.status}` };
+      return {
+        ok: false,
+        status: res.status,
+        code: body?.error?.code ?? `HTTP_${res.status}`,
+        message: body?.error?.message,
+      };
     }
     return { ok: true, data: body as T };
   } catch (err) {
@@ -49,6 +54,12 @@ export async function request<T>(url: string, init: RequestInit = {}): Promise<A
 
 export function register(input: { email: string; password: string; displayName: string }): Promise<ApiResult<MePayload>> {
   return request<MePayload>('/api/auth/register', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** 登录页用：哪些第三方登录已配置。失败按未启用处理，绝不因此卡住表单。 */
+export async function fetchProviders(): Promise<{ github: boolean }> {
+  const result = await request<{ github?: boolean }>('/api/auth/providers', { method: 'GET' });
+  return { github: result.ok ? Boolean(result.data.github) : false };
 }
 
 export function login(input: { email: string; password: string }): Promise<ApiResult<MePayload>> {
@@ -62,6 +73,21 @@ export async function logout(): Promise<ApiResult<null>> {
 
 export function fetchMe(): Promise<ApiResult<MePayload>> {
   return request<MePayload>('/api/auth/me');
+}
+
+/** 改显示名；返回体与 GET /auth/me 的 user 同构，可直接替换本地账号状态。 */
+export function updateProfile(input: { displayName: string }): Promise<ApiResult<{ user: AuthUser }>> {
+  return request<{ user: AuthUser }>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+/** 登录态改密；成功后服务端会作废其它会话，但当前标签页会拿到新 cookie。 */
+export function changePassword(input: { currentPassword: string; newPassword: string }): Promise<ApiResult<{ ok: true }>> {
+  return request<{ ok: true }>('/api/auth/password', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** 销号（不可恢复）：用户行保留为停用，业务数据物理删除。 */
+export function deleteAccount(input: { currentPassword: string }): Promise<ApiResult<{ ok: true }>> {
+  return request<{ ok: true }>('/api/auth/me', { method: 'DELETE', body: JSON.stringify(input) });
 }
 
 export function fetchClaimPreview(): Promise<ApiResult<ClaimPreview>> {

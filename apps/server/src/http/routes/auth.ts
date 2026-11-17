@@ -5,12 +5,44 @@ import { assessPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@white
 import { pool } from '../../infra/db.js';
 import { logger } from '../../infra/logger.js';
 import { hashPassword, verifyPassword } from '../../auth/password.js';
-import { clearSessionCookie, createSession, destroySession } from '../../auth/session.js';
+import { clearSessionCookie, createSession, destroySession, bumpAuthEpoch } from '../../auth/session.js';
 import { identityOf, requireUser } from '../../auth/identity.js';
+import { parseCookieHeader } from '../../auth/guestCookie.js';
+import {
+  GITHUB_STATE_COOKIE,
+  GithubOAuthError,
+  authorizeUrl,
+  buildStateCookie,
+  clearStateCookie,
+  consumeState,
+  createPkce,
+  createState,
+  exchangeCode,
+  fetchGithubProfile,
+  githubConfigured,
+  githubRedirectUri,
+  loginErrorUrl,
+  parseStateCookieValue,
+  safeReturnTo,
+  saveState,
+  webAppUrl,
+} from '../../auth/githubOAuth.js';
+import { loginWithGithub } from '../../domain/githubAccount.js';
+import { purgeAccount } from '../../domain/accountDeletion.js';
 import { AppError } from '../middlewares/error.js';
+import {
+  clientIp,
+  loginEmailRule,
+  loginIpRule,
+  rateLimitClear,
+  rateLimitConsume,
+  rateLimitRecord,
+  rateLimitWait,
+  registerIpRule,
+} from '../middlewares/rateLimit.js';
 
 /**
- * 邮箱 + 密码账号（M5-1）。GitHub OAuth 明确**不做**，`GITHUB_*` 环境变量保持预留。
+ * 邮箱 + 密码账号（M5-1）+ GitHub OAuth。
  * 会话存 Redis（`sess:{sid}`），cookie `wb_sess` 为 HttpOnly 签名值。
  */
 
@@ -31,6 +63,20 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1).max(72),
+});
+
+/** 资料修改只开放现有列，`display_name` 的 2–24 长度与建表约束一致。 */
+const profileSchema = z.object({
+  displayName: z.string().trim().min(2).max(24),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(72),
+  newPassword: passwordSchema,
+});
+
+const closeAccountSchema = z.object({
+  currentPassword: z.string().min(1).max(72),
 });
 
 const handle =
@@ -85,6 +131,13 @@ authRouter.post(
   '/auth/register',
   sameOriginOnly,
   handle(async (req, res) => {
+    // 注册按 IP 计数（含失败尝试），每小时上限，挡住批量注册
+    const wait = await rateLimitConsume(registerIpRule(clientIp(req)));
+    if (wait !== null) {
+      res.setHeader('Retry-After', String(wait));
+      throw new AppError(429, 'TOO_MANY_ATTEMPTS', '注册尝试过多，请稍后再试');
+    }
+
     const body = registerSchema.parse(req.body);
     const displayName = body.displayName ?? body.email.split('@')[0]?.slice(0, 24) ?? '用户';
     // 长度以外的硬门槛（弱口令表、邮箱前缀）与前端共用同一份规则
@@ -130,6 +183,16 @@ authRouter.post(
   sameOriginOnly,
   handle(async (req, res) => {
     const body = loginSchema.parse(req.body);
+
+    // 先看额度：按账号 5 次失败 / 按 IP 20 次失败，两者都要过（15 分钟窗口）
+    const emailRule = loginEmailRule(body.email);
+    const ipRule = loginIpRule(clientIp(req));
+    const wait = await rateLimitWait([emailRule, ipRule]);
+    if (wait !== null) {
+      res.setHeader('Retry-After', String(wait));
+      throw new AppError(429, 'TOO_MANY_ATTEMPTS', '尝试次数过多，请稍后再试');
+    }
+
     const { rows } = await pool.query<UserWithCredentialRow>(
       `select u.id, u.email, u.display_name, u.color, u.status, c.password_hash
          from users u
@@ -141,8 +204,12 @@ authRouter.post(
     const row = rows[0];
     // 邮箱不存在与密码错误统一 401，不区分原因
     if (!row || row.status !== 'active' || !(await verifyPassword(row.password_hash, body.password))) {
+      await rateLimitRecord([emailRule, ipRule]);
       throw new AppError(401, 'INVALID_CREDENTIALS', '邮箱或密码错误');
     }
+
+    // 成功登录清掉账号维度的失败计数；IP 计数保留
+    await rateLimitClear([emailRule.key]);
 
     await pool.query('update users set last_login_at = now() where id = $1', [row.id]);
     await pool.query('update credentials set last_used_at = now() where user_id = $1', [row.id]);
@@ -161,6 +228,116 @@ authRouter.post(
     if (identity.sessionId) await destroySession(identity.sessionId);
     res.append('Set-Cookie', clearSessionCookie());
     res.status(204).end();
+  }),
+);
+
+authRouter.get('/auth/providers', (_req, res) => {
+  res.json({ github: githubConfigured() });
+});
+
+/**
+ * GitHub OAuth 起点：生成一次性 state + PKCE，把 state 落到 Redis 与 HttpOnly cookie，
+ * 然后 302 到 GitHub。未配置时同样 302 回登录页并带 `oauthError=not_configured`，
+ * 前端据此不展示入口，也避免直接访问时白屏。
+ */
+authRouter.get(
+  '/auth/github/start',
+  handle(async (req, res) => {
+    const next = safeReturnTo(typeof req.query.next === 'string' ? req.query.next : null) ?? '/';
+    if (!githubConfigured()) {
+      res.redirect(302, loginErrorUrl(req, 'not_configured', next));
+      return;
+    }
+    const state = createState();
+    const pkce = createPkce();
+    // 连点两次会开两条授权流程：cookie 里保留多个候选 state，先回来的那条也能通过校验
+    const pending = parseStateCookieValue(parseCookieHeader(req.headers.cookie)[GITHUB_STATE_COOKIE]);
+    try {
+      await saveState(state, { returnTo: next, codeVerifier: pkce.verifier, createdAt: Date.now() });
+    } catch (error) {
+      logger.error({ err: error }, 'github oauth state store unavailable');
+      res.redirect(302, loginErrorUrl(req, 'temporarily_unavailable', next));
+      return;
+    }
+    res.append('Set-Cookie', buildStateCookie([...pending, state]));
+    res.redirect(
+      302,
+      authorizeUrl({ state, redirectUri: githubRedirectUri(req), challenge: pkce.challenge }),
+    );
+  }),
+);
+
+/**
+ * GitHub 回调：state 必须同时命中 cookie 与 Redis（消费即删，防重放），
+ * 之后换 token、取已验证邮箱、合并或新建账号，最后种会话并回站内落点。
+ * 所有失败都回登录页带可读错误码，不静默登录。
+ */
+authRouter.get(
+  '/auth/github/callback',
+  handle(async (req, res) => {
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    const cookies = parseCookieHeader(req.headers.cookie);
+    const candidates = parseStateCookieValue(cookies[GITHUB_STATE_COOKIE]);
+    // 只摘掉本次消费的 state，其它并发流程（连点两次）仍然有效
+    const remaining = candidates.filter((item) => item !== state);
+    res.append('Set-Cookie', remaining.length > 0 ? buildStateCookie(remaining) : clearStateCookie());
+
+    if (!githubConfigured()) {
+      res.redirect(302, loginErrorUrl(req, 'not_configured', null));
+      return;
+    }
+    if (!state || !candidates.includes(state)) {
+      res.redirect(302, loginErrorUrl(req, 'state_mismatch', null));
+      return;
+    }
+
+    let record = null;
+    let storeFailed = false;
+    try {
+      record = await consumeState(state);
+    } catch (error) {
+      storeFailed = true;
+      logger.warn({ err: error }, 'github oauth state store unavailable');
+    }
+    if (!record) {
+      // cookie 命中但 Redis 里没有：TTL 到期、已被消费（重复回调）或存储不可用
+      res.redirect(302, loginErrorUrl(req, storeFailed ? 'temporarily_unavailable' : 'state_expired', null));
+      return;
+    }
+
+    const providerError = typeof req.query.error === 'string' ? req.query.error : '';
+    if (providerError) {
+      const code = providerError === 'access_denied' ? 'access_denied' : 'github_error';
+      res.redirect(302, loginErrorUrl(req, code, record.returnTo));
+      return;
+    }
+
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    if (!code) {
+      res.redirect(302, loginErrorUrl(req, 'github_error', record.returnTo));
+      return;
+    }
+
+    try {
+      const token = await exchangeCode({
+        code,
+        redirectUri: githubRedirectUri(req),
+        verifier: record.codeVerifier,
+      });
+      const profile = await fetchGithubProfile(token);
+      const { userId } = await loginWithGithub(profile);
+      await createSession(userId, 'oauth:github', res);
+      // 回调落在 API 端口，最终跳转要指回前端来源（开发 5173 / 生产同源）
+      res.redirect(302, webAppUrl(req, safeReturnTo(record.returnTo) ?? '/'));
+    } catch (error) {
+      if (error instanceof GithubOAuthError) {
+        logger.warn({ err: error, code: error.code }, 'github oauth rejected');
+        res.redirect(302, loginErrorUrl(req, error.code, record.returnTo));
+        return;
+      }
+      logger.error({ err: error }, 'github oauth failed');
+      res.redirect(302, loginErrorUrl(req, 'temporarily_unavailable', record.returnTo));
+    }
   }),
 );
 
@@ -192,5 +369,124 @@ authRouter.get(
       methods,
       loginMethod: identity.loginMethod,
     });
+  }),
+);
+
+/**
+ * `PATCH /api/auth/me` —— 修改显示名。
+ *
+ * 只改 `users.display_name`：空间名、白板标题、历史 op 归属都是各自独立的业务数据，
+ * 不随昵称联动。返回体与 `GET /auth/me` 的 `user` 保持一致，前端直接就地替换。
+ */
+authRouter.patch(
+  '/auth/me',
+  sameOriginOnly,
+  requireUser,
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    const userId = identity.userId;
+    if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
+
+    const { displayName } = profileSchema.parse(req.body ?? {});
+    const { rows } = await pool.query<UserRow>(
+      `update users set display_name = $2
+        where id = $1 and status = 'active'
+        returning id, email, display_name, color`,
+      [userId, displayName],
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(401, 'UNAUTHENTICATED', 'session user missing');
+
+    res.json({ user: toUser(row) });
+  }),
+);
+
+/**
+ * `POST /api/auth/password` —— 登录态改密（本轮不做找回密码 / 邮箱验证）。
+ *
+ * 成功后的处理顺序：
+ * 1. 写入新的 argon2id 哈希；
+ * 2. `bumpAuthEpoch` 把该账号所有旧会话作废（其它标签/设备下次请求即 401）；
+ * 3. 销毁当前 sid 并重签一条新会话，当前页面无感继续在线。
+ */
+authRouter.post(
+  '/auth/password',
+  sameOriginOnly,
+  requireUser,
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    const userId = identity.userId;
+    if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
+
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body ?? {});
+
+    const { rows } = await pool.query<{ password_hash: string; email: string | null }>(
+      `select c.password_hash, u.email
+         from credentials c
+         join users u on u.id = c.user_id
+        where c.user_id = $1`,
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(400, 'NO_PASSWORD', '该账号尚未设置密码');
+
+    // 旧密码错误与账号不存在统一 401，不区分原因
+    if (!(await verifyPassword(row.password_hash, currentPassword))) {
+      throw new AppError(401, 'INVALID_CREDENTIALS', '当前密码不正确');
+    }
+    // 新密码与旧密码相同：直接拒绝，避免"改了个寂寞"却把其它会话踢下线
+    if (await verifyPassword(row.password_hash, newPassword)) {
+      throw new AppError(400, 'PASSWORD_UNCHANGED', '新密码不能与当前密码相同');
+    }
+    const assessment = assessPassword(newPassword, { email: row.email });
+    if (assessment.blockers.length > 0) {
+      throw new AppError(400, 'INVALID_INPUT', assessment.blockers[0] ?? '密码不符合要求');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await pool.query('update credentials set password_hash = $2, updated_at = now() where user_id = $1', [
+      userId,
+      passwordHash,
+    ]);
+
+    await bumpAuthEpoch(userId);
+    if (identity.sessionId) await destroySession(identity.sessionId);
+    await createSession(userId, 'password', res);
+
+    res.json({ ok: true });
+  }),
+);
+
+/**
+ * `DELETE /api/auth/me` —— 销号（不可恢复，需当前密码确认）。
+ *
+ * 数据口径见 `domain/accountDeletion.ts`：用户行保留为 disabled，业务数据物理删除。
+ * 成功后就地作废所有会话并清 cookie；前端收到 200 走本地登出广播回首页。
+ */
+authRouter.delete(
+  '/auth/me',
+  sameOriginOnly,
+  requireUser,
+  handle(async (req, res) => {
+    const identity = identityOf(req);
+    const userId = identity.userId;
+    if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
+
+    const { currentPassword } = closeAccountSchema.parse(req.body ?? {});
+    const { rows } = await pool.query<{ password_hash: string }>(
+      'select password_hash from credentials where user_id = $1',
+      [userId],
+    );
+    const row = rows[0];
+    if (!row || !(await verifyPassword(row.password_hash, currentPassword))) {
+      throw new AppError(401, 'INVALID_CREDENTIALS', '密码不正确');
+    }
+
+    await purgeAccount(userId);
+    await bumpAuthEpoch(userId);
+    if (identity.sessionId) await destroySession(identity.sessionId);
+    res.append('Set-Cookie', clearSessionCookie());
+
+    res.json({ ok: true });
   }),
 );

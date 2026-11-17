@@ -63,8 +63,8 @@ export class Api {
     return this.request("PUT", path, { body: body ?? {} });
   }
 
-  delete(path) {
-    return this.request("DELETE", path);
+  delete(path, body) {
+    return this.request("DELETE", path, body === undefined ? {} : { body });
   }
 
   async register(email, displayName = "e2e") {

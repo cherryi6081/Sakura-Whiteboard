@@ -4,7 +4,8 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { fetchClaimPreview, fetchMe, logout, type ClaimPreview } from "../auth/authApi";
+import { fetchClaimPreview, fetchMe, logout, type AuthUser, type ClaimPreview } from "../auth/authApi";
+import { AccountSettingsDialog } from "../auth/AccountSettingsDialog";
 import { ClaimDialog } from "../auth/ClaimDialog";
 import { migrateGuestLocalData } from "../auth/claimLocalData";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
@@ -171,6 +172,9 @@ export function BoardsPage() {
   const spaceIdRef = useRef("");
   const [spaceRole, setSpaceRole] = useState<string>("owner");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 顶栏账号胶囊打开的账号设置弹窗；完整 user 用于回填邮箱/颜色与资料更新 */
+  const [meUser, setMeUser] = useState<AuthUser | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [preview, setPreview] = useState<ClaimPreview | null>(null);
   const [claimBarVisible, setClaimBarVisible] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -254,6 +258,8 @@ export function BoardsPage() {
         // 保留 owner、空间与本地最近记录（不清、不改成游客），只换成「身份未知」态；
         // 游客视图的建板、认领横幅等写操作在这个分支下一律不渲染。
         setClaimBarVisible(false);
+        setMeUser(null);
+        setAccountOpen(false);
         setView({ kind: "unknown" });
         return;
       }
@@ -264,12 +270,15 @@ export function BoardsPage() {
       setSpaceId("");
       spaceIdRef.current = "";
       setTrashCount(0);
+      setMeUser(null);
+      setAccountOpen(false);
       setView({ kind: "guest", items: listRecentBoards(GUEST_OWNER) });
       return;
     }
     const currentOwner = userOwner(me.data.user.id);
     setActiveOwner(currentOwner);
     setOwner(currentOwner);
+    setMeUser(me.data.user);
 
     // 空间是列表的一级上下文：先取空间列表，再按空间取白板
     const spacesResult = await fetchSpaces();
@@ -401,6 +410,8 @@ export function BoardsPage() {
     spaceIdRef.current = "";
     setSpaceRole("owner");
     setSettingsOpen(false);
+    setAccountOpen(false);
+    setMeUser(null);
     setPreview(null);
     setClaimBarVisible(false);
     setDialogOpen(false);
@@ -433,6 +444,13 @@ export function BoardsPage() {
       setLoggingOut(false);
     }
   }, [loggingOut, switchToGuest]);
+
+  /** 销号成功：服务端已清 cookie 并作废会话，这里广播登出并回首页（不再打 logout 接口）。 */
+  const handleAccountDeleted = useCallback(() => {
+    setAccountOpen(false);
+    publishLogout();
+    window.location.assign("/");
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -1709,12 +1727,18 @@ export function BoardsPage() {
           </a>
         ) : null}
         {view.kind === "user" ? (
-          <span className="wb-user-chip" tabIndex={0}>
+          <button
+            className="wb-user-chip wb-user-chip--action"
+            type="button"
+            onClick={() => setAccountOpen(true)}
+            title="账号设置"
+            aria-haspopup="dialog"
+          >
             <UserMark />
             <span className="wb-caption" data-testid="boards-user">
               {view.user.displayName}
             </span>
-          </span>
+          </button>
         ) : null}
         {view.kind === "user" ? (
           <button
@@ -2175,6 +2199,20 @@ export function BoardsPage() {
           onLeft={handleSpaceLeft}
           onDissolved={handleSpaceDissolved}
           onTransferred={handleSpaceTransferred}
+        />
+      ) : null}
+
+      {accountOpen && meUser ? (
+        <AccountSettingsDialog
+          user={meUser}
+          onClose={() => setAccountOpen(false)}
+          onUserChange={(user) => {
+            setMeUser(user);
+            setView((current) =>
+              current.kind === "user" ? { ...current, user: { displayName: user.displayName } } : current,
+            );
+          }}
+          onDeleted={handleAccountDeleted}
         />
       ) : null}
 

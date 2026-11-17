@@ -17,6 +17,8 @@ const VERSION = 'v1';
 export type SessionData = {
   userId: string;
   loginMethod: 'password' | 'oauth:github';
+  /** 账号级会话代数：改密/销号时 +1，旧会话在下次读取时立即失效（§5.5）。 */
+  epoch: number;
   createdAt: number;
   lastSeenAt: number;
 };
@@ -62,11 +64,30 @@ export function clearSessionCookie(): string {
 }
 
 const sessionKey = (sid: string) => `sess:${sid}`;
+const authEpochKey = (userId: string) => `authEpoch:${userId}`;
+
+/**
+ * 读取账号当前会话代数。键不存在时视为 0（与历史会话兼容）。
+ * Redis 故障向上抛出，由 readSession 统一兜成「未登录」。
+ */
+export async function readAuthEpoch(userId: string): Promise<number> {
+  await ensureRedisConnected();
+  const raw = await redis.get(authEpochKey(userId));
+  const value = Number(raw ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** 账号级吊销：+1 后所有已签发的旧会话在下次读取时失效（改密/销号）。 */
+export async function bumpAuthEpoch(userId: string): Promise<number> {
+  await ensureRedisConnected();
+  return redis.incr(authEpochKey(userId));
+}
 
 export async function createSession(userId: string, loginMethod: SessionData['loginMethod'], res?: Response): Promise<string> {
   const sid = createSessionSid();
   const now = Date.now();
-  const data: SessionData = { userId, loginMethod, createdAt: now, lastSeenAt: now };
+  const epoch = await readAuthEpoch(userId);
+  const data: SessionData = { userId, loginMethod, epoch, createdAt: now, lastSeenAt: now };
   await ensureRedisConnected();
   await redis.set(sessionKey(sid), JSON.stringify(data), 'EX', SESSION_TTL_SECONDS);
   if (res) res.append('Set-Cookie', serializeSessionCookie(sid));
@@ -84,9 +105,17 @@ export async function readSession(sid: string): Promise<SessionData | null> {
     const data: SessionData = {
       userId: parsed.userId,
       loginMethod: parsed.loginMethod === 'oauth:github' ? 'oauth:github' : 'password',
+      epoch: Number(parsed.epoch ?? 0),
       createdAt: Number(parsed.createdAt ?? 0),
       lastSeenAt: Date.now(),
     };
+    // 会话代数不一致 = 改密/销号后签发的旧会话，立即删除
+    const epochRaw = await redis.get(authEpochKey(data.userId));
+    const currentEpoch = Number(epochRaw ?? 0);
+    if (!Number.isFinite(currentEpoch) || currentEpoch !== data.epoch) {
+      await redis.del(sessionKey(sid)).catch(() => undefined);
+      return null;
+    }
     // 滚动续期（失败不影响本次请求）
     await redis.set(sessionKey(sid), JSON.stringify(data), 'EX', SESSION_TTL_SECONDS).catch(() => undefined);
     return data;

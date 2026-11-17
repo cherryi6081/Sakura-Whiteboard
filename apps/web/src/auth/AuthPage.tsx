@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   assessPassword,
   levelBars,
@@ -6,7 +6,7 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@whiteboard/shared";
-import { login, register, type MePayload } from "./authApi";
+import { fetchProviders, login, register, type MePayload } from "./authApi";
 import { isRestrictedPath } from "../board/route";
 import { IconAlert, IconBack, IconEye, IconEyeOff } from "../ui/icons";
 import { FujiScene } from "../home/FujiScene";
@@ -37,13 +37,56 @@ export function AuthPage({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    oauthMessageOf(new URLSearchParams(window.location.search).get("oauthError")),
+  );
   const [busy, setBusy] = useState(false);
+  // GitHub 入口的防连点：点击即禁用，避免短时间发起两条授权流程
+  const [githubBusy, setGithubBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [providers, setProviders] = useState<{ github: boolean } | null>(null);
   const period = useThemePeriod();
+
+  // 第三方入口由服务端配置决定：缺配置时不渲染按钮；错误码从回跳 URL 读一次后清掉
+  useEffect(() => {
+    let alive = true;
+    void fetchProviders().then((value) => {
+      if (alive) setProviders(value);
+    });
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("oauthError")) {
+      url.searchParams.delete("oauthError");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 从 GitHub 返回（含 bfcache 恢复）或重新回到标签页时解除处理中，避免入口永久禁用
+  useEffect(() => {
+    const restore = () => setGithubBusy(false);
+    window.addEventListener("pageshow", restore);
+    document.addEventListener("visibilitychange", restore);
+    return () => {
+      window.removeEventListener("pageshow", restore);
+      document.removeEventListener("visibilitychange", restore);
+    };
+  }, []);
 
   // 注册时实时评估强度：只在输入非空时计算，避免空态就显示"弱"
   const assessment = mode === "register" && password ? assessPassword(password, { email: email.trim() }) : null;
+
+  // 首次点击放行默认跳转；处理中再点直接拦掉，不会发起第二次授权
+  const startGithub = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (githubBusy) {
+      event.preventDefault();
+      return;
+    }
+    setGithubBusy(true);
+    // 兜底：跳转被拦截、或用户在 GitHub 页停留很久，15 秒后恢复可点
+    window.setTimeout(() => setGithubBusy(false), 15_000);
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -69,6 +112,7 @@ export function AuthPage({
 
   // 受限页的 returnTo 不回给游客：否则点「继续以游客身份」会立刻被守卫弹回登录页
   const guestHref = next && !isRestrictedPath(next) ? next : "/";
+  const oauthNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
   return (
     <div className="wb-auth" data-period={period}>
@@ -219,6 +263,25 @@ export function AuthPage({
               {busy ? (mode === "login" ? "登录中…" : "注册中…") : mode === "login" ? "登录" : "注册"}
             </button>
 
+            {providers?.github ? (
+              <div className="wb-auth__oauth">
+                <span className="wb-auth__divider" aria-hidden>
+                  或
+                </span>
+                <a
+                  className={`wb-btn wb-btn--full wb-auth__github${githubBusy ? " wb-auth__github--busy" : ""}`}
+                  data-testid="auth-github"
+                  href={`/api/auth/github/start?next=${encodeURIComponent(oauthNext)}`}
+                  aria-busy={githubBusy || undefined}
+                  aria-disabled={githubBusy || undefined}
+                  onClick={startGithub}
+                >
+                  {githubBusy ? "正在前往 GitHub…" : mode === "login" ? "使用 GitHub 登录" : "使用 GitHub 注册 / 登录"}
+                </a>
+                <p className="wb-auth__github-hint">将打开 GitHub 账号选择页，可切换其他账号</p>
+              </div>
+            ) : null}
+
             <button
               type="button"
               className="wb-auth__switch"
@@ -242,6 +305,36 @@ export function AuthPage({
       </div>
     </div>
   );
+}
+
+/**
+ * GitHub OAuth 回调失败码 → 可读文案。服务端只回码，不在 URL 里回显第三方原文。
+ */
+function oauthMessageOf(code: string | null): string | null {
+  switch (code) {
+    case "not_configured":
+      return "GitHub 登录尚未启用";
+    case "state_mismatch":
+      return "登录请求已失效或来源不明，请重新点击 GitHub 登录";
+    case "state_expired":
+      return "登录请求已过期或已被使用，请重新点击 GitHub 登录";
+    case "code_expired":
+      return "GitHub 授权码已过期，请重新登录";
+    case "email_unverified":
+      return "该 GitHub 账号没有已验证的邮箱，请先在 GitHub 验证邮箱后重试";
+    case "account_disabled":
+      return "该账号已注销，无法登录";
+    case "access_denied":
+      return "已取消 GitHub 授权";
+    case "github_unreachable":
+      return "无法连接 GitHub（网络或代理异常），请检查网络后重试";
+    case "temporarily_unavailable":
+      return "登录服务暂时不可用，请稍后重试";
+    case "github_error":
+      return "GitHub 授权失败，请稍后重试";
+    default:
+      return null;
+  }
 }
 
 /**

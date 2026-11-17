@@ -4418,6 +4418,81 @@ body:has(.wb-home) {
   border-bottom-color: var(--auth-ink);
 }
 
+/* GitHub 入口：仅登录 / 注册页；配置缺失时整块不渲染 */
+.wb-auth__oauth {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.wb-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--auth-muted);
+  font-size: var(--text-caption);
+}
+
+.wb-auth__divider::before,
+.wb-auth__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(107, 96, 88, 0.25);
+}
+
+/* GitHub 入口：与主按钮同高同内边距的描边胶囊，朱色淡底，压在羊皮纸卡片上 */
+.wb-auth__github {
+  height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid rgba(180, 64, 44, 0.34);
+  border-radius: var(--radius-pill);
+  background: rgba(180, 64, 44, 0.05);
+  color: var(--auth-vermilion);
+  font-size: var(--text-body);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-auth__github:hover {
+  border-color: rgba(180, 64, 44, 0.55);
+  background: rgba(180, 64, 44, 0.1);
+  color: var(--auth-vermilion);
+}
+
+.wb-auth__github:focus-visible {
+  outline: 2px solid var(--auth-vermilion);
+  outline-offset: 2px;
+}
+
+/* 卡片本身昼夜都保持羊皮纸；夜间只把胶囊底与描边压深一点，保证同等可读 */
+:root[data-theme="night"] .wb-auth__github {
+  border-color: rgba(180, 64, 44, 0.46);
+  background: rgba(180, 64, 44, 0.09);
+}
+
+/* 处理中：胶囊样式不变，只压暗并给出进度光标，连点不再触发第二次跳转 */
+.wb-auth__github--busy,
+.wb-auth__github--busy:hover {
+  border-color: rgba(180, 64, 44, 0.22);
+  background: rgba(180, 64, 44, 0.04);
+  color: var(--auth-muted);
+  cursor: progress;
+  pointer-events: none;
+}
+
+/* 账号选择说明：跟胶囊拉开一档间距，字号按提示级 */
+.wb-auth__github-hint {
+  margin: 0;
+  color: var(--auth-muted);
+  font-size: var(--text-caption);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 /* 朱印：斜盖在卡片右下角，压住纸边 */
 .wb-auth__seal {
   position: absolute;
@@ -6150,6 +6225,64 @@ button.wb-sortchip:hover {
   line-height: 17px;
   font-weight: 600;
   color: var(--ink-strong);
+}
+
+/* ---------- 账号设置（沿用空间设置面板壳，仅补三段式的局部节奏） ---------- */
+.wb-account {
+  width: 520px;
+  /* 三段式内容比空间设置更长：在现有紧凑口径上再收一档，1366×768 也能一屏放下 */
+  padding: 16px 20px;
+  gap: 6px;
+}
+
+.wb-account .wb-space-settings__section {
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.wb-account .wb-field {
+  gap: 3px;
+}
+
+/* 输入框是整窗最高的一批元素：44（基类）→ 40（空间设置）→ 36（紧凑档，同菜单项节奏），字号收一档到 caption */
+.wb-account .wb-input {
+  height: 36px;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+/* 邮箱可能很长：允许在任意位置换行，避免把关闭键挤出弹窗（390 窄屏横向溢出） */
+.wb-account .wb-space-settings__head > div {
+  min-width: 0;
+}
+
+.wb-account .wb-space-settings__head .wb-caption {
+  overflow-wrap: anywhere;
+}
+
+.wb-account__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+}
+
+.wb-account__actions .wb-rename__error {
+  margin: 0;
+}
+
+.wb-account .wb-space-danger {
+  width: 100%;
+  gap: 3px;
+  padding: 7px 12px;
+}
+
+.wb-account .wb-space-danger .wb-field {
+  width: 100%;
+}
+
+.wb-account .wb-space-danger .wb-btn {
+  margin-top: 2px;
 }
 
 .wb-space-members {

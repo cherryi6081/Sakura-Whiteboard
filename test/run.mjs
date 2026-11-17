@@ -32,6 +32,8 @@ const BLACKBOX = [
   ["logout", "10-logout.mjs"],
   ["claim", "11-claim.mjs"],
   ["user-mark", "12-user-mark.mjs"],
+  ["account", "13-account.mjs"],
+  ["oauth", "14-oauth.mjs"],
 ];
 
 const WHITEBOX = [

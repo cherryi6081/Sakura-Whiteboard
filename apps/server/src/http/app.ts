@@ -13,6 +13,7 @@ import { trashRouter } from './routes/trash.js';
 import { spacesRouter } from './routes/spaces.js';
 import { attachIdentity } from '../auth/identity.js';
 import { errorHandler, notFound } from './middlewares/error.js';
+import { securityHeaders } from './middlewares/securityHeaders.js';
 
 /**
  * 生产镜像里前端由 API 同源托管（`WEB_DIST` 指向构建产物）。
@@ -42,6 +43,8 @@ export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
+  // 安全头最先挂：静态页、API、错误响应都能带上（路由级 CSP 可覆盖这里的基础值）
+  app.use(securityHeaders);
   app.use(express.json({ limit: '64kb' }));
   // 身份只从签名 cookie / Redis 会话推导（M5-1）；所有 /api 路由共享同一个 req.identity
   app.use('/api', attachIdentity);
