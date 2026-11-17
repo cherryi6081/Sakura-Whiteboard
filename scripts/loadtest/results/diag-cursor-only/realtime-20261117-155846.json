@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "base": "http://127.0.0.1:8080",
+    "cores": 20,
+    "totalMemGb": 31.6,
+    "levels": [
+      100
+    ],
+    "warmup": 2,
+    "duration": 10,
+    "cursorHz": 4,
+    "opHz": 0,
+    "opBytes": 256,
+    "thresholds": {
+      "joinP95Ms": 300,
+      "cursorP95Ms": 150,
+      "ackP95Ms": 200,
+      "applyP95Ms": 250,
+      "errorRatePct": 1,
+      "cpuPct": 85
+    }
+  },
+  "knee": {
+    "firstFailingLevel": 100,
+    "firstFailingReasons": [
+      "join p95 528.82ms"
+    ],
+    "throughputSaturation": null
+  },
+  "results": [
+    {
+      "level": 100,
+      "requested": 100,
+      "joined": 100,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 0,
+      "opRejectRate": 0,
+      "joinErrorRate": 0,
+      "unackedOps": 0,
+      "join": {
+        "count": 100,
+        "p50": 214.69,
+        "p95": 528.82,
+        "p99": 548.68,
+        "max": 580.82
+      },
+      "cursor": {
+        "count": 77715,
+        "p50": 47.69,
+        "p95": 60.96,
+        "p99": 68.45,
+        "max": 82.83
+      },
+      "ack": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "apply": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "submittedPerSec": 0,
+      "acksPerSec": 0,
+      "rejectsPerSec": 0,
+      "rejectReasons": {},
+      "deliveredPerSec": 38836.9,
+      "expectedDeliveredPerSec": 39600,
+      "deliveryRatio": 0.981,
+      "offeredPerSec": 400,
+      "cursorEventsPerSec": 38836.9,
+      "applyEventsPerSec": 0,
+      "liveClients": 100,
+      "server": {
+        "cpuPct": 21.1,
+        "cpuCores": 20,
+        "rssPeakMb": 111.7,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 21.5,
+        "usedMemoryMb": 2.1,
+        "connectedClients": 4,
+        "top": {
+          "eval": 0.2,
+          "publish": 16.3
+        }
+      },
+      "pg": {
+        "appActivePeak": 0,
+        "appTotalPeak": 10,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 17.4,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 36.18
+      },
+      "verdict": {
+        "status": "DEGRADED",
+        "reasons": [
+          "join p95 528.82ms"
+        ]
+      }
+    }
+  ],
+  "env": {
+    "node": "v22.23.0",
+    "platform": "win32"
+  }
+}

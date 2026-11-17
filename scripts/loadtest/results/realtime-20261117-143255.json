@@ -1,0 +1,497 @@
+{
+  "meta": {
+    "base": "http://127.0.0.1:8080",
+    "cores": 20,
+    "totalMemGb": 31.6,
+    "levels": [
+      5,
+      10,
+      20,
+      50,
+      100
+    ],
+    "warmup": 2,
+    "duration": 10,
+    "cursorHz": 4,
+    "opHz": 1,
+    "opBytes": 256,
+    "thresholds": {
+      "joinP95Ms": 300,
+      "cursorP95Ms": 150,
+      "ackP95Ms": 200,
+      "applyP95Ms": 250,
+      "errorRatePct": 1,
+      "cpuPct": 85
+    }
+  },
+  "knee": {
+    "firstFailingLevel": 50,
+    "firstFailingReasons": [
+      "ack p95 1056.84ms",
+      "apply p95 1062ms"
+    ],
+    "throughputSaturation": {
+      "from": 50,
+      "to": 100,
+      "offeredGrowth": 2,
+      "deliveredGrowth": 1.59,
+      "deliveryRatio": 0.394
+    }
+  },
+  "results": [
+    {
+      "level": 5,
+      "requested": 5,
+      "joined": 5,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 0,
+      "opRejectRate": 0,
+      "joinErrorRate": 0,
+      "unackedOps": 0,
+      "join": {
+        "count": 5,
+        "p50": 3.78,
+        "p95": 11.97,
+        "p99": 11.97,
+        "max": 11.97
+      },
+      "cursor": {
+        "count": 780,
+        "p50": 1,
+        "p95": 4,
+        "p99": 6,
+        "max": 8
+      },
+      "ack": {
+        "count": 50,
+        "p50": 12.29,
+        "p95": 30.66,
+        "p99": 36.04,
+        "max": 36.04
+      },
+      "apply": {
+        "count": 250,
+        "p50": 13,
+        "p95": 31,
+        "p99": 37,
+        "max": 37
+      },
+      "submittedPerSec": 5,
+      "acksPerSec": 5,
+      "rejectsPerSec": 0,
+      "rejectReasons": {},
+      "deliveredPerSec": 103,
+      "expectedDeliveredPerSec": 105,
+      "deliveryRatio": 0.981,
+      "offeredPerSec": 25,
+      "cursorEventsPerSec": 78,
+      "applyEventsPerSec": 25,
+      "liveClients": 5,
+      "server": {
+        "cpuPct": 4.2,
+        "cpuCores": 20,
+        "rssPeakMb": 93.8,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 79.7,
+        "usedMemoryMb": 2,
+        "connectedClients": 4,
+        "top": {
+          "eval": 15.2,
+          "publish": 24.5,
+          "get": 5,
+          "set": 10,
+          "incr": 5,
+          "zadd": 5,
+          "exists": 5
+        }
+      },
+      "pg": {
+        "appActivePeak": 0,
+        "appTotalPeak": 5,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 16.7,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 31.93
+      },
+      "verdict": {
+        "status": "PASS",
+        "reasons": []
+      }
+    },
+    {
+      "level": 10,
+      "requested": 10,
+      "joined": 10,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 0,
+      "opRejectRate": 0,
+      "joinErrorRate": 0,
+      "unackedOps": 0,
+      "join": {
+        "count": 10,
+        "p50": 3.4,
+        "p95": 14.11,
+        "p99": 14.11,
+        "max": 14.11
+      },
+      "cursor": {
+        "count": 3465,
+        "p50": 1,
+        "p95": 4,
+        "p99": 6,
+        "max": 6
+      },
+      "ack": {
+        "count": 100,
+        "p50": 14.85,
+        "p95": 27.57,
+        "p99": 34.23,
+        "max": 35.08
+      },
+      "apply": {
+        "count": 1000,
+        "p50": 15,
+        "p95": 28,
+        "p99": 35,
+        "max": 35
+      },
+      "submittedPerSec": 10,
+      "acksPerSec": 10,
+      "rejectsPerSec": 0,
+      "rejectReasons": {},
+      "deliveredPerSec": 446.4,
+      "expectedDeliveredPerSec": 460,
+      "deliveryRatio": 0.971,
+      "offeredPerSec": 50,
+      "cursorEventsPerSec": 346.5,
+      "applyEventsPerSec": 100,
+      "liveClients": 10,
+      "server": {
+        "cpuPct": 5.9,
+        "cpuCores": 20,
+        "rssPeakMb": 97.3,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 153.7,
+        "usedMemoryMb": 2,
+        "connectedClients": 4,
+        "top": {
+          "eval": 30.2,
+          "publish": 48.5,
+          "get": 10,
+          "set": 20,
+          "incr": 10,
+          "zadd": 10,
+          "exists": 10
+        }
+      },
+      "pg": {
+        "appActivePeak": 0,
+        "appTotalPeak": 6,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 27.3,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 31.95
+      },
+      "verdict": {
+        "status": "PASS",
+        "reasons": []
+      }
+    },
+    {
+      "level": 20,
+      "requested": 20,
+      "joined": 20,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 0,
+      "opRejectRate": 0,
+      "joinErrorRate": 0,
+      "unackedOps": 0,
+      "join": {
+        "count": 20,
+        "p50": 21.12,
+        "p95": 43.96,
+        "p99": 45.05,
+        "max": 45.05
+      },
+      "cursor": {
+        "count": 14757,
+        "p50": 3,
+        "p95": 15,
+        "p99": 25,
+        "max": 42
+      },
+      "ack": {
+        "count": 200,
+        "p50": 26.08,
+        "p95": 136.32,
+        "p99": 161,
+        "max": 166.65
+      },
+      "apply": {
+        "count": 4000,
+        "p50": 26,
+        "p95": 139,
+        "p99": 162,
+        "max": 170
+      },
+      "submittedPerSec": 20,
+      "acksPerSec": 20,
+      "rejectsPerSec": 0,
+      "rejectReasons": {},
+      "deliveredPerSec": 1873.5,
+      "expectedDeliveredPerSec": 1920,
+      "deliveryRatio": 0.976,
+      "offeredPerSec": 100,
+      "cursorEventsPerSec": 1474,
+      "applyEventsPerSec": 399.5,
+      "liveClients": 20,
+      "server": {
+        "cpuPct": 14.7,
+        "cpuCores": 20,
+        "rssPeakMb": 100.4,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 302.6,
+        "usedMemoryMb": 2.1,
+        "connectedClients": 4,
+        "top": {
+          "eval": 60.1,
+          "publish": 97.4,
+          "get": 20,
+          "set": 40,
+          "incr": 20.1,
+          "zadd": 20,
+          "exists": 20
+        }
+      },
+      "pg": {
+        "appActivePeak": 1,
+        "appTotalPeak": 10,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 52.2,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 31.92
+      },
+      "verdict": {
+        "status": "PASS",
+        "reasons": []
+      }
+    },
+    {
+      "level": 50,
+      "requested": 50,
+      "joined": 50,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 0,
+      "opRejectRate": 0,
+      "joinErrorRate": 0,
+      "unackedOps": 0,
+      "join": {
+        "count": 50,
+        "p50": 78.06,
+        "p95": 284.37,
+        "p99": 289.74,
+        "max": 289.74
+      },
+      "cursor": {
+        "count": 39200,
+        "p50": 32,
+        "p95": 92,
+        "p99": 116,
+        "max": 139
+      },
+      "ack": {
+        "count": 200,
+        "p50": 554.11,
+        "p95": 1056.84,
+        "p99": 1225.04,
+        "max": 1275.01
+      },
+      "apply": {
+        "count": 10000,
+        "p50": 599,
+        "p95": 1062,
+        "p99": 1261,
+        "max": 1283
+      },
+      "submittedPerSec": 50,
+      "acksPerSec": 50,
+      "rejectsPerSec": 0,
+      "rejectReasons": {},
+      "deliveredPerSec": 12300.2,
+      "expectedDeliveredPerSec": 12300,
+      "deliveryRatio": 1,
+      "offeredPerSec": 250,
+      "cursorEventsPerSec": 9800.2,
+      "applyEventsPerSec": 2500,
+      "liveClients": 50,
+      "server": {
+        "cpuPct": 76.5,
+        "cpuCores": 20,
+        "rssPeakMb": 110.6,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 755.2,
+        "usedMemoryMb": 2.1,
+        "connectedClients": 4,
+        "top": {
+          "eval": 150.2,
+          "publish": 250,
+          "get": 50,
+          "set": 100,
+          "incr": 50,
+          "zadd": 50,
+          "exists": 50
+        }
+      },
+      "pg": {
+        "appActivePeak": 9,
+        "appTotalPeak": 10,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 106.2,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 29.88
+      },
+      "verdict": {
+        "status": "FAIL",
+        "reasons": [
+          "ack p95 1056.84ms",
+          "apply p95 1062ms"
+        ]
+      }
+    },
+    {
+      "level": 100,
+      "requested": 100,
+      "joined": 100,
+      "joinFailed": 0,
+      "joinErrors": {},
+      "unexpectedDisconnects": 0,
+      "disconnectReasons": {},
+      "connectErrors": 0,
+      "errorRate": 17.36,
+      "opRejectRate": 19.1,
+      "joinErrorRate": 0,
+      "unackedOps": 1000,
+      "join": {
+        "count": 100,
+        "p50": 334.1,
+        "p95": 1482.22,
+        "p99": 1491.74,
+        "max": 1493.25
+      },
+      "cursor": {
+        "count": 39144,
+        "p50": 2668,
+        "p95": 9058,
+        "p99": 10741,
+        "max": 11707
+      },
+      "ack": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "apply": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "submittedPerSec": 100,
+      "acksPerSec": 0,
+      "rejectsPerSec": 19.1,
+      "rejectReasons": {
+        "INTERNAL": 191
+      },
+      "deliveredPerSec": 19555.5,
+      "expectedDeliveredPerSec": 49600,
+      "deliveryRatio": 0.394,
+      "offeredPerSec": 500,
+      "cursorEventsPerSec": 19555.5,
+      "applyEventsPerSec": 0,
+      "liveClients": 100,
+      "server": {
+        "cpuPct": 98.8,
+        "cpuCores": 20,
+        "rssPeakMb": 133.3,
+        "samples": 23
+      },
+      "redis": {
+        "cmdsPerSec": 207.1,
+        "usedMemoryMb": 2.1,
+        "connectedClients": 4,
+        "top": {
+          "eval": 1.5,
+          "publish": 197.9,
+          "get": 0.4,
+          "set": 0.4,
+          "incr": 1,
+          "exists": 1
+        }
+      },
+      "pg": {
+        "appActivePeak": 0,
+        "appTotalPeak": 10,
+        "appInstances": 1,
+        "maxConnections": 100,
+        "xactsPerSec": 7.4,
+        "poolMax": 10
+      },
+      "harness": {
+        "eventLoopP95Ms": 21.58
+      },
+      "verdict": {
+        "status": "FAIL",
+        "reasons": [
+          "join p95 1482.22ms",
+          "cursor p95 9058ms",
+          "error 17.36%",
+          "投递率 39%",
+          "cpu 98.8%"
+        ]
+      }
+    }
+  ],
+  "env": {
+    "node": "v22.23.0",
+    "platform": "win32"
+  }
+}
