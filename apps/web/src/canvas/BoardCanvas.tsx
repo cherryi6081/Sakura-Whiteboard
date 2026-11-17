@@ -4,6 +4,8 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import type { AssetInfo } from "./assetApi";
 import { AssetApiError, fetchAssetAsDataUrl } from "./assetApi";
+import { isAllowedEmbedUrl } from "./embedPolicy";
+import { installExcalidrawZhFallback } from "./excalidrawZhFallback";
 import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
 import { IconBoard } from "../ui/icons";
 
@@ -232,6 +234,34 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
     [],
   );
 
+  /**
+   * Excalidraw 0.18.1 默认 iframe 渲染给嵌入卡片写死了 `scrolling="no"`，
+   * 浏览器据此禁止卡片内滚动。这里在 iframe 挂载后移除该属性，恢复默认的 auto；
+   * 只作用于 `.excalidraw__embeddable`，不碰画布 wheel/缩放和其它元素。
+   * （属性被移除后 React 不会重复写回：虚拟 DOM 里该 prop 始终是 "no"，不会产生 diff。）
+   */
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const unlockScrolling = () => {
+      root
+        .querySelectorAll<HTMLIFrameElement>("iframe.excalidraw__embeddable[scrolling]")
+        .forEach((iframe) => iframe.removeAttribute("scrolling"));
+    };
+    unlockScrolling();
+    const observer = new MutationObserver(unlockScrolling);
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["scrolling"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  // 库自带 zh-CN 语言包未覆盖的新词条：整包切换后仍有少量英文回退，这里做兜底替换
+  useEffect(() => installExcalidrawZhFallback(), []);
+
   useEffect(() => {
     const flush = () => batcherRef.current.flushNow();
     window.addEventListener("pointerup", flush);
@@ -259,6 +289,12 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
           }, 0);
         }}
         initialData={CANVAS_INITIAL_DATA}
+        // 整包切到库自带简体中文语言包：右键菜单、属性面板、弹窗、工具栏提示
+        // 全部走库内翻译，不在外面逐条覆盖。
+        langCode="zh-CN"
+        // 自托管放行策略：拖入/粘贴/超链接弹窗统一走这里，任意 https 地址可作为嵌入元素；
+        // 非 https 与非法地址仍返回 false，保持原来的拦截行为。
+        validateEmbeddable={isAllowedEmbedUrl}
         viewModeEnabled={viewModeEnabled ?? false}
         // 内置 image 工具走"本地 base64 + 元素"路径，协作者拿不到字节；统一收口到自研上传入口
         UIOptions={{ tools: { image: false } }}
@@ -293,7 +329,7 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
           <MainMenu.DefaultItems.Help />
           <MainMenu.DefaultItems.ClearCanvas />
           <MainMenu.Separator />
-          <MainMenu.Group title="Excalidraw links">
+          <MainMenu.Group title="Excalidraw 链接">
             <MainMenu.DefaultItems.Socials />
           </MainMenu.Group>
           <MainMenu.Separator />

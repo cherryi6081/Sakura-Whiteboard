@@ -175,7 +175,7 @@ export function HomePage() {
         <div className="wb-home__brand" aria-label="SakuraWhiteboard SHIRO">
           <span className="wb-home__brand-name">桜花白板</span>
           <span className="wb-home__brand-en">SHIRO</span>
-          <span className="wb-home__brand-eyebrow">REAL-TIME COLLABORATIVE CANVAS</span>
+          <span className="wb-home__brand-eyebrow">实时协作画布</span>
         </div>
 
         <section className="wb-home__hero" id="concept">
@@ -199,7 +199,7 @@ export function HomePage() {
 
       <footer className="wb-home__foot">
         <span className="wb-home__seal" aria-label="白板之印"><span>白</span><span>板</span></span>
-        <span aria-hidden>·</span><span>画布渲染 Built on Excalidraw</span>
+        <span aria-hidden>·</span><span>画布渲染基于 Excalidraw</span>
         <span className="wb-home__foot-note">富士山下，樱花落时。</span>
       </footer>
 

@@ -77,6 +77,9 @@
   background: var(--paper);
   color: var(--neutral-900);
   box-shadow: var(--shadow-1);
+  /* 下方竖条 48 宽（x=16..64，中心 40），菜单键 32 宽（x=16..48，中心 32）：
+     只把菜单键向右挪 8，中心线落到 40，与竖条居中对齐；尺寸与外观不变 */
+  transform: translateX(8px);
   transition: background-color var(--dur-fast) var(--ease-standard);
 }
 

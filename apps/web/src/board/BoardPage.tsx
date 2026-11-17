@@ -24,6 +24,7 @@ import { CloudLoadDialog } from "./CloudLoadDialog";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 import { resolveBackHref } from "./backTarget";
+import { buildCursorLabels } from "./cursorLabels";
 import { useImageUpload } from "./useImageUpload";
 
 type SceneElementSummary = {
@@ -97,6 +98,14 @@ declare global {
   }
 }
 
+/** 协作角色在界面上的中文名，与空间切换器保持同一口径 */
+const ROLE_TEXT: Record<string, string> = {
+  owner: "所有者",
+  editor: "编辑者",
+  viewer: "只读",
+  unknown: "未知",
+};
+
 export function BoardPage({ boardId }: { boardId: string }) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const bridgeRef = useRef<BoardCanvasHandle | null>(null);
@@ -119,6 +128,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [uiState, setUiState] = useState({ tool: "selection", locked: false, selected: 0, library: false });
   /** 右侧 272 列的折叠：收起后画布回到整宽，偏好写入 localStorage */
   const [inspectorCollapsed, setInspectorCollapsed] = useState(readInspectorCollapsed);
+  /** 轮询闭包里读最新的折叠态，避免把整个 interval 跟着状态重建 */
+  const inspectorCollapsedRef = useRef(inspectorCollapsed);
+  inspectorCollapsedRef.current = inspectorCollapsed;
+  /** 上一次轮询看到的编辑态元素 id：只在「开始一次新编辑」时展开面板 */
+  const editingIdRef = useRef<string | null>(null);
 
   const toggleInspector = useCallback(() => {
     setInspectorCollapsed((prev) => {
@@ -141,6 +155,19 @@ export function BoardPage({ boardId }: { boardId: string }) {
     let lastKey = "";
     const sync = () => {
       const appState = api.getAppState();
+
+      // 进入编辑态（双击文本、双击折线加点等）时自动展开右侧面板：
+      // 只在编辑会话开始（id 从空变非空，或换到另一个元素）沿触发一次；
+      // 编辑进行中用户手动收起不会反复弹开，退出编辑后再次进入才算新会话。
+      const editingId = appState.editingTextElement?.id ?? appState.editingLinearElement?.elementId ?? null;
+      if (editingId !== editingIdRef.current) {
+        editingIdRef.current = editingId;
+        if (editingId && inspectorCollapsedRef.current) {
+          setInspectorCollapsed(false);
+          writeInspectorCollapsed(false);
+        }
+      }
+
       const next = {
         tool: appState.activeTool.type,
         locked: appState.activeTool.locked,
@@ -527,6 +554,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const role = collabState?.role ?? "unknown";
   const presence = collabState?.presence ?? null;
   const cursors = collabState?.cursors ?? [];
+  /** 方案 A：同色连接按加入顺序编号，第 2 条起显示「昵称 · 2」（纯函数，最多 40 条，无需缓存） */
+  const cursorLabels = buildCursorLabels(cursors);
   const writer = storeState?.writer;
   const tab = storeState;
 
@@ -562,7 +591,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         ) : null}
         {!isGuest && user ? (
           <span className="wb-user-chip" tabIndex={0} data-testid="auth-user">
-            <UserMark />
+            {user.avatarUrl ? <img className="wb-user-chip__avatar" src={user.avatarUrl} alt="" /> : <UserMark />}
             <span className="wb-caption">{user.displayName}</span>
           </span>
         ) : null}
@@ -579,10 +608,16 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 data-testid="presence-user"
                 data-identity={member.identity}
                 data-connections={member.connectionCount}
-                title={`${member.identity} · ${member.role} · ${member.connectionCount} 个标签页`}
+                title={`${member.displayName} · ${ROLE_TEXT[member.role] ?? member.role} · ${member.connectionCount} 个标签页`}
                 style={{ background: member.color }}
               >
-                {member.identity === collabState?.identity ? "我" : shortId(member.identity).slice(-2)}
+                {member.avatarUrl ? (
+                  <img src={member.avatarUrl} alt="" />
+                ) : member.identity === collabState?.identity ? (
+                  "我"
+                ) : (
+                  shortId(member.identity).slice(-2)
+                )}
                 {member.connectionCount > 1 ? (
                   <b data-testid="presence-tab-count" style={{ fontSize: 9, marginLeft: 1 }}>
                     ×{member.connectionCount}
@@ -597,7 +632,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         <span className="wb-user-chip wb-board__status" data-testid="collab-status" data-status={status}>
           <span className={`wb-board__dot wb-board__dot--${statusTone}`} aria-hidden />
           <span className="wb-board__status-text">
-            {statusText} · {role}
+            {statusText} · {ROLE_TEXT[role] ?? role}
           </span>
         </span>
 
@@ -649,7 +684,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
             data-testid="library-toggle"
             aria-pressed={uiState.library}
             aria-label="素材库"
-            title="素材库（Library）"
+            title="素材库"
             onClick={() =>
               // 侧栏开着时，库会在 pointerdown 阶段先按「点在外面」把它关掉（见 useOutsideClick），
               // 此刻再读实时状态会误判成「该打开」。所以按这一刻渲染出的开合态给 force：
@@ -658,7 +693,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
             }
           >
             <IconLibrary />
-            <span className="wb-board__share-text">Library</span>
+            <span className="wb-board__share-text">素材库</span>
           </button>
         ) : null}
 
@@ -888,8 +923,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 whiteSpace: "nowrap",
               }}
             >
-              {shortId(cursor.identity)}
-              {cursor.tabId ? ` · ${shortId(cursor.tabId)}` : ""}
+              {cursorLabels.get(cursor.connectionId) ?? cursor.displayName}
             </span>
           </div>
         ))}
@@ -900,17 +934,17 @@ export function BoardPage({ boardId }: { boardId: string }) {
         <span className="wb-board__debug">
           {collabState && collabState.queuedOps > 0 ? (
             <span className="wb-board__debug-item" data-testid="queued-ops">
-              待补发 {collabState.queuedOps} op
+              待补发 {collabState.queuedOps} 条操作
             </span>
           ) : null}
           {collabState && collabState.synced ? (
             <span className="wb-board__debug-item" data-testid="sync-state">
-              已对齐 seq={collabState.cacheSeq ?? 0}
+              已对齐序号={collabState.cacheSeq ?? 0}
             </span>
           ) : null}
           {tab ? (
             <span className="wb-board__debug-item" data-testid="tab-id" title={`guestId=${tab.guestId}`}>
-              tab {shortId(tab.tabId)}
+              标签页 {shortId(tab.tabId)}
               {tab.tabRegenerated ? " · 已重生成" : ""}
             </span>
           ) : null}
@@ -920,14 +954,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
               data-testid="cache-writer"
               data-is-writer={writer.isWriter ? "1" : "0"}
             >
-              {writer.mode === "web-locks" ? "Web Locks" : writer.mode === "broadcast-fallback" ? "降级选举" : "单写者"}：
+              {writer.mode === "web-locks" ? "网页锁" : writer.mode === "broadcast-fallback" ? "降级选举" : "单写者"}：
               {writer.isWriter ? "缓存写者" : "只读缓存"}
             </span>
           ) : null}
         </span>
         <span className="wb-board__statusbar-right">
-          <span className="wb-nums">{scene.source === "cache" ? `本地缓存 ${Math.round(scene.loadMs)}ms` : scene.source === "snapshot" ? "服务端快照" : "空场景"}</span>
-          <span className="wb-nums">seq {scene.seq}</span>
+          <span className="wb-nums">{scene.source === "cache" ? `本地缓存 ${Math.round(scene.loadMs)} 毫秒` : scene.source === "snapshot" ? "服务端快照" : "空场景"}</span>
+          <span className="wb-nums">序号 {scene.seq}</span>
         </span>
       </footer>
 
