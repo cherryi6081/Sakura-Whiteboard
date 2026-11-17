@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aggregatePresence,
   createPresenceRegistry,
+  mergePresenceConnections,
   type PresenceConnection,
   type PresenceConnectionInput,
 } from './presence.js';
@@ -69,6 +70,30 @@ describe('aggregatePresence', () => {
     ]);
     expect(state.users[0]?.connectionCount).toBe(2);
     expect(state.users[0]?.tabIds).toEqual(['tab_new']);
+  });
+});
+
+describe('mergePresenceConnections', () => {
+  it('合并本地与 Redis 快照里不同实例的连接，聚合结果是全局名单', () => {
+    const local = [withCursor(conn({ connectionId: 'sock_local', tabId: 'tab_local' }))];
+    const remote = [
+      withCursor(conn({ connectionId: 'sock_remote', tabId: 'tab_remote', identity: 'guest:g_remote', joinedAt: 1100 })),
+    ];
+
+    const state = aggregatePresence('m3_board_001', mergePresenceConnections(local, remote));
+
+    expect(state.totalConnections).toBe(2);
+    expect(state.users.map((user) => user.identity)).toEqual(['guest:g_a1', 'guest:g_remote']);
+  });
+
+  it('同一 connectionId 同时出现在两边时以本地为准（不重复计数）', () => {
+    const local = [withCursor(conn({ connectionId: 'sock_a1', displayName: '本地新昵称', joinedAt: 1000 }))];
+    const remote = [withCursor(conn({ connectionId: 'sock_a1', displayName: '陈旧昵称', joinedAt: 1000 }))];
+
+    const merged = mergePresenceConnections(local, remote);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.displayName).toBe('本地新昵称');
   });
 });
 

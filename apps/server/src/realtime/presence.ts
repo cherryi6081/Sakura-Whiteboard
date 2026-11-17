@@ -9,8 +9,8 @@ import type { AccessRole } from '../domain/access.js';
  * - 光标不进聚合对象：按 `connectionId` 独立走合帧广播（`presence:cursor:frame`），两标签视口不同，
  *   位置不可合并。
  *
- * 已知边界：注册表是**单实例内存态**。`@socket.io/redis-adapter` 只扇出事件，不共享这份 Map；
- * 双实例部署时每个实例只知道自己连着的连接，聚合结果不完整（与开发文档 §6 的降级说明一致）。
+ * 本模块只是**单实例**的连接注册表。跨实例的完整名单由 `presenceStore`（Redis 共享注册表）
+ * 在 `board.ts` 里与本注册表按 connectionId 合并；Redis 不可用时退化为单实例聚合。
  */
 
 export type PresenceCursor = { x: number; y: number; at: number };
@@ -101,6 +101,20 @@ export function aggregatePresence(
 
 export type PresenceRegistry = ReturnType<typeof createPresenceRegistry>;
 
+/**
+ * 跨实例合并：Redis 共享注册表的快照 + 本地注册表，按 `connectionId` 去重。
+ * 同一 id 时本地优先——本地记录的 role/joinedAt 一定比 Redis 里的旧副本新。
+ */
+export function mergePresenceConnections(
+  local: readonly PresenceConnection[],
+  remote: readonly PresenceConnection[],
+): PresenceConnection[] {
+  const merged = new Map<string, PresenceConnection>();
+  for (const conn of remote) merged.set(conn.connectionId, conn);
+  for (const conn of local) merged.set(conn.connectionId, conn);
+  return [...merged.values()];
+}
+
 /** 每实例一份的内存注册表；测试与 board.ts 共用。 */
 export function createPresenceRegistry() {
   const boards = new Map<string, Map<string, PresenceConnection>>();
@@ -134,6 +148,17 @@ export function createPresenceRegistry() {
       if (!conn) return null;
       conn.cursor = { x, y, at: Date.now() };
       return conn;
+    },
+    /**
+     * 角色变更：把该用户在本板的**所有本地连接**改成新角色。
+     * 名单里的角色取多连接最高值，改完需要重算一帧（调用方负责 touch）。
+     */
+    setRole(boardId: string, identity: string, role: AccessRole): void {
+      const map = boards.get(boardId);
+      if (!map) return;
+      for (const conn of map.values()) {
+        if (conn.identity === identity) conn.role = role;
+      }
     },
     connection(boardId: string, connectionId: string): PresenceConnection | null {
       return boards.get(boardId)?.get(connectionId) ?? null;
