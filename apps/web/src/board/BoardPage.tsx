@@ -16,6 +16,7 @@ import {
   type RecentOwner,
 } from "../boards/recentBoards";
 import { markBoardOpened } from "../boards/boardsApi";
+import { request } from "../auth/authApi";
 import { captureBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
 import { IconAlert, IconBack, IconCopy, IconImage, IconLibrary, IconLock, IconShare } from "../ui/icons";
 import { UserMark } from "../ui/UserMark";
@@ -247,9 +248,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
-  // 真正的分享权限由服务端按 token 判定（M5-2）；`?share=` 的 token 会在 REST/WS 一起带上。
+  // 真正的分享权限由服务端按 token 判定（M5-2）；token 通过 REST 的 `x-share-token`
+  // 头与 WS join payload 传递，**不再放 URL query**（见 readShareToken）。
   const queryViewOnly = readOnlyQuery();
-  const shareToken = readShareQuery();
+  const shareInfo = readShareToken();
+  const shareToken = shareInfo.token;
   const collabState = storeState?.collab ?? null;
   const requestedViewOnly =
     queryViewOnly ||
@@ -295,6 +298,66 @@ export function BoardPage({ boardId }: { boardId: string }) {
     },
     [],
   );
+
+  // 被所有者移出：只提示一次；画布已由协作层转成只读并停止重连
+  const memberRemovedNotified = useRef(false);
+  useEffect(() => {
+    if (!collabState?.memberRemoved || memberRemovedNotified.current) return;
+    memberRemovedNotified.current = true;
+    notify("你已被移出该白板，当前为只读");
+  }, [collabState?.memberRemoved, notify]);
+
+  // 老链接兼容一个版本：`?share=` 仍可读，但离开 query 是既定方向，给一次提示
+  const legacyShareNotified = useRef(false);
+  useEffect(() => {
+    if (!shareInfo.legacy || legacyShareNotified.current) return;
+    legacyShareNotified.current = true;
+    notify("分享链接已升级为 #share= 形式，请向所有者索取新链接；旧链接将在下个版本停用");
+  }, [shareInfo.legacy, notify]);
+
+  /**
+   * 白板级成员管理（仅 owner）：右键在线头像 → 改角色 / 移出。
+   * 空间成员不在 `board_members` 里，服务端会回 404，这里提示去空间设置调整。
+   */
+  const [memberMenu, setMemberMenu] = useState<{
+    userId: string;
+    displayName: string;
+    left: number;
+    top: number;
+  } | null>(null);
+
+  const openMemberMenu = (event: ReactMouseEvent, identity: string, displayName: string) => {
+    if ((collabState?.role ?? "unknown") !== "owner") return;
+    if (!identity.startsWith("user:")) return;
+    // 自己（所有者）不能把自己移出/降权
+    if (identity === collabState?.identity) return;
+    event.preventDefault();
+    setMemberMenu({
+      userId: identity.slice("user:".length),
+      displayName,
+      left: Math.min(event.clientX, window.innerWidth - 200),
+      top: Math.min(event.clientY, window.innerHeight - 160),
+    });
+  };
+
+  const mutateMember = async (userId: string, action: "editor" | "viewer" | "remove") => {
+    setMemberMenu(null);
+    const url = `/api/boards/${boardId}/members/${encodeURIComponent(userId)}`;
+    const res =
+      action === "remove"
+        ? await request<null>(url, { method: "DELETE" })
+        : await request<{ role: string }>(url, { method: "PATCH", body: JSON.stringify({ role: action }) });
+    if (!res.ok) {
+      notify(
+        res.status === 404
+          ? "该协作者由空间权限管理，请到空间设置中调整"
+          : `操作失败（${res.code}）`,
+      );
+      return;
+    }
+    notify(action === "remove" ? "已移出该协作者" : action === "viewer" ? "已设为只读" : "已设为可编辑");
+  };
+
 
   const uploads = useImageUpload({
     boardId,
@@ -358,9 +421,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
     captureFirstFrame();
   }, [boardId, owner, captureFirstFrame]);
 
-  // 标题解析完成后才写回本机记录，避免占位标题覆盖已存的自定义名
+  // 标题解析完成后才写回本机记录，避免占位标题覆盖已存的自定义名。
+  // 游客侧只有一块固定 id 的公共板，不再累积「最近打开」；缩略图仍按身份落 IndexedDB。
   useEffect(() => {
     if (!owner || title === null) return;
+    if (owner.kind === "guest") return;
     recordRecentBoard({ id: boardId, title }, owner);
   }, [boardId, owner, title]);
 
@@ -610,6 +675,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 data-connections={member.connectionCount}
                 title={`${member.displayName} · ${ROLE_TEXT[member.role] ?? member.role} · ${member.connectionCount} 个标签页`}
                 style={{ background: member.color }}
+                onContextMenu={(event) => openMemberMenu(event, member.identity, member.displayName)}
               >
                 {member.avatarUrl ? (
                   <img src={member.avatarUrl} alt="" />
@@ -979,6 +1045,48 @@ export function BoardPage({ boardId }: { boardId: string }) {
           }}
         />
       ) : null}
+
+      {memberMenu ? (
+        <>
+          <div className="wb-scrim" style={{ zIndex: 58 }} onClick={() => setMemberMenu(null)} />
+          <div
+            role="menu"
+            data-testid="member-menu"
+            style={{
+              position: "fixed",
+              left: memberMenu.left,
+              top: memberMenu.top,
+              zIndex: 59,
+              minWidth: 180,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              padding: "var(--space-2)",
+              background: "var(--surface-raised)",
+              border: "1px solid var(--line-soft)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "var(--shadow-raised)",
+            }}
+          >
+            <span className="wb-caption" style={{ padding: "2px 8px" }}>
+              {memberMenu.displayName}
+            </span>
+            <button className="wb-btn wb-btn--ghost wb-btn--pill" type="button" onClick={() => void mutateMember(memberMenu.userId, "editor")}>
+              设为可编辑
+            </button>
+            <button className="wb-btn wb-btn--ghost wb-btn--pill" type="button" onClick={() => void mutateMember(memberMenu.userId, "viewer")}>
+              设为只读
+            </button>
+            <button
+              className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
+              type="button"
+              onClick={() => void mutateMember(memberMenu.userId, "remove")}
+            >
+              移除协作者
+            </button>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1013,10 +1121,30 @@ function readOnlyQuery(): boolean {
   return params.get("view") === "1" || params.get("readonly") === "1";
 }
 
-/** M5-2：`/board/:id?share=<token>` 的分享 token；长度上限与 `shareLinks` 校验口径一致。 */
-function readShareQuery(): string | null {
-  const token = new URLSearchParams(window.location.search).get("share");
-  return token && token.length >= 8 && token.length <= 128 ? token : null;
+const SHARE_TOKEN_MIN_LENGTH = 8;
+const SHARE_TOKEN_MAX_LENGTH = 128;
+
+function isValidShareToken(token: string | null): token is string {
+  return Boolean(token && token.length >= SHARE_TOKEN_MIN_LENGTH && token.length <= SHARE_TOKEN_MAX_LENGTH);
+}
+
+/**
+ * 分享 token 读取：**优先 fragment**（`/board/:id#share=<token>`）。
+ *
+ * 选 fragment 而不是 `/s/:token` 路径的理由：fragment 不会随 HTTP 请求发给服务端，
+ * 因此不会出现在 access log、反向代理日志和静态资源请求的 Referer 里；路径/query
+ * 都会进日志。fragment 也不改变现有路由，不需要新增 `/s/:token` 的落地页。
+ * 老 `?share=` 保留读取**一个版本**，由调用方提示升级；token 在 REST/WS 中
+ * 走 `x-share-token` 头与 join payload，不再回到 URL。
+ */
+function readShareToken(): { token: string | null; legacy: boolean } {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  const fromHash = new URLSearchParams(hash).get("share");
+  if (isValidShareToken(fromHash)) return { token: fromHash, legacy: false };
+
+  const fromQuery = new URLSearchParams(window.location.search).get("share");
+  if (isValidShareToken(fromQuery)) return { token: fromQuery, legacy: true };
+  return { token: null, legacy: false };
 }
 
 const BANNER_KEY = "wb:saveBannerDismissed";
