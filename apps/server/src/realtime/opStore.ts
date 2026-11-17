@@ -1,6 +1,7 @@
 import type { ElementOp } from '@whiteboard/shared';
 import { pool } from '../infra/db.js';
 import { decideLww, type ExistingElementState } from '../domain/lww.js';
+import { scheduleSnapshot } from '../domain/boardSnapshots.js';
 
 /**
  * 一批 op 的落库事务（同一块板、已按提交顺序排好）：
@@ -101,6 +102,8 @@ export async function persistOps(inputs: PersistOpInput[]): Promise<PersistOpRes
     await client.query('update boards set last_seq = greatest(last_seq, $2) where id = $1', [boardId, maxSeq]);
 
     await client.query('commit');
+    // 累计 op 数到阈值后异步落一份快照；放在 commit 之后，失败也不影响本批写入
+    scheduleSnapshot(boardId, maxSeq);
     return results;
   } catch (err) {
     await client.query('rollback').catch(() => undefined);

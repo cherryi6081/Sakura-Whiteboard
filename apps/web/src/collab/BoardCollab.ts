@@ -94,6 +94,8 @@ export type CollabSnapshot = {
   cursors: RemoteCursor[];
   /** 被所有者移出：服务端已断开，停止重连并提示，不再假装"离线" */
   memberRemoved: boolean;
+  /** 移出来源，用于区分「移出白板」与「移出空间」的提示 */
+  memberRemovedScope: "board" | "space" | null;
 };
 
 export type BoardCollab = ReturnType<typeof createBoardCollab>;
@@ -166,6 +168,7 @@ export function createBoardCollab(options: {
     presence: null,
     cursors: [],
     memberRemoved: false,
+    memberRemovedScope: null,
   };
 
   const pendingRemote: ApplyPayload[] = [];
@@ -379,13 +382,14 @@ export function createBoardCollab(options: {
     by: "pull",
   });
 
-  const resyncFromSnapshot = async () => {
+  /** 返回快照对应的 seq；调用方据此补拉快照之后新增的 op（服务端快照可能落后于 last_seq）。 */
+  const resyncFromSnapshot = async (): Promise<number | null> => {
     state.resyncCount += 1;
     const snapshot = await fetchSnapshot(state.boardId, options.shareToken);
     if (!snapshot.ok) {
       console.warn(`[collab] 快照重载失败 status=${snapshot.status} code=${snapshot.code}`);
       emit();
-      return;
+      return null;
     }
     const elements = snapshot.data.elements as SceneElement[];
     const bridge = options.getBridge();
@@ -395,6 +399,50 @@ export function createBoardCollab(options: {
     await persistSceneAndSeq(snapshot.data.seq);
     state.synced = true;
     emit();
+    return snapshot.data.seq;
+  };
+
+  /**
+   * 从 `since` 补拉到 `untilSeq`。
+   * 返回 `true` 表示服务端要求整板重载（游标过期或差额超过阈值），调用方改用快照。
+   */
+  const pullOpsSince = async (since: number, untilSeq: number): Promise<boolean> => {
+    let cursor = since;
+    let pulled = 0;
+    for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
+      const res = await fetchOpsPage(state.boardId, cursor, LIMITS.opsPageMax, options.shareToken);
+      if (!res.ok) {
+        console.warn(`[collab] 补拉失败 status=${res.status} code=${res.code} since=${cursor}`);
+        break;
+      }
+      if (res.data.resync) {
+        emit();
+        return true;
+      }
+      for (const item of res.data.ops) {
+        applyOne(toApplyPayload(item));
+        pulled += 1;
+      }
+      state.pullPages += 1;
+      cursor = res.data.nextSince;
+      if (!res.data.hasMore || cursor >= res.data.lastSeq || cursor >= untilSeq) break;
+    }
+
+    state.lastPullCount += pulled;
+    await persistSceneAndSeq(cursor);
+    state.synced = true;
+    emit();
+    return false;
+  };
+
+  /** 快照重载后补齐快照水位与 last_seq 之间的差额（最多一个快照周期，远小于 resync 阈值）。 */
+  const reloadFromSnapshot = async (targetSeq: number): Promise<void> => {
+    const snapshotSeq = await resyncFromSnapshot();
+    if (snapshotSeq === null || snapshotSeq >= targetSeq) return;
+    if (await pullOpsSince(snapshotSeq, targetSeq)) {
+      // 快照本身太旧（例如快照写入连续失败），再拉一次也是 resync：保留快照状态，等下次进入再重载
+      console.warn(`[collab] 快照落后过多 snapshotSeq=${snapshotSeq} lastSeq=${targetSeq}`);
+    }
   };
 
   /** join 后用 `since = 本地缓存 seq` 补拉，直到追上服务端 `last_seq`。 */
@@ -409,35 +457,13 @@ export function createBoardCollab(options: {
       return;
     }
     if (decideResync(cachedSeq, serverSeq)) {
-      await resyncFromSnapshot();
+      await reloadFromSnapshot(serverSeq);
       return;
     }
 
-    let cursor = cachedSeq;
-    let pulled = 0;
-    for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
-      const res = await fetchOpsPage(state.boardId, cursor, LIMITS.opsPageMax, options.shareToken);
-      if (!res.ok) {
-        console.warn(`[collab] 补拉失败 status=${res.status} code=${res.code} since=${cursor}`);
-        break;
-      }
-      if (res.data.resync) {
-        await resyncFromSnapshot();
-        return;
-      }
-      for (const item of res.data.ops) {
-        applyOne(toApplyPayload(item));
-        pulled += 1;
-      }
-      state.pullPages += 1;
-      cursor = res.data.nextSince;
-      if (!res.data.hasMore || cursor >= res.data.lastSeq) break;
+    if (await pullOpsSince(cachedSeq, serverSeq)) {
+      await reloadFromSnapshot(serverSeq);
     }
-
-    state.lastPullCount += pulled;
-    await persistSceneAndSeq(cursor);
-    state.synced = true;
-    emit();
   };
 
   /** 把持久化队列按原顺序补发（服务端按 opId 幂等，重复提交不会产生重复 op）。 */
@@ -557,6 +583,7 @@ export function createBoardCollab(options: {
   const handleMemberRemoved = (payload: MemberRemovedPayload) => {
     if (payload.identity !== state.identity) return;
     state.memberRemoved = true;
+    state.memberRemovedScope = payload.scope ?? "board";
     state.status = "disconnected";
     state.joined = false;
     // 已被移出：画布保留但转只读，避免用户继续编辑却永远发不出去

@@ -112,6 +112,8 @@ export type MemberRolePayload = {
 export type MemberRemovedPayload = {
   boardId: string;
   identity: string;
+  /** 移出来源：板级成员（默认）或整个空间 */
+  scope?: "board" | "space";
   at: number;
 };
 

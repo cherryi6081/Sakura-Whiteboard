@@ -13,6 +13,7 @@ import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
 import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
 import { ensurePublicBoard } from '../../domain/publicBoard.js';
+import { latestSnapshot } from '../../domain/boardSnapshots.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -657,6 +658,14 @@ boardsRouter.get(
     const access = await resolveBoardAccess(boardId, identityOf(req), shareTokenOf(req));
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
     const board = access.board;
+
+    // 先读快照：快照的 seq 可能落后于 last_seq，客户端会按 seq 补拉差额；
+    // 没有快照（新板/未到阈值）才回退到现算。
+    const snapshot = await latestSnapshot(boardId);
+    if (snapshot) {
+      res.json({ boardId, seq: snapshot.seq, elements: snapshot.elements });
+      return;
+    }
 
     const { rows } = await pool.query<ElementRow>(
       `select element_id, version, version_nonce, data
