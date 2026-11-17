@@ -10,10 +10,28 @@ import { pool } from '../infra/db.js';
 import { createWriteBatcher } from './opBatcher.js';
 import { resolveBoardAccess, type AccessRole } from '../domain/access.js';
 import { resolveIdentityFromCookieHeader, type Identity } from '../auth/identity.js';
-import { createPresenceRegistry } from './presence.js';
+import {
+  aggregatePresence,
+  createPresenceRegistry,
+  mergePresenceConnections,
+  type PresenceConnectionInput,
+  type PresenceState,
+} from './presence.js';
 import { createPresenceFanout } from './presenceFanout.js';
+import { createPresenceStore, PRESENCE_HEARTBEAT_MS } from './presenceStore.js';
 import { createCursorFanout } from './cursorFanout.js';
 import { cursorColorOf } from './cursorPalette.js';
+import { bindBoardNamespace } from './boardBroadcast.js';
+import {
+  MEMBER_ROLE_EVENT,
+  bindMemberNotifier,
+  createMemberNotifier,
+} from './memberEvents.js';
+import {
+  createConnectionRateLimiter,
+  createJoinRateLimiter,
+  normalizeJoinIp,
+} from './realtimeRateLimit.js';
 
 const joinSchema = z.object({
   boardId: z.string().regex(LIMITS.boardIdPattern),
@@ -52,6 +70,8 @@ type SocketState = {
   displayName: string;
   userId: string | null;
   guestId: string | null;
+  /** 跨实例 presence 的心跳定时器；join 成功后创建，disconnect 时清理 */
+  heartbeat: ReturnType<typeof setInterval> | null;
 };
 
 const stateOf = (socket: { data: Record<string, unknown> }): SocketState | null =>
@@ -82,32 +102,129 @@ export function attachRealtime(httpServer: HttpServer) {
   io.adapter(createAdapter(pub, sub));
 
   const ns = io.of('/board');
-  /** M3：单实例内存 presence（多实例聚合不完整，见 presence.ts 顶部说明） */
+  // 让 HTTP 写路径（公共临时板清空）也能按正常下行事件广播；见 boardBroadcast.ts
+  bindBoardNamespace(ns);
+  /**
+   * 本实例的 presence 注册表。跨实例的完整名单由 `presenceStore`（Redis）合并进来，
+   * 见下方 `presenceStateOf`；Redis 不可用时退化为单实例聚合。
+   */
   const presence = createPresenceRegistry();
+  const presenceStore = createPresenceStore();
+  /**
+   * 名单聚合 = Redis 共享注册表 + 本地注册表，按 connectionId 合并（本地优先）。
+   * 本地连接总是比 Redis 记录新（cursor/heartbeat 不会写回本地注册表之外的字段）。
+   */
+  const presenceStateOf = async (boardId: string): Promise<PresenceState> => {
+    const local = presence.connections(boardId);
+    const remote = await presenceStore.snapshot(boardId);
+    if (!remote) return aggregatePresence(boardId, local);
+    return aggregatePresence(boardId, mergePresenceConnections(local, remote));
+  };
   /**
    * 名单合帧：join/leave 只标记脏，100ms 内聚合成一帧广播。
    * 原来每次 join 都向房间内 N 个 socket 各写一份全量名单，N 人进房是 O(N²) 写入，
    * 直接把 join p95 拖到秒级；合帧后广播次数与人数解耦，且移出 join 响应路径。
+   *
+   * 广播只发本实例的 socket：每个实例都基于同一份 Redis 注册表算出了完整名单，
+   * 若再走 adapter 扇出，N 个实例会让每个 socket 收到 N 份重复帧。
    */
   const presenceFanout = createPresenceFanout(
-    (boardId) => presence.state(boardId),
-    (state) => ns.to(roomOf(state.boardId)).emit('presence:state', state),
+    presenceStateOf,
+    (state) => ns.local.to(roomOf(state.boardId)).emit('presence:state', state),
   );
+  /**
+   * 跨实例名单失效通知：本实例的 join/leave 只会补本实例的帧；通过 serverSideEmit
+   * 让其它实例也立刻标记脏，否则对面实例上的客户端要看下一次 join/leave 才能刷新名单。
+   * 帧本身仍由各实例从 Redis 注册表算出后本地广播。
+   */
+  const touchPresence = (boardId: string): void => {
+    presenceFanout.touch(boardId);
+    ns.serverSideEmit('presence:invalidate', boardId);
+  };
+  ns.on('presence:invalidate', (boardId: unknown) => {
+    if (typeof boardId === 'string') presenceFanout.touch(boardId);
+  });
   /** 写路径攒批：同一块板的 op 合并进一个事务，减少事务数与板级锁竞争 */
   const writeBatcher = createWriteBatcher();
   /** 光标合帧：同一房间的光标合并成一条消息，帧间隔按活跃连接数在 14/24/33ms 间自适应（带迟滞） */
   const cursorFanout = createCursorFanout((boardId, cursors) => {
     ns.to(roomOf(boardId)).emit('presence:cursor:frame', { boardId, cursors, at: Date.now() });
   });
+  /**
+   * join 闸门：按 socket 5 次/分钟、按 IP 20 次/分钟。跨连接共享（IP 维度），
+   * 因此在 namespace 级别创建；op 桶按连接，在 connection 回调里各自持有。
+   *
+   * 开发/测试期所有客户端都经 Vite 代理连进来，握手地址统一是回环地址，
+   * 按 20 次/分钟/IP 会把整轮 e2e/多开当同一个客户端误伤，因此非生产环境放宽 IP 维度；
+   * socket 维度的 5 次/分钟不变，生产仍按需求口径 20 次/分钟/IP。
+   */
+  const joinRate = createJoinRateLimiter({
+    ipLimit: config.NODE_ENV === 'production' ? undefined : 10_000,
+  });
+
+  /**
+   * 成员角色变更的就地应用：本实例上该用户的所有连接
+   * 1. 改 `socket.data.role`（op:submit 的权限判定立即生效，已提交的 op 不回滚）；
+   * 2. 改本地 presence 注册表与 Redis 记录，让名单里的角色也立刻变。
+   * 随后补一帧名单（≤100ms），在线用户无需重连。
+   */
+  const applyLocalMemberRole = async (boardId: string, identity: string, role: AccessRole): Promise<void> => {
+    const sockets = await ns.local.in(roomOf(boardId)).fetchSockets();
+    for (const socket of sockets) {
+      const state = stateOf(socket);
+      if (state?.identity === identity) state.role = role;
+    }
+    presence.setRole(boardId, identity, role);
+    void presenceStore.updateRole(boardId, identity, role);
+    touchPresence(boardId);
+  };
+  const memberEvents = createMemberNotifier({ ns, roomOf, applyLocalRole: applyLocalMemberRole });
+  bindMemberNotifier(memberEvents);
+  // 跨实例：其它实例收到后各自更新本地连接（serverSideEmit 不会回到本实例）
+  const memberRoleSchema = z.object({
+    boardId: z.string(),
+    identity: z.string(),
+    role: z.enum(['owner', 'editor', 'viewer']),
+  });
+  ns.on(MEMBER_ROLE_EVENT, (payload: unknown) => {
+    const parsed = memberRoleSchema.safeParse(payload);
+    if (!parsed.success) return;
+    void applyLocalMemberRole(parsed.data.boardId, parsed.data.identity, parsed.data.role);
+  });
 
   ns.on('connection', (socket) => {
     logger.debug({ sid: socket.id, instance: config.INSTANCE_ID }, 'socket connected');
+    /** op 令牌桶：容量 200、回填 100/s；连续超限 5s 才断（见 realtimeRateLimit.ts） */
+    const opRate = createConnectionRateLimiter();
+    /**
+     * 直连部署下 handshake.address 即客户端地址；经代理时所有客户端会归一成代理地址，
+     * 与 REST 侧 `clientIp(req)` 的已知限制一致（当前未开 trust proxy）。
+     */
+    const clientAddress = normalizeJoinIp(socket.handshake.address);
 
     socket.on('join', async (payload: unknown, ack?: (res: unknown) => void) => {
       const parsed = joinSchema.safeParse(payload);
       if (!parsed.success) {
         socket.emit('join:error', { code: 'INVALID_INPUT', issues: parsed.error.issues });
         ack?.({ ok: false, code: 'INVALID_INPUT' });
+        return;
+      }
+
+      // 计数放在 schema 校验后、访问判定前：既不会为畸形包消耗额度，
+      // 也不会让"反复撞不存在/无权的板"绕过 IP 限流
+      const gate = joinRate.hit(socket.id, clientAddress, Date.now());
+      if (!gate.allowed) {
+        // join 超限只回错、不断开：客户端换板重连时断开只会放大重试频率
+        logger.warn(
+          { instance: config.INSTANCE_ID, sid: socket.id, ip: clientAddress, scope: gate.scope, count: gate.count },
+          'join rate limited',
+        );
+        socket.emit('join:error', {
+          code: 'RATE_LIMITED',
+          scope: gate.scope,
+          retryAfterMs: gate.retryAfterMs,
+        });
+        ack?.({ ok: false, code: 'RATE_LIMITED', retryAfterMs: gate.retryAfterMs });
         return;
       }
 
@@ -145,6 +262,15 @@ export function attachRealtime(httpServer: HttpServer) {
         const avatarUrl = profile?.avatar_url ?? null;
         const color = cursorColorOf(userId ?? guestId ?? clientId);
 
+        // 同一 socket 重复 join（换板或客户端重发 join）：先清掉旧登记与心跳，避免 ghost 与定时器泄漏
+        const previous = stateOf(socket);
+        if (previous) {
+          if (previous.heartbeat) clearInterval(previous.heartbeat);
+          void presenceStore.remove(previous.boardId, socket.id);
+          presence.leave(previous.boardId, socket.id);
+          touchPresence(previous.boardId);
+        }
+
         const state: SocketState = {
           boardId,
           clientId,
@@ -154,12 +280,13 @@ export function attachRealtime(httpServer: HttpServer) {
           displayName,
           userId,
           guestId,
+          heartbeat: null,
         };
         socket.data = state;
         await socket.join(roomOf(boardId));
 
         // 先登记 presence，再发 joined，保证客户端收到的第一条 presence 里包含自己
-        const presenceState = presence.join({
+        const connection: PresenceConnectionInput = {
           boardId,
           connectionId: socket.id,
           clientId,
@@ -170,7 +297,16 @@ export function attachRealtime(httpServer: HttpServer) {
           displayName,
           avatarUrl,
           joinedAt: Date.now(),
-        });
+        };
+        const presenceState = presence.join(connection);
+        // 跨实例共享注册表：写入失败会静默降级为单实例，不阻塞 join
+        void presenceStore.upsert(connection);
+        // 心跳续约：实例崩溃后 Redis 记录最多保留一个 TTL，正常在线每 25s 刷新一次
+        const heartbeat = setInterval(() => {
+          void presenceStore.touch(boardId, socket.id);
+        }, PRESENCE_HEARTBEAT_MS);
+        heartbeat.unref?.();
+        state.heartbeat = heartbeat;
 
         const joined = {
           self: {
@@ -192,7 +328,7 @@ export function attachRealtime(httpServer: HttpServer) {
         ack?.({ ok: true, ...joined });
         // 名单走合帧：本次 join 只标脏，所有人（含自己）在 ≤100ms 的下一帧拿到最新全量名单，
         // 不再在 join 响应路径里做 O(N) 扇出
-        presenceFanout.touch(boardId);
+        touchPresence(boardId);
         logger.info(
           { instance: config.INSTANCE_ID, boardId, clientId, tabId, role, totalConnections: presenceState.totalConnections },
           'socket joined board',
@@ -228,6 +364,24 @@ export function attachRealtime(httpServer: HttpServer) {
       }
       if (Buffer.byteLength(JSON.stringify(batch.ops), 'utf8') > LIMITS.opPayloadBytes) {
         socket.emit('op:rejected', { opId: null, reason: 'PAYLOAD_TOO_LARGE' });
+        return;
+      }
+
+      // 令牌桶按条计（不是按批）：一次 100 条的批量本身就是合法突发，容量 200 足够吸收；
+      // 超限整批丢弃、逐条回 RATE_LIMITED，客户端按 retryAfterMs 退避即可，不必重连
+      const rate = opRate.take(batch.ops.length, Date.now());
+      if (!rate.allowed) {
+        for (const op of batch.ops) {
+          socket.emit('op:rejected', { opId: op.opId, reason: 'RATE_LIMITED', retryAfterMs: rate.retryAfterMs });
+        }
+        logger.warn(
+          { instance: config.INSTANCE_ID, boardId: state.boardId, clientId: state.clientId, overLimitMs: rate.overLimitMs },
+          'op rate limited',
+        );
+        if (rate.disconnect) {
+          // 连续超限满 5s：客户端显然没有按 retryAfterMs 退避，断开让它重建连接
+          socket.disconnect(true);
+        }
         return;
       }
 
@@ -317,12 +471,17 @@ export function attachRealtime(httpServer: HttpServer) {
     });
 
     socket.on('disconnect', (reason) => {
+      // 释放按 socket 的 join 窗口；IP 窗口按时间自然过期（不能随单条连接删除，否则重连即绕过）
+      joinRate.drop(socket.id);
       const state = stateOf(socket);
       if (state) {
+        if (state.heartbeat) clearInterval(state.heartbeat);
+        // 跨实例：先删 Redis 记录，再更新本地注册表并触发下一帧名单
+        void presenceStore.remove(state.boardId, socket.id);
         cursorFanout.drop(state.boardId, socket.id);
         const presenceState = presence.leave(state.boardId, socket.id);
         // 注册表已同步移除该连接，下一帧名单自然不再包含它（≤100ms），不留幽灵
-        presenceFanout.touch(state.boardId);
+        touchPresence(state.boardId);
         logger.debug(
           { instance: config.INSTANCE_ID, boardId: state.boardId, clientId: state.clientId, reason, remaining: presenceState.totalConnections },
           'socket left board',
@@ -336,6 +495,7 @@ export function attachRealtime(httpServer: HttpServer) {
     io,
     async close() {
       await new Promise<void>((resolve) => io.close(() => resolve()));
+      bindMemberNotifier(null);
       await Promise.allSettled([pub.quit(), sub.quit()]);
     },
   };
