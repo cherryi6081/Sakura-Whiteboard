@@ -54,6 +54,8 @@ export type RejectedPayload = {
   opId: string | null;
   reason: string;
   issues?: unknown;
+  /** 服务端限流时给出的退避时长（RATE_LIMITED 才有） */
+  retryAfterMs?: number;
 };
 
 export type PresenceUserPayload = {
@@ -98,6 +100,21 @@ export type CursorFramePayload = {
   at: number;
 };
 
+/** 角色变更：房间内广播，客户端按 `identity` 过滤出自己 */
+export type MemberRolePayload = {
+  boardId: string;
+  identity: string;
+  role: JoinRole;
+  at: number;
+};
+
+/** 被移出：只发给该身份的连接，随后服务端会断开它 */
+export type MemberRemovedPayload = {
+  boardId: string;
+  identity: string;
+  at: number;
+};
+
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 export type BoardSocketHandlers = {
@@ -109,6 +126,8 @@ export type BoardSocketHandlers = {
   onRejected: (payload: RejectedPayload) => void;
   onPresence: (payload: PresenceStatePayload) => void;
   onCursorFrame: (payload: CursorFramePayload) => void;
+  onMemberRole: (payload: MemberRolePayload) => void;
+  onMemberRemoved: (payload: MemberRemovedPayload) => void;
 };
 
 export type BoardSocket = {
@@ -165,6 +184,8 @@ export function createBoardSocket(options: {
   socket.on("op:rejected", handlers.onRejected);
   socket.on("presence:state", handlers.onPresence);
   socket.on("presence:cursor:frame", handlers.onCursorFrame);
+  socket.on("member:role", handlers.onMemberRole);
+  socket.on("member:removed", handlers.onMemberRemoved);
 
   return {
     socket,

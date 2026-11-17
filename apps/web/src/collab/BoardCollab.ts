@@ -11,6 +11,8 @@ import {
   type CursorFramePayload,
   type JoinRole,
   type JoinedPayload,
+  type MemberRemovedPayload,
+  type MemberRolePayload,
   type PresenceStatePayload,
   type RejectedPayload,
 } from "./socketClient";
@@ -90,6 +92,8 @@ export type CollabSnapshot = {
   presence: PresenceStatePayload | null;
   /** M3：按连接渲染的远端光标 */
   cursors: RemoteCursor[];
+  /** 被所有者移出：服务端已断开，停止重连并提示，不再假装"离线" */
+  memberRemoved: boolean;
 };
 
 export type BoardCollab = ReturnType<typeof createBoardCollab>;
@@ -122,7 +126,7 @@ export function createBoardCollab(options: {
   tabId: string;
   /** M5-1：服务端签发的游客标识，仅用于 UI 展示；WS 不再上报它 */
   guestId: string;
-  /** M5-2：分享链接明文 token（仅在 `/board/:id?share=` 进入时存在），用于 REST/WS 的匿名访问 */
+  /** M5-2：分享链接明文 token（来自 `/board/:id#share=`，老 `?share=` 兼容一个版本），仅用于 REST/WS 的匿名访问 */
   shareToken?: string | null;
   cache: CollabCache;
   getBridge: () => CanvasBridge | null;
@@ -161,6 +165,7 @@ export function createBoardCollab(options: {
     lastPullResync: false,
     presence: null,
     cursors: [],
+    memberRemoved: false,
   };
 
   const pendingRemote: ApplyPayload[] = [];
@@ -170,6 +175,8 @@ export function createBoardCollab(options: {
   let pointerDown = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 被服务端限流后的补发定时器：op 仍在本地队列里，退避后整队重发（服务端按 opId 幂等） */
+  let rateRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let persistSeq: number | null = null;
   let socket: BoardSocket | null = null;
   let stopped = false;
@@ -487,6 +494,16 @@ export function createBoardCollab(options: {
       state.viewOnly = true;
       state.role = "viewer";
       void safe(() => cache.clearQueue(state.boardId), undefined).then(refreshQueuedOps);
+    } else if (payload.reason === "RATE_LIMITED") {
+      // 服务端按连接限流，整批被丢弃；op 还在本地队列里，不能当终态删除。
+      // 按服务端给的退避时长补发，缺省 250ms，上限 5s（避免长时间不重试造成本地/远端分叉）
+      if (rateRetryTimer === null) {
+        const delay = Math.max(50, Math.min(5000, payload.retryAfterMs ?? 250));
+        rateRetryTimer = setTimeout(() => {
+          rateRetryTimer = null;
+          if (!stopped) void flushPersistedQueue();
+        }, delay);
+      }
     } else if (payload.opId && !["NOT_JOINED", "IDEMPOTENT_IN_FLIGHT", "INTERNAL"].includes(payload.reason)) {
       // 终态拒绝：留在队列里只会无限重发
       markSettled(payload.opId);
@@ -515,6 +532,39 @@ export function createBoardCollab(options: {
     state.presence = payload;
     const alive = new Set(payload.users.flatMap((user) => user.connectionIds));
     state.cursors = state.cursors.filter((cursor) => alive.has(cursor.connectionId));
+    emit();
+  };
+
+  /**
+   * 角色变更：在线立即生效，不重连。
+   * 降为 viewer 时与 `NO_PERMISSION` 同口径清掉未发送队列（已提交的 op 由服务端决定，不回滚）。
+   */
+  const handleMemberRole = (payload: MemberRolePayload) => {
+    if (payload.identity !== state.identity) return;
+    const wasWriter = !state.viewOnly;
+    state.role = payload.role;
+    state.viewOnly = payload.role === "viewer";
+    if (wasWriter && state.viewOnly) {
+      void safe(() => cache.clearQueue(state.boardId), undefined).then(refreshQueuedOps);
+    }
+    emit();
+  };
+
+  /**
+   * 被移出：服务端发完事件就会断开本连接。这里主动 disconnect 关掉自动重连，
+   * 否则会反复 join 被 FORBIDDEN 拒绝；页面据此提示并保留只读画面。
+   */
+  const handleMemberRemoved = (payload: MemberRemovedPayload) => {
+    if (payload.identity !== state.identity) return;
+    state.memberRemoved = true;
+    state.status = "disconnected";
+    state.joined = false;
+    // 已被移出：画布保留但转只读，避免用户继续编辑却永远发不出去
+    state.role = "viewer";
+    state.viewOnly = true;
+    state.cursors = [];
+    void safe(() => cache.clearQueue(state.boardId), undefined).then(refreshQueuedOps);
+    socket?.disconnect();
     emit();
   };
 
@@ -621,6 +671,8 @@ export function createBoardCollab(options: {
           onRejected: handleRejected,
           onPresence: handlePresence,
           onCursorFrame: handleCursorFrame,
+          onMemberRole: handleMemberRole,
+          onMemberRemoved: handleMemberRemoved,
         },
       });
       void refreshQueuedOps();
@@ -638,6 +690,10 @@ export function createBoardCollab(options: {
       window.removeEventListener("pointercancel", onPointerUp, true);
       if (flushTimer !== null) clearTimeout(flushTimer);
       flushTimer = null;
+      if (rateRetryTimer !== null) {
+        clearTimeout(rateRetryTimer);
+        rateRetryTimer = null;
+      }
       if (persistTimer !== null) {
         clearTimeout(persistTimer);
         persistTimer = null;
