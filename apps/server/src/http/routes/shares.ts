@@ -95,7 +95,11 @@ sharesRouter.post(
       permission,
       /** 唯一一次返回明文 token；之后所有接口只给 id */
       token,
-      url: `/board/${boardId}?share=${token}`,
+      /**
+       * 用 fragment 承载 token：fragment 不会随请求发给服务端（不进 access log / Referer），
+       * 也不改现有 `/board/:id` 路由。REST/WS 仍走 `x-share-token` 头与 join payload。
+       */
+      url: `/board/${boardId}#share=${token}`,
       expiresAt: expiresAt ? expiresAt.toISOString() : null,
       createdAt: row.created_at.toISOString(),
     });
@@ -141,6 +145,38 @@ sharesRouter.get(
         active: row.revoked_at === null && (row.expires_at === null || row.expires_at.getTime() > Date.now()),
       })),
     });
+  }),
+);
+
+const patchShareSchema = z.object({
+  permission: z.enum(['read', 'edit']),
+});
+
+/**
+ * 改权限：只允许 read/edit 互换，复用 owner 校验。
+ * 已吊销的链接不允许再改（返回 404，与"链接不存在"同口径）。
+ * 更新后必须清 `share:` 缓存，否则旧权限会一直生效到缓存过期。
+ */
+sharesRouter.patch(
+  '/boards/:id/share-links/:linkId',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const linkId = z.string().uuid().parse(req.params.linkId);
+    const { permission } = patchShareSchema.parse(req.body ?? {});
+    await requireOwner(req, boardId);
+
+    const { rows } = await pool.query<{ token_hash: string; permission: SharePermission }>(
+      `update share_links
+          set permission = $3
+        where id = $1 and board_id = $2 and revoked_at is null
+        returning token_hash, permission`,
+      [linkId, boardId, permission],
+    );
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'NOT_FOUND', 'share link not found');
+
+    await invalidateShareCache(row.token_hash);
+    res.json({ id: linkId, boardId, permission: row.permission });
   }),
 );
 

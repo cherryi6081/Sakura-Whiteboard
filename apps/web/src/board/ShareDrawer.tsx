@@ -112,6 +112,20 @@ export function ShareDrawer({
     void load();
   };
 
+  /** 改权限：read ↔ edit 互换；服务端会同步清掉该 token 的权限缓存 */
+  const changePermission = async (link: ShareLink) => {
+    const permission = link.permission === "read" ? "edit" : "read";
+    const res = await request<{ permission: string }>(`/api/boards/${boardId}/share-links/${link.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ permission }),
+    });
+    if (!res.ok) {
+      setError(`改权限失败（${res.code}）。`);
+      return;
+    }
+    void load();
+  };
+
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -270,13 +284,23 @@ export function ShareDrawer({
                         确认吊销？
                       </button>
                     ) : (
-                      <button
-                        className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
-                        type="button"
-                        onClick={() => setConfirming(link.id)}
-                      >
-                        吊销
-                      </button>
+                      <>
+                        <button
+                          className="wb-btn wb-btn--ghost wb-btn--pill"
+                          type="button"
+                          data-testid="share-link-permission-toggle"
+                          onClick={() => void changePermission(link)}
+                        >
+                          改为{link.permission === "read" ? "可编辑" : "只读"}
+                        </button>
+                        <button
+                          className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
+                          type="button"
+                          onClick={() => setConfirming(link.id)}
+                        >
+                          吊销
+                        </button>
+                      </>
                     )}
                   </div>
                 ))}
