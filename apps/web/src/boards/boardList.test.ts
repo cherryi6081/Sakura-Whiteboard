@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_CAPACITY } from '@whiteboard/shared';
-import { BOARDS_CAPACITY, isPinned, sortBoards, type PinnableBoard } from './boardList';
+import { BOARDS_CAPACITY, isPinned, matchesBoardTitle, sortBoards, type PinnableBoard } from './boardList';
 
 const board = (id: string, lastEditedAt: string, extra: Partial<PinnableBoard> = {}): PinnableBoard => ({
   id,
@@ -54,6 +54,27 @@ describe('sortBoards', () => {
       'manual',
     );
     expect(sorted.map((item) => item.id)).toEqual(['p', 'a']);
+  });
+});
+
+describe('matchesBoardTitle', () => {
+  it('空查询（含纯空格）命中所有白板', () => {
+    expect(matchesBoardTitle('产品路线图', '')).toBe(true);
+    expect(matchesBoardTitle('产品路线图', '   ')).toBe(true);
+  });
+
+  it('大小写不敏感', () => {
+    expect(matchesBoardTitle('Q4 Roadmap', 'roadmap')).toBe(true);
+    expect(matchesBoardTitle('q4 roadmap', 'ROADMAP')).toBe(true);
+  });
+
+  it('子串命中，且两边都先 trim', () => {
+    expect(matchesBoardTitle('  团队周会纪要  ', '周会')).toBe(true);
+    expect(matchesBoardTitle('设计稿 v2', ' 计稿 v ')).toBe(true);
+  });
+
+  it('不命中时返回 false', () => {
+    expect(matchesBoardTitle('产品路线图', 'swot')).toBe(false);
   });
 });
 

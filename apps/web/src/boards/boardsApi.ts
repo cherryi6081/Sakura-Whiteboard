@@ -14,8 +14,12 @@ export type BoardListItem = {
   lastEditedAt: string;
   /** 服务端置顶时间；null = 未置顶。列表按「置顶优先，其次最近打开」返回 */
   pinnedAt?: string | null;
+  /** 归档时间；null = 未归档。归档只影响默认列表可见性，不影响打开与编辑 */
+  archivedAt?: string | null;
   /** 手动顺序（仅 sortMode = manual 时有效）；null = 尚未排过 */
   rank?: number | null;
+  /** 服务端缩略图地址（带内容哈希）；为空时列表页回退本机 IndexedDB 缩略图 */
+  thumbnailUrl?: string | null;
   /** 团队空间卡片展示「谁创建」；个人空间不展示 */
   ownerName?: string;
   isOwn?: boolean;
@@ -32,22 +36,38 @@ export type BoardList = {
   spaceRole?: BoardRole | string;
 };
 
-export function fetchBoards(limit = 20, offset = 0, spaceId?: string): Promise<ApiResult<BoardList>> {
-  const space = spaceId ? `&space=${encodeURIComponent(spaceId)}` : "";
-  return request<BoardList>(`/api/boards?limit=${limit}&offset=${offset}${space}`);
+export function fetchBoards(
+  limit = 20,
+  offset = 0,
+  spaceId?: string,
+  q?: string,
+  archived?: boolean,
+): Promise<ApiResult<BoardList>> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  if (spaceId) params.set("space", spaceId);
+  if (q) params.set("q", q);
+  // 已归档视图才传；缺省维持默认列表（排除归档）
+  if (archived) params.set("archived", "1");
+  return request<BoardList>(`/api/boards?${params.toString()}`);
 }
 
 /** 登录账号不限量：按页循环直到 `nextOffset` 为空，保证「我的白板」能看到全部。 */
 export const BOARDS_PAGE_SIZE = 50;
 
-export async function fetchAllBoards(spaceId?: string): Promise<ApiResult<BoardList>> {
-  const first = await fetchBoards(BOARDS_PAGE_SIZE, 0, spaceId);
+export async function fetchAllBoards(
+  spaceId?: string,
+  q?: string,
+  archived?: boolean,
+): Promise<ApiResult<BoardList>> {
+  const first = await fetchBoards(BOARDS_PAGE_SIZE, 0, spaceId, q, archived);
   if (!first.ok) return first;
 
   const boards = [...first.data.boards];
   let nextOffset = first.data.nextOffset;
   while (nextOffset !== null) {
-    const page = await fetchBoards(BOARDS_PAGE_SIZE, nextOffset, spaceId);
+    const page = await fetchBoards(BOARDS_PAGE_SIZE, nextOffset, spaceId, q, archived);
     if (!page.ok) return page;
     boards.push(...page.data.boards);
     nextOffset = page.data.nextOffset;
@@ -92,6 +112,20 @@ export function setBoardPinned(
     method: "PATCH",
     body: JSON.stringify({ pinned }),
   });
+}
+
+/** 归档 / 取消归档（owner/editor）；服务端只写 archived_at，不改 last_edited_at。 */
+export function setBoardArchived(
+  boardId: string,
+  archived: boolean,
+): Promise<ApiResult<{ id: string; archivedAt: string | null }>> {
+  return request<{ id: string; archivedAt: string | null }>(
+    `/api/boards/${encodeURIComponent(boardId)}/archive`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ archived }),
+    },
+  );
 }
 
 export type BatchItemResult = {
@@ -176,8 +210,31 @@ export function markBoardOpened(boardId: string): void {
   });
 }
 
-/** 重命名（owner / editor）；服务端不改 `last_edited_at`。 */
-export function renameBoard(boardId: string, title: string): Promise<ApiResult<{ id: string; title: string }>> {
+/**
+ * 离板时把本地拍好的缩略图上传一次（覆盖式，服务端每板只留一份）。
+ *
+ * `keepalive` 保证跳转/关闭页面时请求还能发出，但浏览器对 keepalive 请求体有 64KB 限制；
+ * 超过时回退成普通请求（此时页面通常还没卸载）。失败静默——列表页仍有本机副本兜底。
+ */
+export async function uploadBoardThumbnail(boardId: string, blob: Blob): Promise<void> {
+  const url = `/api/boards/${encodeURIComponent(boardId)}/thumbnail`;
+  const send = (keepalive: boolean) =>
+    fetch(url, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "x-wb-upload": "1", "content-type": blob.type || "image/webp" },
+      body: blob,
+      keepalive,
+    });
+  try {
+    const res = await send(true);
+    if (!res.ok && res.status !== 413) await send(false);
+  } catch {
+    await send(false).catch(() => undefined);
+  }
+}
+
+/** 重命名（owner / editor）；服务端不改 `last_edited_at`。 */export function renameBoard(boardId: string, title: string): Promise<ApiResult<{ id: string; title: string }>> {
   return request<{ id: string; title: string }>(`/api/boards/${encodeURIComponent(boardId)}`, {
     method: "PATCH",
     body: JSON.stringify({ title }),

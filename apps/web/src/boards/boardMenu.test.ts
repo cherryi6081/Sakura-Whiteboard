@@ -12,20 +12,35 @@ function item(groups: ReturnType<typeof buildBoardMenu>, key: string): BoardMenu
 }
 
 describe("buildBoardMenu", () => {
-  it("owner 有 3 组 8 项，危险项独占最后一组", () => {
+  it("owner 有 3 组 9 项，危险项独占最后一组", () => {
     const groups = buildBoardMenu({ role: "owner", pinned: false });
-    expect(groups.map((group) => group.items.length)).toEqual([4, 3, 1]);
+    expect(groups.map((group) => group.items.length)).toEqual([5, 3, 1]);
     expect(flat(groups).map((entry) => entry.key)).toEqual([
       "open",
       "rename",
       "move-to",
       "pin",
+      "archive",
       "copy-link",
       "duplicate",
       "members",
       "trash",
     ]);
     expect(groups[2]?.danger).toBe(true);
+  });
+
+  it("归档项紧跟在置顶之后，编辑者可归档", () => {
+    const groups = buildBoardMenu({ role: "editor", pinned: false });
+    const keys = groups[0]?.items.map((entry) => entry.key);
+    expect(keys).toEqual(["open", "rename", "move-to", "pin", "archive"]);
+    expect(item(groups, "archive").label).toBe("归档");
+    expect(item(groups, "archive").icon).toBe("archive");
+    expect(item(groups, "archive").disabledReason).toBeUndefined();
+  });
+
+  it("已归档视图的文案为「取消归档」", () => {
+    const groups = buildBoardMenu({ role: "owner", pinned: false, archived: true });
+    expect(item(groups, "archive").label).toBe("取消归档");
   });
 
   it("置顶时文案与图标切换为取消置顶", () => {
@@ -46,12 +61,13 @@ describe("buildBoardMenu", () => {
     expect(flat(groups).some((entry) => entry.key === "members")).toBe(false);
   });
 
-  it("viewer 的改名/置顶/删除都禁用并写明原因，项不隐藏", () => {
+  it("viewer 的改名/置顶/归档/删除都禁用并写明原因，项不隐藏", () => {
     const groups = buildBoardMenu({ role: "viewer", pinned: false });
     expect(item(groups, "rename").disabledReason).toBe("只读");
     expect(item(groups, "pin").disabledReason).toBe("只读");
+    expect(item(groups, "archive").disabledReason).toBe("只读");
     expect(item(groups, "trash").disabledReason).toBe("只读");
-    expect(flat(groups)).toHaveLength(7);
+    expect(flat(groups)).toHaveLength(8);
   });
 
   it("游客可置顶（本机）、可改名（同步本机记录）、可删除临时板（物理删除，不可恢复）", () => {

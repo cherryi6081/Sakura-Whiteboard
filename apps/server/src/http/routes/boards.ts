@@ -48,19 +48,32 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   /** 空间 id；缺省为个人空间 */
   space: spaceIdSchema.optional(),
+  /** 板名搜索词；只匹配标题，空串/缺省表示不过滤 */
+  q: z.string().trim().max(64).optional(),
+  /** 已归档视图：'1' 只列已归档；缺省/'0' 只列未归档（默认列表排除归档） */
+  archived: z.enum(['0', '1']).optional(),
 });
+
+/** 转义 ILIKE 通配符：用户输入的 `\`、`%`、`_` 按字面匹配，避免 `%` 变成"匹配任意内容" */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 type BoardMetaRow = {
   id: string;
   title: string;
   last_edited_at: Date;
   pinned_at: Date | null;
+  archived_at: Date | null;
+  thumbnail_url: string | null;
   rank: string | null;
   owner_name: string;
   is_own: boolean;
 };
 
 const pinSchema = z.object({ pinned: z.boolean() });
+
+const archiveSchema = z.object({ archived: z.boolean() });
 
 const renameSchema = z.object({
   title: z.string().trim().min(1).max(LIMITS.boardTitleMax),
@@ -187,7 +200,11 @@ boardsRouter.get(
     const identity = identityOf(req);
     if (!identity.userId) throw new AppError(401, 'UNAUTHENTICATED', '游客没有服务端白板列表，请使用本机列表');
 
-    const { limit, offset, space } = listQuerySchema.parse(req.query);
+    const { limit, offset, space, q, archived } = listQuerySchema.parse(req.query);
+    // 空串表示不搜索；转义后交给 ILIKE，大小写不敏感的子串匹配
+    const keyword = q ? escapeLike(q) : '';
+    // 已归档视图只列归档板；默认列表继续排除归档
+    const archivedOnly = archived === '1';
     // 空间是列表的一级上下文：不传 = 个人空间；非成员统一 404，不泄露空间是否存在
     const spaceId = space ?? (await ensurePersonalSpace(identity.userId)).id;
     const role = await resolveSpaceRole(spaceId, identity.userId);
@@ -200,18 +217,20 @@ boardsRouter.get(
     const sortMode = settingRows[0]?.sort_mode === 'manual' ? 'manual' : 'auto';
 
     const { rows } = await pool.query<BoardMetaRow>(
-      `select b.id, b.title, b.last_edited_at, b.pinned_at, o.rank,
+      `select b.id, b.title, b.last_edited_at, b.pinned_at, b.archived_at, b.thumbnail_url, o.rank,
               u.display_name as owner_name,
               (b.owner_id = $1) as is_own
          from boards b
          left join board_user_order o on o.board_id = b.id and o.user_id = $1
          left join users u on u.id = b.owner_id
-        where b.space_id = $5 and b.archived_at is null and b.deleted_at is null
+        where b.space_id = $5 and b.deleted_at is null
+          and ((b.archived_at is not null) = $7::boolean)
+          and ($6 = '' or b.title ilike '%' || $6 || '%')
         order by (b.pinned_at is not null) desc,
                  case when $4 = 'manual' then o.rank end asc nulls last,
                  b.last_edited_at desc, b.id desc
         limit $2 offset $3`,
-      [identity.userId, limit, offset, sortMode, spaceId],
+      [identity.userId, limit, offset, sortMode, spaceId, keyword, archivedOnly],
     );
 
     res.json({
@@ -224,6 +243,8 @@ boardsRouter.get(
         role,
         lastEditedAt: row.last_edited_at.toISOString(),
         pinnedAt: row.pinned_at ? row.pinned_at.toISOString() : null,
+        archivedAt: row.archived_at ? row.archived_at.toISOString() : null,
+        thumbnailUrl: row.thumbnail_url,
         rank: row.rank === null ? null : Number(row.rank),
         ownerName: row.owner_name,
         isOwn: row.is_own,
@@ -283,6 +304,34 @@ boardsRouter.patch(
     );
 
     res.json({ id: boardId, pinnedAt: rows[0]?.pinned_at?.toISOString() ?? null });
+  }),
+);
+
+/**
+ * `PATCH /api/boards/:id/archive` —— 归档 / 取消归档。
+ *
+ * 归档只是把板从默认列表挪到「已归档」，不改变访问与分享权限，也不加锁；
+ * 权限与置顶一致：owner/editor 可改，viewer 只读不可改。
+ * 只写 `archived_at`，**不动 `last_edited_at`**，避免归档动作把板顶到最近编辑的第一位。
+ */
+boardsRouter.patch(
+  '/boards/:id/archive',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const { archived } = archiveSchema.parse(req.body ?? {});
+    const access = await resolveBoardAccess(boardId, identityOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    if (access.role === 'viewer') throw new AppError(403, 'FORBIDDEN', '只读成员不能归档');
+
+    const { rows } = await pool.query<{ archived_at: Date | null }>(
+      `update boards
+          set archived_at = case when $2 then now() else null end
+        where id = $1
+        returning archived_at`,
+      [boardId, archived],
+    );
+
+    res.json({ id: boardId, archivedAt: rows[0]?.archived_at?.toISOString() ?? null });
   }),
 );
 

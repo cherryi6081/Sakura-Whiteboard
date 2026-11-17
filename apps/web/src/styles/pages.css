@@ -5171,6 +5171,42 @@ body:has(.wb-home) {
   align-items: center;
   gap: var(--space-2);
   flex: none;
+  /* 窄屏时允许换行，搜索框不挤压其它操作 */
+  flex-wrap: wrap;
+}
+
+/* 板名搜索：只匹配标题；清空按钮小一号，紧跟在输入框后面 */
+.wb-boards__search {
+  width: auto;
+  min-width: 160px;
+  max-width: 220px;
+  height: var(--control-h);
+  flex: none;
+}
+
+.wb-boards__search-clear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--text-subtitle);
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.wb-boards__search-clear:hover {
+  color: var(--ink-strong);
+}
+
+.wb-boards__search-clear:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- 勾选控件：32 命中 / 18 视觉，触屏 40 / 20 ---------- */

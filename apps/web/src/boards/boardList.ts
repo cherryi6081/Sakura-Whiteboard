@@ -33,6 +33,16 @@ function rankOf(board: PinnableBoard): number | null {
   return typeof board.rank === "number" && Number.isFinite(board.rank) ? board.rank : null;
 }
 
+/**
+ * 板名搜索的本地匹配：游客列表在本机，搜索只能本地过滤。
+ * 两边 trim、空查询视为不过滤，大小写不敏感的子串匹配（对齐服务端 ILIKE）。
+ */
+export function matchesBoardTitle(title: string, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return title.trim().toLowerCase().includes(needle);
+}
+
 export function sortBoards<T extends PinnableBoard>(boards: readonly T[], mode: SortMode = "auto"): T[] {
   return [...boards].sort((a, b) => {
     const pinDiff = Number(isPinned(b)) - Number(isPinned(a));

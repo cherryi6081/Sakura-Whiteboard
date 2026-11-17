@@ -10,7 +10,8 @@ import { resolveSpaceRole } from './spaceAccess.js';
  * **身份来源只有 `Identity`**（签名 cookie + Redis 会话），调用方不得再传客户端自报的
  * `guestId` / `role`。规则：
  *
- * 1. 板不存在 / 已归档 / 已在回收站 → `not_found`（软删除后分享链接与协作者一律失效）；
+ * 1. 板不存在 / 已在回收站 → `not_found`（软删除后分享链接与协作者一律失效）；
+ *    归档不影响访问，只是从默认列表里挪走；归档板照常可打开、可编辑；
  * 1.5. **公共临时板**（`is_public=true`）→ 任何人都是 `editor`：它就是"所有人的同一间房"，
  *    匿名访客与登录用户都能直接读写，不需要分享 token；
  * 2. **归入空间的板**：角色取 `space_members`（owner / editor / viewer），
@@ -34,7 +35,7 @@ export async function resolveBoardAccess(
   shareToken?: string | null,
 ): Promise<AccessResult> {
   const board = await getBoardForJoin(boardId);
-  if (!board || board.archived_at || board.deleted_at) return { ok: false, reason: 'not_found' };
+  if (!board || board.deleted_at) return { ok: false, reason: 'not_found' };
 
   // 公共临时板不归属任何账号/浏览器：所有身份一视同仁，直接可编辑
   if (board.is_public) return { ok: true, board, role: 'editor' };

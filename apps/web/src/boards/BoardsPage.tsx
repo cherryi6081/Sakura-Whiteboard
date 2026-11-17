@@ -20,6 +20,7 @@ import {
   resetPublicBoard,
   restoreBoard,
   ROLE_LABEL,
+  setBoardArchived,
   setBoardPinned,
   setSortMode,
   type BoardListItem,
@@ -32,7 +33,7 @@ import { BatchSelectionBar } from "./BatchSelectionBar";
 import { BatchTrashDialog } from "./BatchTrashDialog";
 import { BoardCardMenu, type BoardMenuTarget } from "./BoardCardMenu";
 import type { MenuAnchor } from "./boardMenu";
-import { BOARDS_CAPACITY, isPinned, sortBoards } from "./boardList";
+import { BOARDS_CAPACITY, isPinned, matchesBoardTitle, sortBoards } from "./boardList";
 import { boardsLayout, pinTargets, rangeIds, selectionState, trashTargets, type SelectableCard } from "./selection";
 import { dropIndex, moveItem, neighborsAt, splitGroups } from "./sortOrder";
 import { edgeScrollStep } from "./autoScroll";
@@ -100,6 +101,8 @@ type CardModel = {
   publicBoard?: boolean;
   /** 团队空间：这块板是不是我创建的 */
   isOwn?: boolean;
+  /** 服务端保存的缩略图地址（带内容哈希）；为空时回退到本机 IndexedDB 缩略图 */
+  thumbnailUrl?: string | null;
 };
 
 type UndoState =
@@ -232,6 +235,20 @@ export function BoardsPage() {
   const selectEntryRef = useRef<HTMLButtonElement>(null);
   // 拖拽排序：组内接管（方案 B），置顶组与普通组固定，不跨组
   const [sortMode, setSortModeState] = useState<BoardSortMode>("auto");
+  // 板名搜索：query 是输入框即时值，debouncedQuery 是实际生效的查询词
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  /** 列表重新加载后递增，让当前搜索词重新生效 */
+  const [searchEpoch, setSearchEpoch] = useState(0);
+  /** 记录当前 view.items 对应哪个 q，避免重复请求 */
+  const appliedQueryRef = useRef("");
+  /** 已归档视图开关：只在登录列表出现，搜索词继续叠加生效 */
+  const [showArchived, setShowArchived] = useState(false);
+  // 供 useCallback 里的列表请求读取最新值，避免把开关放进依赖导致重渲染
+  const showArchivedRef = useRef(false);
+  /** effect 里要读最新的 view 状态，但不能把 view 放进依赖（否则每次列表变化都会重发搜索） */
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [previewIds, setPreviewIds] = useState<string[] | null>(null);
   // 每 12 格展开一次：首屏 11 张 + 第 12 格占位，点一次再追加 11 张
   const [expandedRounds, setExpandedRounds] = useState(0);
@@ -322,7 +339,7 @@ export function BoardsPage() {
     spaceIdRef.current = candidate;
     setSpaceId(candidate);
 
-    const list = await fetchAllBoards(candidate);
+    const list = await fetchAllBoards(candidate, undefined, showArchivedRef.current || undefined);
     if (!list.ok) {
       setView(list.status === 404 ? { kind: "missing" } : { kind: "error", message: "列表没刷新成功" });
       return;
@@ -334,6 +351,9 @@ export function BoardsPage() {
       items: sortBoards(list.data.boards, list.data.sortMode),
       user: { displayName: me.data.user.displayName, avatarUrl: me.data.user.avatarUrl },
     });
+    // 重新加载拿到的是全量列表：清掉已应用标记并触发一次，让当前搜索词继续生效
+    appliedQueryRef.current = "";
+    setSearchEpoch((epoch) => epoch + 1);
 
     if (!readFlag(CLAIM_DISMISSED_KEY)) {
       const p = await fetchClaimPreview();
@@ -347,6 +367,45 @@ export function BoardsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 搜索输入防抖 250ms：trim 后比较，只敲空格不会触发请求
+  useEffect(() => {
+    const next = query.trim();
+    const timer = window.setTimeout(() => setDebouncedQuery(next), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  // 登录用户的板名搜索：服务端按 q 过滤，空间与分页口径不变
+  useEffect(() => {
+    const current = viewRef.current;
+    if (current.kind !== "user") return;
+    if (debouncedQuery === appliedQueryRef.current) return;
+    const wanted = debouncedQuery;
+    let alive = true;
+    void fetchAllBoards(
+      spaceIdRef.current || undefined,
+      wanted || undefined,
+      showArchivedRef.current || undefined,
+    ).then((res) => {
+      if (!alive) return;
+      if (!res.ok) {
+        // 失败保留已有列表，只提示，避免搜索把页面打空
+        setToast("搜索没成功，请重试");
+        return;
+      }
+      setView((prev) =>
+        prev.kind === "user" ? { ...prev, items: sortBoards(res.data.boards, res.data.sortMode) } : prev,
+      );
+      // 结果集变了：退出批量选择，避免对已经不可见的卡片继续操作
+      setSelectMode(false);
+      setSelected(new Set());
+      setAllScope(false);
+      appliedQueryRef.current = wanted;
+    });
+    return () => {
+      alive = false;
+    };
+  }, [debouncedQuery, searchEpoch]);
 
   // 身份未知态自动重试：联网恢复立即试一次，服务端恢复靠 6s 轮询；
   // quiet 重试不切回骨架，面板原地变成正常登录视图。
@@ -561,6 +620,7 @@ export function BoardsPage() {
 
   const isGuest = view.kind === "guest";
   const listReady = view.kind === "user" || view.kind === "guest";
+  const searching = query.trim() !== "";
   const cards: CardModel[] = !listReady
     ? []
     : view.kind === "user"
@@ -586,8 +646,13 @@ export function BoardsPage() {
                 : "role",
           role: item.role,
           isOwn: item.isOwn,
+          thumbnailUrl: item.thumbnailUrl,
         }))
-      : sortBoards(view.items, sortMode).map((item) => ({
+      // 游客列表在本机，搜索只能本地过滤（不改 view state，只影响渲染）
+      : sortBoards(
+          view.items.filter((item) => matchesBoardTitle(item.title, query)),
+          sortMode,
+        ).map((item) => ({
           id: item.id,
           title: item.title,
           lastEditedAt: item.lastEditedAt,
@@ -600,7 +665,8 @@ export function BoardsPage() {
         }));
 
   const cardsReady = listReady && thumbsReady;
-  const showEmpty = listReady && cards.length === 0;
+  // 搜索无结果有专属空态，这里只在没搜索时展示原有空态；已归档视图用专属空态
+  const showEmpty = listReady && cards.length === 0 && !searching && !showArchived;
   const skeletonActive = view.kind === "loading" || (listReady && cards.length > 0 && !thumbsReady);
   const skeletonPhase = useSkeletonPhase(skeletonActive);
 
@@ -629,9 +695,11 @@ export function BoardsPage() {
     setExpandedRounds(0);
   }, [currentSpace?.id]);
   const selectedCount = cards.filter((card) => selected.has(card.id)).length;
-  // 游客只有一块公共板，没有"删除/置顶/改名"这类单板操作，批量选择也关掉
-  const isSelectable = view.kind === "user" && !readOnly;
-  const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly;
+  // 游客只有一块公共板，没有"删除/置顶/改名"这类单板操作，批量选择也关掉；
+  // 已归档视图是列表整理视图，不提供批量操作
+  const isSelectable = view.kind === "user" && !readOnly && !showArchived;
+  // 搜索生效时禁止拖拽重排：不能在过滤后的子集上写 rank；已归档视图同样禁止排序
+  const canSort = view.kind === "user" && !selectMode && !sortBusy && !readOnly && !searching && !showArchived;
   const groupsNow = splitGroups(shownCards);
   const groupIdsOf = (group: DragGroupKey): string[] =>
     (group === "pinned" ? groupsNow.pinned : groupsNow.others).map((card) => card.id);
@@ -938,8 +1006,28 @@ export function BoardsPage() {
     void load();
   };
 
+  /** 立即清空搜索（输入框与生效词一起重置，不等防抖） */
+  const clearSearch = () => {
+    setQuery("");
+    setDebouncedQuery("");
+  };
+
+  /** 切换「已归档 / 返回白板」：沿用当前空间与搜索词重新拉取 */
+  const toggleArchived = () => {
+    const next = !showArchivedRef.current;
+    showArchivedRef.current = next;
+    setShowArchived(next);
+    // quiet 重试不切骨架；load 会清空 appliedQueryRef 并触发搜索 effect，搜索词继续生效
+    void load(spaceIdRef.current, true);
+  };
+
   const refreshList = useCallback(async () => {
-    const list = await fetchAllBoards(spaceIdRef.current || undefined);
+    // 搜索生效时重拉也带上当前 q，避免刷新后列表与输入框不一致；已归档视图同理
+    const list = await fetchAllBoards(
+      spaceIdRef.current || undefined,
+      appliedQueryRef.current || undefined,
+      showArchivedRef.current || undefined,
+    );
     if (!list.ok) return;
     setSortModeState(list.data.sortMode);
     setView((current) =>
@@ -1654,6 +1742,20 @@ export function BoardsPage() {
     setToast("已重命名");
   };
 
+  /** 归档 / 取消归档：成功后从当前列表移除（默认视图与归档视图都是"移出本视图"） */
+  const archiveBoard = async (board: CardModel) => {
+    const result = await setBoardArchived(board.id, !showArchived);
+    if (!result.ok) {
+      setToast("操作没成功，请重试");
+      return;
+    }
+    setView((current) =>
+      current.kind === "user"
+        ? { ...current, items: current.items.filter((item) => item.id !== board.id) }
+        : current,
+    );
+  };
+
   const handleMenuAction = (key: string) => {
     const target = menu;
     if (!target) return;
@@ -1675,6 +1777,9 @@ export function BoardsPage() {
       case "pin":
         void togglePin(board.id, !board.pinned);
         return;
+      case "archive":
+        void archiveBoard(board);
+        return;
       case "copy-link":
         void copyBoardLink(board);
         return;
@@ -1695,7 +1800,7 @@ export function BoardsPage() {
     <BoardCard
       key={board.id}
       board={board}
-      thumbUrl={ownerTagValue === thumbOwner ? thumbs[board.id] : undefined}
+      thumbUrl={board.thumbnailUrl ?? (ownerTagValue === thumbOwner ? thumbs[board.id] : undefined)}
       pinBusy={pinBusyId === board.id}
       menuOpen={menu?.board.id === board.id}
       selectMode={selectMode}
@@ -1859,13 +1964,49 @@ export function BoardsPage() {
                     </span>
                   ) : (
                     <span className="wb-boards__count wb-nums" title="当前空间的白板总数">
-                      {view.items.length} 块
+                      {showArchived ? `${view.items.length} 块已归档` : `${view.items.length} 块`}
                     </span>
                   )
                 ) : null}
               </div>
             </div>
             <div className="wb-boards__head-actions">
+              {listReady ? (
+                <>
+                  <input
+                    className="wb-input wb-boards__search"
+                    type="text"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="搜索白板名称"
+                    aria-label="搜索白板名称"
+                    data-testid="boards-search"
+                  />
+                  {query ? (
+                    <button
+                      className="wb-boards__search-clear"
+                      type="button"
+                      onClick={clearSearch}
+                      aria-label="清除搜索"
+                      title="清除搜索"
+                      data-testid="boards-search-clear"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {!isGuest && listReady ? (
+                <button
+                  className="wb-btn wb-btn--ghost"
+                  type="button"
+                  onClick={toggleArchived}
+                  aria-pressed={showArchived}
+                  data-testid="boards-archived-toggle"
+                >
+                  {showArchived ? "返回白板" : "已归档"}
+                </button>
+              ) : null}
               {canSort && cards.length > 1 && !isGuest ? (
                 sortMode === "manual" ? (
                   <button
@@ -2001,6 +2142,29 @@ export function BoardsPage() {
             <button className="wb-btn wb-btn--primary" type="button" onClick={() => void load()}>
               重试
             </button>
+          </div>
+        ) : null}
+
+        {listReady && searching && cards.length === 0 && !showArchived ? (
+          <div className="wb-empty" data-testid="boards-search-empty">
+            <span className="wb-empty__icon" aria-hidden>
+              <IconBoard size={24} />
+            </span>
+            <h2 className="wb-title">没有匹配的白板</h2>
+            <p className="wb-caption">试试其他关键词，或清除搜索查看全部。</p>
+            <button className="wb-btn wb-btn--primary" type="button" onClick={clearSearch}>
+              清除搜索
+            </button>
+          </div>
+        ) : null}
+
+        {showArchived && listReady && cards.length === 0 ? (
+          <div className="wb-empty" data-testid="boards-archived-empty">
+            <span className="wb-empty__icon" aria-hidden>
+              <IconBoard size={24} />
+            </span>
+            <h2 className="wb-title">还没有归档的白板</h2>
+            <p className="wb-caption">归档后白板会从默认列表消失，随时可以取消归档。</p>
           </div>
         ) : null}
 
@@ -2302,6 +2466,7 @@ export function BoardsPage() {
             pinned: menu.board.pinned,
             guest: menu.board.guest,
             isOwn: menu.board.isOwn,
+            archived: showArchived,
             anchor: menu.anchor,
             trigger: menu.trigger,
           }}
@@ -2630,7 +2795,8 @@ function BoardCard({
       >
         <span className="wb-board-card__thumb">
           {thumbUrl ? (
-            // 缩略图是本地 Blob 的 objectURL；加载失败时由 onError 隐藏，露出下面的线稿占位
+            // 离板时上传的服务端副本优先；没有则回退到本机 Blob 的 objectURL。
+            // 加载失败时由 onError 隐藏，露出下面的线稿占位
             <img
               className="wb-board-card__thumb-img"
               src={thumbUrl}

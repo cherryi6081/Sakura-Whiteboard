@@ -11,6 +11,7 @@ export type BoardMenuIcon =
   | "move"
   | "pin"
   | "pinOff"
+  | "archive"
   | "link"
   | "copy"
   | "users"
@@ -40,6 +41,8 @@ export function buildBoardMenu(options: {
   guest?: boolean;
   /** 团队空间里「是我创建的吗」；编辑者只能删自己创建的板 */
   isOwn?: boolean;
+  /** 当前是否在「已归档」视图：决定归档项文案 */
+  archived?: boolean;
 }): BoardMenuGroup[] {
   const canEdit = options.role === "owner" || options.role === "editor";
   const isOwner = options.role === "owner" && !options.guest;
@@ -87,6 +90,13 @@ export function buildBoardMenu(options: {
           label: options.pinned ? "取消置顶" : "置顶",
           icon: options.pinned ? "pinOff" : "pin",
           shortcut: "P",
+          disabledReason: canEdit ? undefined : "只读",
+        },
+        {
+          // 归档只是列表整理：不改变权限、不加锁，归档板仍可打开编辑
+          key: "archive",
+          label: options.archived ? "取消归档" : "归档",
+          icon: "archive",
           disabledReason: canEdit ? undefined : "只读",
         },
       ],

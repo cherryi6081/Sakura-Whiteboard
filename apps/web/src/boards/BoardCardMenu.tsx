@@ -9,6 +9,7 @@ import {
   type MenuPlacement,
 } from "./boardMenu";
 import {
+  IconArchive,
   IconBoard,
   IconArrowRight,
   IconCopy,
@@ -37,6 +38,8 @@ export type BoardMenuTarget = {
   guest?: boolean;
   /** 团队空间里是否由我创建（编辑者据此判断能否删除） */
   isOwn?: boolean;
+  /** 当前是否在「已归档」视图：决定归档项文案为「取消归档」 */
+  archived?: boolean;
   anchor: MenuAnchor;
   trigger: HTMLElement | null;
 };
@@ -53,6 +56,7 @@ const ICONS = {
   move: IconMove,
   pin: IconPin,
   pinOff: IconPinOff,
+  archive: IconArchive,
   link: IconShare,
   copy: IconCopy,
   users: IconUser,
@@ -82,6 +86,7 @@ export function BoardCardMenu({ target, onAction, onClose }: Props) {
     pinned: target.pinned,
     guest: target.guest,
     isOwn: target.isOwn,
+    archived: target.archived,
   });
   const roleLabel = target.guest ? "临时板" : (ROLE_LABEL[target.role] ?? target.role);
 
