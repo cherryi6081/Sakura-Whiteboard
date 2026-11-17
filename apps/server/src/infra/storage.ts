@@ -28,11 +28,16 @@ export type StorageDriver = {
   delete: (key: string) => Promise<void>;
 };
 
-/** `storage_key` 只允许 `<12 位 boardId>/<64 位 hex sha256>`，避免路径穿越。 */
-const KEY_PATTERN = /^[A-Za-z0-9_-]{12}\/[a-f0-9]{64}$/;
+/**
+ * 存储 key 只允许两种形状，杜绝路径穿越：
+ * - 白板图片：`<12 位 boardId>/<64 位 hex sha256>`
+ * - 用户头像：`avatars/<uuid>.<ext>`（文件名由服务端随机生成，不含用户输入）
+ */
+const BOARD_ASSET_KEY = /^[A-Za-z0-9_-]{12}\/[a-f0-9]{64}$/;
+const AVATAR_KEY = /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg|webp|gif)$/;
 
 export function isValidStorageKey(key: string): boolean {
-  return KEY_PATTERN.test(key);
+  return BOARD_ASSET_KEY.test(key) || AVATAR_KEY.test(key);
 }
 
 export const storageRootDir = () => resolve(config.STORAGE_ROOT);

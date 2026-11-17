@@ -21,9 +21,11 @@ export class Api {
     return sid ? `${name}=${sid}` : "";
   }
 
-  async request(method, path, { body, headers = {} } = {}) {
+  async request(method, path, { body, rawBody, headers = {} } = {}) {
     const init = { method, headers: { ...headers } };
-    if (body !== undefined) {
+    if (rawBody !== undefined) {
+      init.body = rawBody;
+    } else if (body !== undefined) {
       init.headers["content-type"] = "application/json";
       init.body = JSON.stringify(body);
     }
@@ -61,6 +63,14 @@ export class Api {
 
   put(path, body) {
     return this.request("PUT", path, { body: body ?? {} });
+  }
+
+  /** 上传原始图片字节：头像 / 白板图片同一契约，body 直接是 Buffer，不走 multipart。 */
+  upload(path, bytes, mime) {
+    return this.request("POST", path, {
+      rawBody: bytes,
+      headers: { "content-type": mime, "x-wb-upload": "1" },
+    });
   }
 
   delete(path, body) {

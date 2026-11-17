@@ -5,7 +5,14 @@
  * `/api/auth/me` 的结果；**不读 cookie，也不保存任何 token 到 localStorage**。
  */
 
-export type AuthUser = { id: string; email: string | null; displayName: string; color: string };
+export type AuthUser = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  color: string;
+  /** GitHub 登录写入的头像；用户没设置过时为 null */
+  avatarUrl: string | null;
+};
 
 export type MePayload = {
   user: AuthUser;
@@ -78,6 +85,18 @@ export function fetchMe(): Promise<ApiResult<MePayload>> {
 /** 改显示名；返回体与 GET /auth/me 的 user 同构，可直接替换本地账号状态。 */
 export function updateProfile(input: { displayName: string }): Promise<ApiResult<{ user: AuthUser }>> {
   return request<{ user: AuthUser }>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+/**
+ * 上传头像：body 是图片原始字节（与白板图片同一契约，不走 multipart）。
+ * `x-wb-upload` 是 CSRF 意图头；2MB / 类型白名单由服务端再校验一次。
+ */
+export function uploadAvatar(file: File): Promise<ApiResult<{ user: AuthUser }>> {
+  return request<{ user: AuthUser }>('/api/account/avatar', {
+    method: 'POST',
+    headers: { 'content-type': file.type, accept: 'application/json', 'x-wb-upload': '1' },
+    body: file,
+  });
 }
 
 /** 登录态改密；成功后服务端会作废其它会话，但当前标签页会拿到新 cookie。 */

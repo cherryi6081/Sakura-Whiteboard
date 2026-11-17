@@ -41,12 +41,14 @@ function initials(name: string): string {
 type Props = {
   spaces: SpaceSummary[];
   currentId: string;
+  /** 个人空间的头像：登录用户有 GitHub 头像时替代首字占位 */
+  avatarUrl?: string | null;
   onSelect: (id: string) => void;
   onCreated: (space: SpaceSummary) => void;
   onOpenSettings: () => void;
 };
 
-export function SpaceSwitcher({ spaces, currentId, onSelect, onCreated, onOpenSettings }: Props) {
+export function SpaceSwitcher({ spaces, currentId, avatarUrl = null, onSelect, onCreated, onOpenSettings }: Props) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -153,7 +155,7 @@ export function SpaceSwitcher({ spaces, currentId, onSelect, onCreated, onOpenSe
         }}
       >
         <span className={`wb-space-avatar wb-space-avatar--${space.kind}`} aria-hidden>
-          {initials(space.name)}
+          {space.kind === "personal" && avatarUrl ? <img src={avatarUrl} alt="" /> : initials(space.name)}
         </span>
         <span className="wb-space-menu__text">
           <span className="wb-space-menu__title">{space.name}</span>
@@ -254,7 +256,7 @@ export function SpaceSwitcher({ spaces, currentId, onSelect, onCreated, onOpenSe
         data-testid="space-switcher"
       >
         <span className={`wb-space-avatar wb-space-avatar--${current?.kind ?? "personal"}`} aria-hidden>
-          {initials(current?.name ?? "")}
+          {current?.kind === "personal" && avatarUrl ? <img src={avatarUrl} alt="" /> : initials(current?.name ?? "")}
         </span>
         <span className="wb-space-pill__text">
           <span className="wb-space-pill__name">{current?.name ?? "空间"}</span>

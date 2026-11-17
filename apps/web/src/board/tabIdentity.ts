@@ -24,7 +24,13 @@
 export const TAB_ID_KEY = "wb:tabId";
 export const HANDSHAKE_CHANNEL = "wb-handshake";
 
-export type GuestUser = { id: string; email: string | null; displayName: string; color: string };
+export type GuestUser = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  color: string;
+  avatarUrl: string | null;
+};
 
 /** `GET /api/guest/me` 的返回（服务端签发 cookie 的唯一入口）。 */
 export type GuestSessionInfo = {

@@ -5550,7 +5550,24 @@ body:has(.wb-home) {
 
 /* ---------- 批量删除确认 ---------- */
 .wb-batch-dialog {
-  width: 420px;
+  /* 与其它确认弹窗同宽：420 时扣掉关闭键预留的 44px 后，带白板名的标题只剩 328px，会被逼成两行 */
+  width: 480px;
+}
+
+/* 标题里带白板名（批量里只删一块、回收站彻底删除）时，整行不折：
+   名字超出只在名字内部省略，「移入回收站？」这类动作文字始终完整可见 */
+.wb-batch-dialog .wb-dialog__title,
+.wb-trash__dialog .wb-dialog__title {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.wb-batch-dialog .wb-dialog__title-name,
+.wb-trash__dialog .wb-dialog__title-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wb-batch-dialog .wb-dialog__actions {
@@ -5932,6 +5949,15 @@ button.wb-sortchip:hover {
   color: var(--fuji-600);
 }
 
+/* 个人空间用登录用户头像（GitHub）时铺满 26px 圆形，与团队空间的 8px 方角区分保留 */
+.wb-space-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
 .wb-space-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -6258,6 +6284,85 @@ button.wb-sortchip:hover {
 
 .wb-account .wb-space-settings__head .wb-caption {
   overflow-wrap: anywhere;
+}
+
+/* 换头像：塞进 head 左侧，48px 与标题/邮箱同一视线高度，不额外增加一段高度 */
+.wb-account__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wb-account__identity-text {
+  min-width: 0;
+}
+
+.wb-account__avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-account__avatar:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.wb-account__avatar:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.wb-account__avatar > img,
+.wb-account__avatar > .wb-user-mark {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.wb-account__avatar > img {
+  object-fit: cover;
+}
+
+/* 「更换 / 上传中」压在下沿：绝对定位，不参与 head 的高度计算 */
+.wb-account__avatar-badge {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.wb-account__avatar-note {
+  margin: 1px 0 0;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.wb-account__avatar-note.is-error {
+  color: var(--danger-text);
 }
 
 .wb-account__actions {
@@ -7130,11 +7235,12 @@ button.wb-sortchip:hover {
 .wb-toolrail {
   position: absolute;
   left: 16px;
-  top: 64px;
+  /* 与上方菜单岛（16 起、32 高、底边 48）留 24px 呼吸位，不再贴在一起 */
+  top: 72px;
   z-index: 6;
   /* 高度自适应：顶部让开库的菜单岛，底部给缩放岛/撤销重做岛（36 高 + 12 底距）留出
      16px 安全间距；矮屏时在竖条内部滚动，绝不压住底部浮岛。 */
-  max-height: calc(100% - 140px);
+  max-height: calc(100% - 148px);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

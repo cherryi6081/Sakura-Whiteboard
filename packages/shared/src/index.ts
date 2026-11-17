@@ -34,6 +34,8 @@ export const LIMITS = {
   boardTitleMax: 80,
   /** 单张图片上限 5MB（与 `0004_assets.sql` 的 check 一致） */
   assetMaxBytes: 5 * 1024 * 1024,
+  /** 头像上限 2MB：只用于 48px 展示，没必要放开到白板图片那么大 */
+  avatarMaxBytes: 2 * 1024 * 1024,
   /** 单板图片总量上限 50MB */
   assetBoardQuotaBytes: 50 * 1024 * 1024,
 } as const;

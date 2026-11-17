@@ -9,6 +9,9 @@
  * - 销号：当前密码二次确认 → 回首页 → 用户行停用 + 昵称/占位邮箱、业务数据物理删除、原邮箱可重新注册；
  * - 团队空间所有者拦截：还有成员时 409，解散后可注销。
  */
+import { rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { openBoards, launchBrowser, newPage } from "../lib/browser.mjs";
 import { Api, registerUser } from "../lib/api.mjs";
 import { API, PASSWORD, WEB } from "../lib/config.mjs";
@@ -16,6 +19,24 @@ import { query } from "../lib/db.mjs";
 import { assert, eq, finish, test, until } from "../lib/harness.mjs";
 
 const NEW_PASSWORD = "Nq8$Rz3wKp6vT#";
+
+/** 1×1 PNG：服务端按魔数识别，能通过头像白名单 */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function uploadAvatarViaUi(page, bytes) {
+  const file = path.join(os.tmpdir(), `wb-avatar-${process.pid}-${Date.now()}.png`);
+  await writeFile(file, bytes);
+  try {
+    const input = await page.$('[data-testid="account-avatar-file"]');
+    assert(Boolean(input), "找不到头像文件输入");
+    await input.uploadFile(file);
+  } finally {
+    await rm(file, { force: true });
+  }
+}
 
 const browser = await launchBrowser();
 
@@ -76,6 +97,113 @@ try {
     await page.click('[data-testid="account-save-profile"]');
     await page.waitForSelector('[data-testid="account-dialog"] [role="alert"]', { timeout: 3000 });
     eq((await api.get("/api/auth/me")).json.user.displayName, before, "接口昵称不应变化");
+  });
+
+  await test("头像：本地上传 → 成功提示、接口与个人空间 chip 同步", async () => {
+    await uploadAvatarViaUi(page, PNG_1X1);
+    await until(
+      async () => (await api.get("/api/auth/me")).json.user.avatarUrl?.startsWith("/api/avatars/"),
+      { label: "接口写回本地头像" },
+    );
+    await page.waitForFunction(() => (document.body.textContent ?? "").includes("头像已更新"), {
+      timeout: 10_000,
+    });
+    const avatarUrl = (await api.get("/api/auth/me")).json.user.avatarUrl;
+    const dialogSrc = await page.$eval('[data-testid="account-avatar"] img', (el) => el.getAttribute("src"));
+    // 成功后弹窗保留本地预览（blob:）避免闪一下；关键是与接口写回的内容一致
+    assert(dialogSrc === avatarUrl || dialogSrc?.startsWith("blob:"), `弹窗内应展示当前头像，实际 ${dialogSrc}`);
+    await page.waitForFunction(
+      (url) => document.querySelector(".wb-space-avatar img")?.getAttribute("src") === url,
+      { timeout: 10_000 },
+      avatarUrl,
+    );
+  });
+
+  await test("头像：再次上传替换，旧文件被清理、新文件可公开读取", async () => {
+    const firstUrl = (await api.get("/api/auth/me")).json.user.avatarUrl;
+    await uploadAvatarViaUi(page, PNG_1X1);
+    await until(async () => (await api.get("/api/auth/me")).json.user.avatarUrl !== firstUrl, {
+      label: "头像 URL 更换",
+    });
+    const nextUrl = (await api.get("/api/auth/me")).json.user.avatarUrl;
+    eq((await api.get(firstUrl)).status, 404, "旧头像应被清理");
+    const got = await fetch(`${API}${nextUrl}`);
+    eq(got.status, 200, "新头像可访问");
+    eq(got.headers.get("content-type"), "image/png", "新头像 content-type");
+    eq((await got.arrayBuffer()).byteLength, PNG_1X1.length, "新头像字节");
+  });
+
+  await test("头像：格式不支持 / 超过 2MB 在弹窗内给出失败提示", async () => {
+    const svgFile = path.join(os.tmpdir(), `wb-avatar-${process.pid}-${Date.now()}.svg`);
+    const bigFile = path.join(os.tmpdir(), `wb-avatar-${process.pid}-${Date.now()}-big.png`);
+    await writeFile(svgFile, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    await writeFile(bigFile, Buffer.alloc(2 * 1024 * 1024 + 1));
+    try {
+      const input = await page.$('[data-testid="account-avatar-file"]');
+      await input.uploadFile(svgFile);
+      await page.waitForFunction(() => (document.body.textContent ?? "").includes("图片格式不支持"), {
+        timeout: 5000,
+      });
+      await (await page.$('[data-testid="account-avatar-file"]')).uploadFile(bigFile);
+      await page.waitForFunction(() => (document.body.textContent ?? "").includes("图片不能超过 2MB"), {
+        timeout: 5000,
+      });
+    } finally {
+      await rm(svgFile, { force: true });
+      await rm(bigFile, { force: true });
+    }
+  });
+
+  await test("头像安全：拒绝 SVG / 伪造 MIME / 超 2MB / 路径穿越", async () => {
+    const before = (await api.get("/api/auth/me")).json.user.avatarUrl;
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    eq((await api.upload("/api/account/avatar", svg, "image/svg+xml")).status, 415, "SVG 声明");
+    eq((await api.upload("/api/account/avatar", svg, "image/png")).status, 415, "SVG 伪装 PNG（魔数校验）");
+    eq((await api.upload("/api/account/avatar", PNG_1X1, "image/jpeg")).status, 415, "PNG 声明 JPEG");
+    const big = await api.upload("/api/account/avatar", Buffer.alloc(2 * 1024 * 1024 + 1), "image/png");
+    eq(big.status, 413, "超 2MB");
+    eq(big.json.error.code, "FILE_TOO_LARGE", "超限错误码");
+    eq((await api.get("/api/avatars/not-a-uuid.png")).status, 404, "非法文件名");
+    eq((await api.get("/api/avatars/..%2F..%2Fpackage.json")).status, 404, "路径穿越");
+    eq((await api.get("/api/auth/me")).json.user.avatarUrl, before, "失败上传不应改动头像");
+  });
+
+  await test("头像：编辑页顶栏与在线头像栈复用同一个 avatarUrl", async () => {
+    const board = await api.createBoard({ title: "头像展示板" });
+    const avatarUrl = (await api.get("/api/auth/me")).json.user.avatarUrl;
+    const { context, page: boardPage } = await newPage(browser, { cookie: api.sessionCookie });
+    try {
+      await boardPage.goto(`${WEB}/board/${board.json.id}`, { waitUntil: "networkidle2" });
+      await boardPage.waitForSelector('[data-testid="auth-user"] img', { timeout: 20_000 });
+      eq(
+        await boardPage.$eval('[data-testid="auth-user"] img', (el) => el.getAttribute("src")),
+        avatarUrl,
+        "编辑页顶栏头像",
+      );
+      await boardPage.waitForSelector(".wb-avatar-stack .wb-avatar img", { timeout: 20_000 });
+      eq(
+        await boardPage.$eval(".wb-avatar-stack .wb-avatar img", (el) => el.getAttribute("src")),
+        avatarUrl,
+        "在线头像栈",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  await test("弹窗版式：新增头像块后 1280×720 / 1366×768 仍不滚动", async () => {
+    for (const [width, height] of [
+      [1280, 720],
+      [1366, 768],
+    ]) {
+      await page.setViewport({ width, height, deviceScaleFactor: 1 });
+      const scrolls = await page.$eval(
+        '[data-testid="account-dialog"]',
+        (el) => el.scrollHeight > el.clientHeight + 1,
+      );
+      eq(scrolls, false, `${width}×${height} 弹窗不应出现滚动条`);
+    }
+    await page.setViewport({ width: 1440, height: 950, deviceScaleFactor: 1 });
   });
 
   await test("首页账号菜单同样能打开账号设置", async () => {

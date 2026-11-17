@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js';
 import { guestRouter } from './routes/guest.js';
 import { sharesRouter } from './routes/shares.js';
 import { assetsRouter } from './routes/assets.js';
+import { avatarRouter } from './routes/avatar.js';
 import { trashRouter } from './routes/trash.js';
 import { spacesRouter } from './routes/spaces.js';
 import { attachIdentity } from '../auth/identity.js';
@@ -51,6 +52,7 @@ export function createApp() {
 
   app.use('/api', healthRouter);
   app.use('/api', authRouter);
+  app.use('/api', avatarRouter);
   app.use('/api', guestRouter);
   app.use('/api', sharesRouter);
   app.use('/api', assetsRouter);

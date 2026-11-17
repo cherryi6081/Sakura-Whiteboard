@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { assessPassword } from "@whiteboard/shared";
+import { useEffect, useRef, useState } from "react";
+import { assessPassword, LIMITS } from "@whiteboard/shared";
 import {
   changePassword,
   deleteAccount,
   updateProfile,
+  uploadAvatar,
   type AuthUser,
 } from "../auth/authApi";
 import { DialogClose } from "../ui/DialogClose";
+import { UserMark } from "../ui/UserMark";
 
 /**
  * 账号设置（开发文档 §7.1.2）。
@@ -50,6 +52,27 @@ function profileMessage(code: string, status: number): string {
   return "保存失败，请重试";
 }
 
+const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const AVATAR_MIME_TYPES = AVATAR_ACCEPT.split(",");
+
+function avatarMessage(code: string, status: number): string {
+  switch (code) {
+    case "UNSUPPORTED_MEDIA_TYPE":
+      return "图片格式不支持，请换 PNG / JPG / WebP / GIF";
+    case "FILE_TOO_LARGE":
+      return "图片不能超过 2MB";
+    case "UNAUTHENTICATED":
+      return "登录已失效，请重新登录";
+    case "STORAGE_UNAVAILABLE":
+      return "头像存储暂不可用，请稍后重试";
+    case "NETWORK_ERROR":
+    case "TypeError":
+      return "网络异常，请稍后重试";
+    default:
+      return status === 0 ? "网络异常，请稍后重试" : "上传失败，请重试";
+  }
+}
+
 export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -63,11 +86,73 @@ export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  /** 已落库的头像 URL；上传成功后由服务端返回值覆盖，展示始终以它为准 */
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
+  /** 本地预览（objectURL）：选择后立刻展示，失败或成功后释放 */
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const avatarPreviewRef = useRef<string | null>(null);
+
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const assessment = newPassword ? assessPassword(newPassword, { email: user.email ?? undefined }) : null;
+
+  // 预览用的是 blob: URL，离开弹窗时统一释放
+  useEffect(() => {
+    return () => {
+      if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current);
+    };
+  }, []);
+
+  const clearAvatarPreview = () => {
+    if (avatarPreviewRef.current) {
+      URL.revokeObjectURL(avatarPreviewRef.current);
+      avatarPreviewRef.current = null;
+    }
+    setAvatarPreview(null);
+  };
+
+  const pickAvatar = async (file: File) => {
+    if (avatarBusy) return;
+    // 客户端先做一次同类校验；服务端还会按魔数再验，不只看扩展名
+    if (file.type && !AVATAR_MIME_TYPES.includes(file.type)) {
+      setAvatarNotice(null);
+      setAvatarError("图片格式不支持，请换 PNG / JPG / WebP / GIF");
+      return;
+    }
+    if (file.size > LIMITS.avatarMaxBytes) {
+      setAvatarNotice(null);
+      setAvatarError("图片不能超过 2MB");
+      return;
+    }
+
+    clearAvatarPreview();
+    const preview = URL.createObjectURL(file);
+    avatarPreviewRef.current = preview;
+    setAvatarPreview(preview);
+    setAvatarNotice(null);
+    setAvatarError(null);
+    setAvatarBusy(true);
+
+    const result = await uploadAvatar(file);
+    setAvatarBusy(false);
+    if (!result.ok) {
+      // 失败回退到已保存的头像，避免预览看起来像已经换好了
+      clearAvatarPreview();
+      setAvatarError(avatarMessage(result.code, result.status));
+      return;
+    }
+    // 服务端返回的同一份 avatarUrl 写回本地状态并向上通知：
+    // 空间 chip、编辑页顶栏、在线头像栈都读这一个字段
+    setAvatarUrl(result.data.user.avatarUrl);
+    onUserChange(result.data.user);
+    setAvatarNotice("头像已更新");
+  };
 
   const saveProfile = async () => {
     if (profileBusy) return;
@@ -157,12 +242,53 @@ export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }
         data-testid="account-dialog"
       >
         <div className="wb-space-settings__head">
-          <div>
-            <p className="wb-space-settings__eyebrow">账号</p>
-            <h2 className="wb-dialog__title" id="wb-account-title">
-              账号设置
-            </h2>
-            <p className="wb-caption">{user.email ?? "未绑定邮箱"}</p>
+          <div className="wb-account__identity">
+            <button
+              className="wb-account__avatar"
+              type="button"
+              aria-label="更换头像"
+              title="更换头像"
+              aria-busy={avatarBusy}
+              disabled={avatarBusy}
+              onClick={() => avatarInputRef.current?.click()}
+              data-testid="account-avatar"
+            >
+              {avatarPreview || avatarUrl ? (
+                <img src={avatarPreview ?? avatarUrl ?? undefined} alt="" />
+              ) : (
+                <UserMark size={20} />
+              )}
+              <span className="wb-account__avatar-badge">{avatarBusy ? "上传中" : "更换"}</span>
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept={AVATAR_ACCEPT}
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                // 清空 value，保证连续选同一个文件也能触发 change
+                event.target.value = "";
+                if (file) void pickAvatar(file);
+              }}
+              data-testid="account-avatar-file"
+            />
+            <div className="wb-account__identity-text">
+              <p className="wb-space-settings__eyebrow">账号</p>
+              <h2 className="wb-dialog__title" id="wb-account-title">
+                账号设置
+              </h2>
+              <p className="wb-caption">{user.email ?? "未绑定邮箱"}</p>
+              {avatarError ? (
+                <p className="wb-account__avatar-note is-error" role="alert">
+                  {avatarError}
+                </p>
+              ) : avatarNotice ? (
+                <p className="wb-account__avatar-note" role="status">
+                  {avatarNotice}
+                </p>
+              ) : null}
+            </div>
           </div>
           <DialogClose onClose={onClose} />
         </div>

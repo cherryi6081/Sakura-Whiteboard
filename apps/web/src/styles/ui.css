@@ -443,6 +443,14 @@ body {
   align-items: center;
 }
 
+/* 有头像（GitHub）时整块填充，保留 2px 白描边与 ×N 叠加数字 */
+.wb-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .wb-avatar-stack .wb-avatar + .wb-avatar {
   margin-left: -8px;
 }
@@ -481,6 +489,16 @@ body {
   transition:
     background-color var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
+}
+
+/* 顶栏胶囊里的头像：18px 圆图，与 16px 线性图标占位宽度接近，不撑高 28px 胶囊 */
+.wb-user-chip__avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 
 .wb-user-chip:hover {

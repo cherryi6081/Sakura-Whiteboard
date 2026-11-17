@@ -89,7 +89,8 @@ const handle =
  * 浏览器跨站 POST 防护：有 Origin 时必须与 Host 同源；非浏览器客户端（无 Origin）放行。
  * 反向代理（如 Vite dev server 改写了 Host）会优先参考 `x-forwarded-host`。
  */
-function sameOriginOnly(req: Request, _res: Response, next: NextFunction): void {
+/** 头像上传路由复用同一份来源校验，避免两套 CSRF 口径。 */
+export function sameOriginOnly(req: Request, _res: Response, next: NextFunction): void {
   const origin = req.get('origin');
   if (!origin) {
     next();
@@ -111,20 +112,22 @@ function sameOriginOnly(req: Request, _res: Response, next: NextFunction): void 
   next();
 }
 
-type UserRow = {
+export type UserRow = {
   id: string;
   email: string | null;
   display_name: string;
   color: string;
+  avatar_url: string | null;
 };
 
 type UserWithCredentialRow = UserRow & { password_hash: string; status: string };
 
-const toUser = (row: UserRow) => ({
+export const toUser = (row: UserRow) => ({
   id: row.id,
   email: row.email,
   displayName: row.display_name,
   color: row.color,
+  avatarUrl: row.avatar_url,
 });
 
 authRouter.post(
@@ -154,7 +157,7 @@ authRouter.post(
       const inserted = await client.query<UserRow>(
         `insert into users (email, display_name)
          values ($1, $2)
-         returning id, email, display_name, color`,
+         returning id, email, display_name, color, avatar_url`,
         [body.email, displayName],
       );
       row = inserted.rows[0] ?? null;
@@ -194,7 +197,7 @@ authRouter.post(
     }
 
     const { rows } = await pool.query<UserWithCredentialRow>(
-      `select u.id, u.email, u.display_name, u.color, u.status, c.password_hash
+      `select u.id, u.email, u.display_name, u.color, u.avatar_url, u.status, c.password_hash
          from users u
          join credentials c on c.user_id = u.id
         where u.email = $1`,
@@ -350,7 +353,7 @@ authRouter.get(
     if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
 
     const { rows } = await pool.query<UserRow & { has_password: boolean; has_github: boolean }>(
-      `select u.id, u.email, u.display_name, u.color,
+      `select u.id, u.email, u.display_name, u.color, u.avatar_url,
               exists(select 1 from credentials c where c.user_id = u.id) as has_password,
               exists(select 1 from oauth_accounts o where o.user_id = u.id and o.provider = 'github') as has_github
          from users u
@@ -391,7 +394,7 @@ authRouter.patch(
     const { rows } = await pool.query<UserRow>(
       `update users set display_name = $2
         where id = $1 and status = 'active'
-        returning id, email, display_name, color`,
+        returning id, email, display_name, color, avatar_url`,
       [userId, displayName],
     );
     const row = rows[0];

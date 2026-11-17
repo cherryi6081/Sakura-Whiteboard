@@ -31,6 +31,12 @@ const PROVIDER_PORT = 18086;
 const HIDDEN_PORT = 18087;
 const OAUTH_BASE = `http://127.0.0.1:${API_PORT}`;
 const PROVIDER_BASE = `http://127.0.0.1:${PROVIDER_PORT}`;
+const AVATAR_URL = `${PROVIDER_BASE}/avatar.png`;
+/** 1×1 PNG：通过头像上传接口写入本地存储 */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
 const HIDDEN_BASE = `http://127.0.0.1:${HIDDEN_PORT}`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -74,7 +80,7 @@ const provider = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/user") {
     const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const users = {
-      "tok-merge": { id: Number(GH_MERGE_ID), login: "octo-merge", name: "Octo Merge", avatar_url: null },
+      "tok-merge": { id: Number(GH_MERGE_ID), login: "octo-merge", name: "Octo Merge", avatar_url: AVATAR_URL },
       "tok-new": { id: Number(GH_NEW_ID), login: "octo-new", name: "Octo New", avatar_url: null },
       "tok-unverified": { id: Number(GH_UNVERIFIED_ID), login: "octo-unv", name: "Octo Unverified", avatar_url: null },
     };
@@ -93,6 +99,17 @@ const provider = http.createServer((req, res) => {
     const value = emails[token];
     res.writeHead(value ? 200 : 401, { "content-type": "application/json" });
     res.end(JSON.stringify(value ?? { message: "Bad credentials" }));
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/avatar.png") {
+    // 1×1 红点 PNG：只用于验证前端是否真的把 avatarUrl 渲染成图片
+    res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+    res.end(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    );
     return;
   }
   res.writeHead(404, { "content-type": "application/json" });
@@ -244,7 +261,18 @@ try {
   check(Boolean(verifier), "token 请求缺 code_verifier");
   check(derived === authorize.searchParams.get("code_challenge"), "PKCE challenge 与 verifier 不匹配");
   check(lastTokenForm?.get("redirect_uri") === `${OAUTH_BASE}/api/auth/github/callback`, "token 请求 redirect_uri 不一致");
+  check(mergeMe.body.user.avatarUrl === AVATAR_URL, `合并时应补上 GitHub 头像，实际 ${mergeMe.body.user.avatarUrl}`);
   pass("合并路径：已验证邮箱命中老账号，绑定挂上且未新建");
+
+  // ---------- 头像：已有头像不被覆盖 ----------
+  const customAvatar = "https://example.com/custom-avatar.png";
+  await query("update users set avatar_url = $1 where id = $2", [customAvatar, mergeUserId]);
+  const customFlow = await startFlow("/boards");
+  const customCb = await callback({ code: "good-merge", state: customFlow.state }, customFlow.stateCookie);
+  const customMe = await meWith(cookieValue(customCb, "wb_sess"));
+  check(customMe.body.user.avatarUrl === customAvatar, `已有头像不应被 GitHub 覆盖，实际 ${customMe.body.user.avatarUrl}`);
+  await query("update users set avatar_url = $1 where id = $2", [AVATAR_URL, mergeUserId]);
+  pass("头像：账号已有头像时再次 GitHub 登录不覆盖");
 
   // ---------- 新建路径 ----------
   const newFlow = await startFlow("/");
@@ -377,6 +405,48 @@ try {
   await contextHidden.close();
   pass("缺配置界面：登录页不渲染 GitHub 按钮");
 
+  // ---------- 头像：个人空间 chip 与编辑页在线头像 ----------
+  const created = await fetch(`${OAUTH_BASE}/api/boards`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `wb_sess=${mergeSess}` },
+    body: JSON.stringify({ title: "avatar-check" }),
+  });
+  check(created.status === 201, `创建头像校验用白板失败：${created.status}`);
+  const avatarBoardId = (await created.json()).id;
+
+  const { context: contextBoards, page: pageBoards } = await newPage(browser, { width: 1440, height: 900 });
+  await pageBoards.setCookie({ name: "wb_sess", value: mergeSess, domain: "127.0.0.1", path: "/" });
+  await pageBoards.goto(`${OAUTH_BASE}/boards`, { waitUntil: "networkidle2" });
+  await pageBoards.waitForSelector('[data-testid="boards-user"]', { timeout: 20_000 });
+  await pageBoards.waitForFunction(
+    () => {
+      const img = document.querySelector(".wb-space-avatar img");
+      return Boolean(img && img.complete && img.naturalWidth > 0);
+    },
+    { timeout: 20_000 },
+  );
+  const spaceAvatar = await pageBoards.$eval(".wb-space-avatar img", (el) => el.currentSrc || el.src);
+  check(spaceAvatar === AVATAR_URL, `个人空间 chip 应显示 GitHub 头像，实际 ${spaceAvatar}`);
+  check((await pageBoards.$(".wb-user-chip__avatar")) !== null, "个人空间顶栏账号 chip 应显示头像");
+  await contextBoards.close();
+  pass("头像：个人空间 chip 渲染 GitHub 头像");
+
+  const { context: contextBoard, page: pageBoard } = await newPage(browser, { width: 1440, height: 900 });
+  await pageBoard.setCookie({ name: "wb_sess", value: mergeSess, domain: "127.0.0.1", path: "/" });
+  await pageBoard.goto(`${OAUTH_BASE}/board/${avatarBoardId}`, { waitUntil: "networkidle2" });
+  await pageBoard.waitForSelector(".wb-avatar-stack .wb-avatar", { timeout: 20_000 });
+  await pageBoard.waitForFunction(
+    () => {
+      const img = document.querySelector(".wb-avatar-stack .wb-avatar img");
+      return Boolean(img && img.complete && img.naturalWidth > 0);
+    },
+    { timeout: 20_000 },
+  );
+  const presenceAvatar = await pageBoard.$eval(".wb-avatar-stack .wb-avatar img", (el) => el.currentSrc || el.src);
+  check(presenceAvatar === AVATAR_URL, `编辑页在线头像应显示 GitHub 头像，实际 ${presenceAvatar}`);
+  await contextBoard.close();
+  pass("头像：编辑页在线头像渲染 GitHub 头像");
+
   const { context: contextShown, page: pageShown } = await newPage(browser, { width: 1440, height: 900 });
   await pageShown.setRequestInterception(true);
   pageShown.on("request", (request) => {
@@ -405,6 +475,31 @@ try {
   check(!pageError.url().includes("oauthError"), "错误码应从地址栏清掉");
   await contextError.close();
   pass("失败界面：oauthError 渲染为可读文案并从 URL 清除");
+
+  // ---------- 头像：用户手动上传后 GitHub 重登不覆盖 ----------
+  const uploadRes = await fetch(`${OAUTH_BASE}/api/account/avatar`, {
+    method: "POST",
+    headers: { "content-type": "image/png", "x-wb-upload": "1", cookie: `wb_sess=${mergeSess}` },
+    body: PNG_1X1,
+  });
+  check(uploadRes.status === 200, `头像上传失败：${uploadRes.status} ${await uploadRes.clone().text()}`);
+  const uploaded = (await uploadRes.json()).user.avatarUrl;
+  check(uploaded.startsWith("/api/avatars/"), `上传后 avatarUrl 应为本地路径，实际 ${uploaded}`);
+  const uploadedBytes = await fetch(`${OAUTH_BASE}${uploaded}`);
+  check(uploadedBytes.status === 200, `上传的头像应可公开读取，实际 ${uploadedBytes.status}`);
+  check((await uploadedBytes.arrayBuffer()).byteLength === PNG_1X1.length, "头像字节应与上传一致");
+
+  const afterUploadFlow = await startFlow("/boards");
+  const afterUploadCb = await callback(
+    { code: "good-merge", state: afterUploadFlow.state },
+    afterUploadFlow.stateCookie,
+  );
+  const afterUploadMe = await meWith(cookieValue(afterUploadCb, "wb_sess"));
+  check(
+    afterUploadMe.body.user.avatarUrl === uploaded,
+    `手动上传的头像不应被 GitHub 覆盖，实际 ${afterUploadMe.body.user.avatarUrl}`,
+  );
+  pass("头像：用户上传后再次 GitHub 登录不覆盖");
 
   console.log(`\nGitHub OAuth 黑盒完成（${stepIndex} 项）`);
 } catch (error) {
