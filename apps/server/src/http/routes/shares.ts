@@ -43,7 +43,7 @@ const createShareSchema = z.object({
 type AccessibleBoard = { id: string };
 
 /** 解析 owner 权限；不存在/无权一律按 404 处理（不暴露存在性）。 */
-async function requireOwner(req: Request, boardId: string): Promise<AccessibleBoard> {
+export async function requireOwner(req: Request, boardId: string): Promise<AccessibleBoard> {
   const identity = identityOf(req);
   const access = await resolveBoardAccess(boardId, identity);
   if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
