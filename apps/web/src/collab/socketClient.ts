@@ -17,7 +17,18 @@ import type { ElementOp, OpBatch } from "@whiteboard/shared";
 export type JoinRole = "owner" | "editor" | "viewer";
 
 export type JoinedPayload = {
-  self: { identity: string; role: JoinRole; isGuest: boolean; color: string; viewOnly?: boolean; tabId?: string | null };
+  self: {
+    /** 本连接的 socket.id；合帧后光标广播含自己，客户端据此过滤 */
+    connectionId?: string;
+    identity: string;
+    role: JoinRole;
+    isGuest: boolean;
+    color: string;
+    /** 展示用昵称：登录用户取账号昵称，游客为「游客」 */
+    displayName: string;
+    viewOnly?: boolean;
+    tabId?: string | null;
+  };
   seq: number;
   resumed: boolean;
 };
@@ -48,6 +59,8 @@ export type RejectedPayload = {
 export type PresenceUserPayload = {
   identity: string;
   color: string;
+  displayName: string;
+  avatarUrl: string | null;
   role: JoinRole;
   connectionCount: number;
   tabIds: string[];
@@ -68,8 +81,21 @@ export type CursorPayload = {
   tabId: string | null;
   identity: string;
   color: string;
+  /** 展示用昵称；同色冲突时前端在该昵称后追加序号 */
+  displayName: string;
+  /** 该连接加入本板的时间，用于同色分组内的稳定排序 */
+  joinedAt: number;
   x: number;
   y: number;
+};
+
+/** 服务端每帧合并后的光标条目（`boardId` 提到帧头，条目里不再重复） */
+export type CursorFrameEntry = Omit<CursorPayload, "boardId">;
+
+export type CursorFramePayload = {
+  boardId: string;
+  cursors: CursorFrameEntry[];
+  at: number;
 };
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -82,7 +108,7 @@ export type BoardSocketHandlers = {
   onApply: (payload: ApplyPayload) => void;
   onRejected: (payload: RejectedPayload) => void;
   onPresence: (payload: PresenceStatePayload) => void;
-  onCursor: (payload: CursorPayload) => void;
+  onCursorFrame: (payload: CursorFramePayload) => void;
 };
 
 export type BoardSocket = {
@@ -138,7 +164,7 @@ export function createBoardSocket(options: {
   socket.on("op:apply", handlers.onApply);
   socket.on("op:rejected", handlers.onRejected);
   socket.on("presence:state", handlers.onPresence);
-  socket.on("presence:cursor", handlers.onCursor);
+  socket.on("presence:cursor:frame", handlers.onCursorFrame);
 
   return {
     socket,

@@ -7,12 +7,13 @@ import { LIMITS, opSubmitSchema } from '@whiteboard/shared';
 import { config } from '../config.js';
 import { logger } from '../infra/logger.js';
 import { pool } from '../infra/db.js';
-import { persistOp } from './opStore.js';
-import { markBoardEdited } from '../jobs/lastEditedFlush.js';
-import { allocateSeq, claimOpIdem, markOpIdemDone, releaseOpIdem } from './seq.js';
+import { createWriteBatcher } from './opBatcher.js';
 import { resolveBoardAccess, type AccessRole } from '../domain/access.js';
 import { resolveIdentityFromCookieHeader, type Identity } from '../auth/identity.js';
 import { createPresenceRegistry } from './presence.js';
+import { createPresenceFanout } from './presenceFanout.js';
+import { createCursorFanout } from './cursorFanout.js';
+import { cursorColorOf } from './cursorPalette.js';
 
 const joinSchema = z.object({
   boardId: z.string().regex(LIMITS.boardIdPattern),
@@ -37,6 +38,8 @@ type JoinPayload = z.infer<typeof joinSchema>;
 const cursorSchema = z.object({
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
+  /** 客户端诊断时间戳（压测用），原样回带；生产客户端不发送 */
+  t: z.number().finite().nonnegative().optional(),
 });
 
 type SocketState = {
@@ -45,6 +48,8 @@ type SocketState = {
   tabId: string | null;
   role: AccessRole;
   identity: string;
+  /** 展示用昵称（登录用户取 `users.display_name`，游客「游客」），随光标一起广播 */
+  displayName: string;
   userId: string | null;
   guestId: string | null;
 };
@@ -53,10 +58,6 @@ const stateOf = (socket: { data: Record<string, unknown> }): SocketState | null 
   (socket.data as Partial<SocketState>).boardId ? (socket.data as SocketState) : null;
 
 const roomOf = (boardId: string) => `board:${boardId}`;
-
-const COLORS = ['#A85C7C', '#7C8AA8', '#5C9E7C', '#A88B5C', '#8A5CA8', '#5CA8A0'];
-const colorOf = (seed: string): string =>
-  COLORS[[...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % COLORS.length] ?? '#A85C7C';
 
 /**
  * 挂载 Socket.IO `/board` namespace。
@@ -83,6 +84,21 @@ export function attachRealtime(httpServer: HttpServer) {
   const ns = io.of('/board');
   /** M3：单实例内存 presence（多实例聚合不完整，见 presence.ts 顶部说明） */
   const presence = createPresenceRegistry();
+  /**
+   * 名单合帧：join/leave 只标记脏，100ms 内聚合成一帧广播。
+   * 原来每次 join 都向房间内 N 个 socket 各写一份全量名单，N 人进房是 O(N²) 写入，
+   * 直接把 join p95 拖到秒级；合帧后广播次数与人数解耦，且移出 join 响应路径。
+   */
+  const presenceFanout = createPresenceFanout(
+    (boardId) => presence.state(boardId),
+    (state) => ns.to(roomOf(state.boardId)).emit('presence:state', state),
+  );
+  /** 写路径攒批：同一块板的 op 合并进一个事务，减少事务数与板级锁竞争 */
+  const writeBatcher = createWriteBatcher();
+  /** 光标合帧：同一房间的光标合并成一条消息，帧间隔按活跃连接数在 14/24/33ms 间自适应（带迟滞） */
+  const cursorFanout = createCursorFanout((boardId, cursors) => {
+    ns.to(roomOf(boardId)).emit('presence:cursor:frame', { boardId, cursors, at: Date.now() });
+  });
 
   ns.on('connection', (socket) => {
     logger.debug({ sid: socket.id, instance: config.INSTANCE_ID }, 'socket connected');
@@ -118,7 +134,27 @@ export function attachRealtime(httpServer: HttpServer) {
         const guestId = userId ? null : (identity.guestId ?? `anon_${socket.id}`);
         const presenceIdentity = userId ? `user:${userId}` : `guest:${guestId}`;
 
-        const state: SocketState = { boardId, clientId, tabId, role, identity: presenceIdentity, userId, guestId };
+        // 昵称与头像只在 join 时查一次：登录用户取 users.display_name / avatar_url，游客为「游客」
+        const profile = userId
+          ? (await pool.query<{ display_name: string | null; avatar_url: string | null }>(
+              'select display_name, avatar_url from users where id = $1',
+              [userId],
+            )).rows[0]
+          : undefined;
+        const displayName = profile?.display_name?.trim() || (userId ? '用户' : '游客');
+        const avatarUrl = profile?.avatar_url ?? null;
+        const color = cursorColorOf(userId ?? guestId ?? clientId);
+
+        const state: SocketState = {
+          boardId,
+          clientId,
+          tabId,
+          role,
+          identity: presenceIdentity,
+          displayName,
+          userId,
+          guestId,
+        };
         socket.data = state;
         await socket.join(roomOf(boardId));
 
@@ -130,16 +166,22 @@ export function attachRealtime(httpServer: HttpServer) {
           tabId,
           identity: presenceIdentity,
           role,
-          color: colorOf(userId ?? guestId ?? clientId),
+          color,
+          displayName,
+          avatarUrl,
           joinedAt: Date.now(),
         });
 
         const joined = {
           self: {
+            // 合帧后光标会广播给整个房间（含发送者），客户端用它过滤掉自己
+            connectionId: socket.id,
             identity: presenceIdentity,
             role,
             isGuest: !userId,
-            color: colorOf(userId ?? guestId ?? clientId),
+            color,
+            displayName,
+            avatarUrl,
             viewOnly: role === 'viewer',
             tabId,
           },
@@ -148,8 +190,9 @@ export function attachRealtime(httpServer: HttpServer) {
         };
         socket.emit('joined', joined);
         ack?.({ ok: true, ...joined });
-        // 房间内所有连接（含自己）都收到聚合后的 presence
-        ns.to(roomOf(boardId)).emit('presence:state', presenceState);
+        // 名单走合帧：本次 join 只标脏，所有人（含自己）在 ≤100ms 的下一帧拿到最新全量名单，
+        // 不再在 join 响应路径里做 O(N) 扇出
+        presenceFanout.touch(boardId);
         logger.info(
           { instance: config.INSTANCE_ID, boardId, clientId, tabId, role, totalConnections: presenceState.totalConnections },
           'socket joined board',
@@ -188,80 +231,62 @@ export function attachRealtime(httpServer: HttpServer) {
         return;
       }
 
-      let seed = 0;
-      let edited = false;
-      try {
-        const { rows } = await pool.query<{ last_seq: string }>('select last_seq from boards where id = $1', [state.boardId]);
-        seed = Number(rows[0]?.last_seq ?? 0);
-      } catch (err) {
-        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'read board last_seq failed');
-        socket.emit('op:rejected', { opId: null, reason: 'INTERNAL' });
-        return;
-      }
+      // 入队是同步的：同一连接的多条 op:submit 按到达顺序进入同一条板级队列，
+      // 由 opBatcher 合并成更少的事务；seq 在同一队列内按入队顺序分配。
+      const writes = batch.ops.map((op) =>
+        writeBatcher.submit({
+          boardId: state.boardId,
+          clientId: state.clientId,
+          userId: state.userId,
+          guestId: state.guestId,
+          op,
+        }),
+      );
 
-      for (const op of batch.ops) {
-        try {
-          const claim = await claimOpIdem(state.boardId, op.opId);
-          if (claim.kind === 'done') {
-            socket.emit('op:ack', { opId: op.opId, seq: claim.seq, stale: [], duplicate: true });
-            continue;
-          }
-          if (claim.kind === 'in-flight') {
-            socket.emit('op:rejected', { opId: op.opId, reason: 'IDEMPOTENT_IN_FLIGHT' });
-            continue;
-          }
+      // 按原顺序回包：ack 与 op:apply 的先后跟 op 提交顺序一致
+      for (const [index, op] of batch.ops.entries()) {
+        // `writes` 与 `batch.ops` 同步生成，下标一定存在
+        const outcome = await writes[index]!;
 
-          const seq = await allocateSeq(state.boardId, seed);
-          let result: { applied: boolean; stale: boolean };
-          try {
-            result = await persistOp({
-              boardId: state.boardId,
-              clientId: state.clientId,
-              userId: state.userId,
-              guestId: state.guestId,
-              seq,
-              op,
-            });
-          } catch (err) {
-            await releaseOpIdem(state.boardId, op.opId).catch(() => undefined);
-            throw err;
-          }
-
-          // 只有真正改动了元素才刷新「最近编辑」；LWW 落败的 op 不算编辑
-          if (result.applied) edited = true;
-
-          await markOpIdemDone(state.boardId, op.opId, seq);
-
-          socket.emit('op:ack', {
-            opId: op.opId,
-            seq,
-            stale: result.stale ? [op.id] : [],
-            duplicate: false,
-            applied: result.applied,
-          });
-
-          // 包括发送者在内容：同 room 的所有连接都会收到；客户端按 opId 幂等应用
-          ns.to(roomOf(state.boardId)).emit('op:apply', {
-            boardId: state.boardId,
-            seq,
-            op,
-            applied: result.applied,
-            stale: result.stale,
-            by: state.identity,
-          });
-
-          logger.info(
-            { instance: config.INSTANCE_ID, boardId: state.boardId, opId: op.opId, seq, applied: result.applied, stale: result.stale },
-            'op persisted',
-          );
-        } catch (err) {
-          logger.error({ err: err instanceof Error ? err.message : String(err), opId: op.opId }, 'op:submit failed');
-          socket.emit('op:rejected', { opId: op.opId, reason: 'INTERNAL' });
+        if (outcome.kind === 'duplicate') {
+          socket.emit('op:ack', { opId: outcome.opId, seq: outcome.seq, stale: [], duplicate: true });
+          continue;
         }
-      }
+        if (outcome.kind === 'rejected') {
+          socket.emit('op:rejected', { opId: outcome.opId, reason: outcome.reason });
+          continue;
+        }
 
-      // 一批 op 只标记一次，具体写库由 5s 合并器统一完成
-      if (edited) await markBoardEdited(state.boardId);
+        socket.emit('op:ack', {
+          opId: outcome.opId,
+          seq: outcome.seq,
+          stale: outcome.stale ? [op.id] : [],
+          duplicate: false,
+          applied: outcome.applied,
+        });
+
+        // 包括发送者在内容：同 room 的所有连接都会收到；客户端按 opId 幂等应用
+        ns.to(roomOf(state.boardId)).emit('op:apply', {
+          boardId: state.boardId,
+          seq: outcome.seq,
+          op,
+          applied: outcome.applied,
+          stale: outcome.stale,
+          by: state.identity,
+        });
+
+        logger.info(
+          {
+            instance: config.INSTANCE_ID,
+            boardId: state.boardId,
+            opId: outcome.opId,
+            seq: outcome.seq,
+            applied: outcome.applied,
+            stale: outcome.stale,
+          },
+          'op persisted',
+        );
+      }
     });
 
     /**
@@ -275,23 +300,29 @@ export function attachRealtime(httpServer: HttpServer) {
       if (!parsed.success) return;
       const conn = presence.moveCursor(state.boardId, socket.id, parsed.data.x, parsed.data.y);
       if (!conn) return;
-      socket.to(roomOf(state.boardId)).emit('presence:cursor', {
-        boardId: state.boardId,
+      // 不回显发送者是靠客户端按 self.connectionId 过滤；这里统一走合帧，每帧一条消息
+      cursorFanout.push(state.boardId, {
         connectionId: socket.id,
         clientId: state.clientId,
         tabId: state.tabId,
         identity: state.identity,
         color: conn.color,
+        // 方案 A：昵称 + 加入时间随光标下发；前端按颜色分组、按 joinedAt 稳定排序后加序号
+        displayName: conn.displayName,
+        joinedAt: conn.joinedAt,
         x: parsed.data.x,
         y: parsed.data.y,
+        ...(parsed.data.t === undefined ? {} : { t: parsed.data.t }),
       });
     });
 
     socket.on('disconnect', (reason) => {
       const state = stateOf(socket);
       if (state) {
+        cursorFanout.drop(state.boardId, socket.id);
         const presenceState = presence.leave(state.boardId, socket.id);
-        ns.to(roomOf(state.boardId)).emit('presence:state', presenceState);
+        // 注册表已同步移除该连接，下一帧名单自然不再包含它（≤100ms），不留幽灵
+        presenceFanout.touch(state.boardId);
         logger.debug(
           { instance: config.INSTANCE_ID, boardId: state.boardId, clientId: state.clientId, reason, remaining: presenceState.totalConnections },
           'socket left board',

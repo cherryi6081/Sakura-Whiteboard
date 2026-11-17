@@ -8,7 +8,7 @@ import {
   type ApplyPayload,
   type BoardSocket,
   type ConnectionStatus,
-  type CursorPayload,
+  type CursorFramePayload,
   type JoinRole,
   type JoinedPayload,
   type PresenceStatePayload,
@@ -46,6 +46,10 @@ export type RemoteCursor = {
   tabId: string | null;
   identity: string;
   color: string;
+  /** 展示用昵称（登录用户为账号昵称，游客「游客」） */
+  displayName: string;
+  /** 该连接加入本板的时间，用于同色分组内的稳定排序 */
+  joinedAt: number;
   x: number;
   y: number;
   at: number;
@@ -170,6 +174,8 @@ export function createBoardCollab(options: {
   let socket: BoardSocket | null = null;
   let stopped = false;
   let lastCursorAt = 0;
+  /** 本连接的 socket.id：合帧后光标会广播给整个房间，渲染时过滤掉自己 */
+  let selfConnectionId: string | null = null;
 
   const emit = () => {
     options.onChange?.({
@@ -465,6 +471,7 @@ export function createBoardCollab(options: {
     state.joined = true;
     state.role = payload.self.role;
     state.identity = payload.self.identity;
+    selfConnectionId = payload.self.connectionId ?? null;
     state.serverSeq = payload.seq;
     state.viewOnly = payload.self.viewOnly ?? payload.self.role === "viewer";
     state.synced = false;
@@ -511,15 +518,24 @@ export function createBoardCollab(options: {
     emit();
   };
 
-  const handleCursor = (payload: CursorPayload) => {
-    if (payload.boardId !== state.boardId) return;
-    const next: RemoteCursor = { ...payload, at: Date.now() };
-    const index = state.cursors.findIndex((cursor) => cursor.connectionId === payload.connectionId);
-    if (index >= 0) {
-      state.cursors = state.cursors.map((cursor, i) => (i === index ? next : cursor));
-    } else {
-      state.cursors = [...state.cursors, next].slice(-MAX_CURSORS);
+  /** 服务端已合帧：一帧最多 30 次，按 connectionId 合并一次，避免逐条 map/find 的 O(C²) 分配 */
+  const handleCursorFrame = (payload: CursorFramePayload) => {
+    if (payload.boardId !== state.boardId || payload.cursors.length === 0) return;
+
+    const byId = new Map<string, RemoteCursor>();
+    for (const cursor of state.cursors) byId.set(cursor.connectionId, cursor);
+
+    const at = Date.now();
+    let changed = false;
+    for (const cursor of payload.cursors) {
+      // 合帧广播包含发送者自己，按 self.connectionId 过滤
+      if (cursor.connectionId === selfConnectionId) continue;
+      byId.set(cursor.connectionId, { ...cursor, at });
+      changed = true;
     }
+    if (!changed) return;
+
+    state.cursors = [...byId.values()].slice(-MAX_CURSORS);
     emit();
   };
 
@@ -604,7 +620,7 @@ export function createBoardCollab(options: {
           onApply: handleApply,
           onRejected: handleRejected,
           onPresence: handlePresence,
-          onCursor: handleCursor,
+          onCursorFrame: handleCursorFrame,
         },
       });
       void refreshQueuedOps();

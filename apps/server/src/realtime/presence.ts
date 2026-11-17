@@ -6,7 +6,8 @@ import type { AccessRole } from '../domain/access.js';
  * 隔离边界（见开发文档 §6.3）：
  * - 一个 socket = 一条连接（`connectionId`）。同一用户同一块板的两个标签 = 两条连接。
  * - 对外的 `presence:state` 按 `identity`（当前是游客 `guest:{guestId}`）聚合：头像一个 + "×N 标签页"。
- * - 光标不进聚合对象：`presence:cursor` 按 `connectionId` 独立广播，两标签视口不同，位置不可合并。
+ * - 光标不进聚合对象：按 `connectionId` 独立走合帧广播（`presence:cursor:frame`），两标签视口不同，
+ *   位置不可合并。
  *
  * 已知边界：注册表是**单实例内存态**。`@socket.io/redis-adapter` 只扇出事件，不共享这份 Map；
  * 双实例部署时每个实例只知道自己连着的连接，聚合结果不完整（与开发文档 §6 的降级说明一致）。
@@ -23,6 +24,10 @@ export type PresenceConnectionInput = {
   identity: string;
   role: AccessRole;
   color: string;
+  /** 展示用昵称：登录用户取 `users.display_name`，游客为「游客」 */
+  displayName: string;
+  /** 登录用户的头像地址（GitHub 等）；游客 / 未设置时为 null */
+  avatarUrl?: string | null;
   joinedAt: number;
 };
 
@@ -31,6 +36,8 @@ export type PresenceConnection = PresenceConnectionInput & { cursor: PresenceCur
 export type PresenceUser = {
   identity: string;
   color: string;
+  displayName: string;
+  avatarUrl: string | null;
   role: AccessRole;
   /** 该用户在本板的连接数（= 标签页数，同一标签重连会被顶层 map 覆盖而不是相加） */
   connectionCount: number;
@@ -68,6 +75,9 @@ export function aggregatePresence(
     return {
       identity,
       color: first.color,
+      // 同一用户多标签昵称相同；取最早加入那条的，保持稳定
+      displayName: first.displayName,
+      avatarUrl: first.avatarUrl ?? null,
       // 同一用户多标签的权限可能不同（例如一标签自报只读）；展示取最高权限
       role: sorted.some((conn) => conn.role === 'owner')
         ? 'owner'

@@ -13,6 +13,7 @@ const base = {
   identity: 'guest:g_a1',
   role: 'editor' as const,
   color: '#A85C7C',
+  displayName: '游客',
   joinedAt: 1000,
 };
 
@@ -40,8 +41,17 @@ describe('aggregatePresence', () => {
     expect(userA?.connectionCount).toBe(2);
     expect(userA?.tabIds).toEqual(['tab_a1', 'tab_a2']);
     expect(userA?.connectionIds).toEqual(['sock_a1', 'sock_a2']);
+    expect(userA?.displayName).toBe('游客');
     expect(userB?.identity).toBe('guest:g_b1');
     expect(userB?.connectionCount).toBe(1);
+  });
+
+  it('按用户聚合时昵称取最早加入的那条连接', () => {
+    const state = aggregatePresence('m3_board_001', [
+      withCursor(conn({ connectionId: 'sock_late', tabId: 'tab_late', displayName: '晚到', joinedAt: 1400 })),
+      withCursor(conn({ connectionId: 'sock_early', tabId: 'tab_early', displayName: '先到', joinedAt: 900 })),
+    ]);
+    expect(state.users[0]?.displayName).toBe('先到');
   });
 
   it('同一用户多标签权限不同时取最高权限（任一 editor 即 editor）', () => {
