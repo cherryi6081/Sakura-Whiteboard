@@ -9,11 +9,12 @@ import { AppError } from '../middlewares/error.js';
 import { identityOf } from '../../auth/identity.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
+import { removeSpaceMember, setSpaceMemberRole, type SpaceMemberMutationResult, type SpaceMemberRemovalResult } from '../../domain/spaceMembers.js';
 
 /**
  * 团队空间（设计稿 §09 P0）。
  *
- * - 本期只做「创建空间 + 邀请链接」，不做角色修改 / 移除成员 / 转让（P1）；
+ * - 创建空间 + 邀请链接 + 成员管理（调整 editor↔viewer、移除成员）；
  * - 邀请链接 7 天有效、可撤销，加入时必须登录；
  * - 所有写接口先过 `resolveSpaceRole`，非成员统一 404，不泄露空间是否存在。
  */
@@ -41,6 +42,9 @@ const transferSchema = z.object({
   userId: z.string().uuid(),
 });
 
+const memberRoleSchema = z.object({ role: z.enum(['editor', 'viewer']) });
+const memberUserIdSchema = z.string().uuid();
+
 const INVITE_DAYS = 7;
 
 type SpaceRow = {
@@ -63,6 +67,50 @@ async function requireMember(spaceId: string, userId: string): Promise<SpaceRole
   const role = await resolveSpaceRole(spaceId, userId);
   if (!role) throw new AppError(404, 'NOT_FOUND', 'space not found');
   return role;
+}
+
+/** 把成员写操作的失败原因映射成对外的 HTTP 口径。 */
+function assertMemberMutation(
+  result: SpaceMemberMutationResult,
+): asserts result is { status: 'ok'; changed: boolean } {
+  switch (result.status) {
+    case 'ok':
+      return;
+    case 'space_not_found':
+      throw new AppError(404, 'NOT_FOUND', 'space not found');
+    case 'forbidden':
+      throw new AppError(403, 'FORBIDDEN', '只有所有者能调整成员角色');
+    case 'personal':
+      throw new AppError(400, 'CANNOT_MANAGE_PERSONAL', '个人空间不能管理成员');
+    case 'target_not_found':
+      throw new AppError(404, 'NOT_FOUND', '该用户不在这个空间里');
+    case 'target_owner':
+      throw new AppError(400, 'CANNOT_CHANGE_OWNER', '所有者身份只能通过「转让」变更');
+    case 'self':
+      throw new AppError(400, 'INVALID_INPUT', '不能调整自己的角色');
+  }
+}
+
+/** 移除成员的失败口径（提示语与改角色不同：这里强调「移除」）。 */
+function assertMemberRemoval(
+  result: SpaceMemberRemovalResult,
+): asserts result is { status: 'ok'; boardsKept: number } {
+  switch (result.status) {
+    case 'ok':
+      return;
+    case 'space_not_found':
+      throw new AppError(404, 'NOT_FOUND', 'space not found');
+    case 'forbidden':
+      throw new AppError(403, 'FORBIDDEN', '只有所有者能移除成员');
+    case 'personal':
+      throw new AppError(400, 'CANNOT_MANAGE_PERSONAL', '个人空间不能管理成员');
+    case 'target_not_found':
+      throw new AppError(404, 'NOT_FOUND', '该用户不在这个空间里');
+    case 'target_owner':
+      throw new AppError(400, 'CANNOT_CHANGE_OWNER', '所有者身份只能通过「转让」变更');
+    case 'self':
+      throw new AppError(400, 'INVALID_INPUT', '不能移除自己；所有者请先转让');
+  }
 }
 
 /** `GET /api/spaces` —— 个人空间 + 已加入的团队空间，个人空间恒在第一位。 */
@@ -169,6 +217,44 @@ spacesRouter.get(
         joinedAt: row.joined_at.toISOString(),
       })),
     });
+  }),
+);
+
+/**
+ * `PATCH /api/spaces/:id/members/:userId` —— 调整成员角色（editor ↔ viewer）。
+ * 所有者身份只能通过 `PUT /spaces/:id/owner` 转让，不能被直接改写。
+ */
+spacesRouter.patch(
+  '/spaces/:id/members/:userId',
+  handle(async (req, res) => {
+    const actorId = requireUser(req);
+    const spaceId = spaceIdSchema.parse(req.params.id);
+    const targetId = memberUserIdSchema.parse(req.params.userId);
+    const { role } = memberRoleSchema.parse(req.body ?? {});
+
+    const result = await setSpaceMemberRole(spaceId, actorId, targetId, role);
+    assertMemberMutation(result);
+    res.json({ spaceId, userId: targetId, role, changed: result.changed });
+  }),
+);
+
+/**
+ * `DELETE /api/spaces/:id/members/:userId` —— 移除成员。
+ *
+ * - 其创建的白板保留在空间（与「退出空间」同口径），响应里带 `boardsKept`；
+ * - 同时吊销其创建的有效邀请链接；
+ * - 移除后立即断开其在该空间所有白板上的连接（实时层，跨实例）。
+ */
+spacesRouter.delete(
+  '/spaces/:id/members/:userId',
+  handle(async (req, res) => {
+    const actorId = requireUser(req);
+    const spaceId = spaceIdSchema.parse(req.params.id);
+    const targetId = memberUserIdSchema.parse(req.params.userId);
+
+    const result = await removeSpaceMember(spaceId, actorId, targetId);
+    assertMemberRemoval(result);
+    res.json({ spaceId, userId: targetId, removed: true, boardsKept: result.boardsKept });
   }),
 );
 

@@ -34,12 +34,14 @@ export type MemberRolePayload = {
 export type MemberRemovedPayload = {
   boardId: string;
   identity: string;
+  /** 移出来源：板级成员（默认）或整个空间（空间成员管理） */
+  scope?: 'board' | 'space';
   at: number;
 };
 
 export type MemberNotifier = {
   roleChanged(boardId: string, identity: string, role: AccessRole): Promise<void>;
-  removed(boardId: string, identity: string): Promise<void>;
+  removed(boardId: string, identity: string, scope?: 'board' | 'space'): Promise<void>;
 };
 
 export function createMemberNotifier(deps: {
@@ -57,8 +59,8 @@ export function createMemberNotifier(deps: {
       deps.ns.to(deps.roomOf(boardId)).emit(MEMBER_ROLE_EVENT, payload);
     },
 
-    async removed(boardId, identity) {
-      const payload: MemberRemovedPayload = { boardId, identity, at: Date.now() };
+    async removed(boardId, identity, scope = 'board') {
+      const payload: MemberRemovedPayload = { boardId, identity, scope, at: Date.now() };
       const sockets = await deps.ns.in(deps.roomOf(boardId)).fetchSockets();
       for (const socket of sockets) {
         const data = socket.data as { identity?: string } | undefined;

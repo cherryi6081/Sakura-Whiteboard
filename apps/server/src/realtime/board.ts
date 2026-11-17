@@ -70,14 +70,26 @@ type SocketState = {
   displayName: string;
   userId: string | null;
   guestId: string | null;
-  /** 跨实例 presence 的心跳定时器；join 成功后创建，disconnect 时清理 */
-  heartbeat: ReturnType<typeof setInterval> | null;
 };
 
 const stateOf = (socket: { data: Record<string, unknown> }): SocketState | null =>
   (socket.data as Partial<SocketState>).boardId ? (socket.data as SocketState) : null;
 
 const roomOf = (boardId: string) => `board:${boardId}`;
+
+/**
+ * presence 心跳定时器。**不能塞进 `socket.data`**：redis-adapter 的 `fetchSockets()`
+ * 会把 socket.data 序列化回传给发起方，Timeout 对象带循环引用会直接抛
+ * "Converting circular structure to JSON"，把被请求的实例打挂——跨实例移出成员时必现。
+ */
+const heartbeats = new Map<string, ReturnType<typeof setInterval>>();
+
+function clearHeartbeat(socketId: string): void {
+  const timer = heartbeats.get(socketId);
+  if (!timer) return;
+  clearInterval(timer);
+  heartbeats.delete(socketId);
+}
 
 /**
  * 挂载 Socket.IO `/board` namespace。
@@ -265,7 +277,7 @@ export function attachRealtime(httpServer: HttpServer) {
         // 同一 socket 重复 join（换板或客户端重发 join）：先清掉旧登记与心跳，避免 ghost 与定时器泄漏
         const previous = stateOf(socket);
         if (previous) {
-          if (previous.heartbeat) clearInterval(previous.heartbeat);
+          clearHeartbeat(socket.id);
           void presenceStore.remove(previous.boardId, socket.id);
           presence.leave(previous.boardId, socket.id);
           touchPresence(previous.boardId);
@@ -280,7 +292,6 @@ export function attachRealtime(httpServer: HttpServer) {
           displayName,
           userId,
           guestId,
-          heartbeat: null,
         };
         socket.data = state;
         await socket.join(roomOf(boardId));
@@ -306,7 +317,7 @@ export function attachRealtime(httpServer: HttpServer) {
           void presenceStore.touch(boardId, socket.id);
         }, PRESENCE_HEARTBEAT_MS);
         heartbeat.unref?.();
-        state.heartbeat = heartbeat;
+        heartbeats.set(socket.id, heartbeat);
 
         const joined = {
           self: {
@@ -475,7 +486,7 @@ export function attachRealtime(httpServer: HttpServer) {
       joinRate.drop(socket.id);
       const state = stateOf(socket);
       if (state) {
-        if (state.heartbeat) clearInterval(state.heartbeat);
+        clearHeartbeat(socket.id);
         // 跨实例：先删 Redis 记录，再更新本地注册表并触发下一帧名单
         void presenceStore.remove(state.boardId, socket.id);
         cursorFanout.drop(state.boardId, socket.id);
