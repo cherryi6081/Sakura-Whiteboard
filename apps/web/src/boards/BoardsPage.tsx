@@ -50,7 +50,7 @@ import {
 } from "./recentBoards";
 import { publishLogout, subscribeLogout } from "../auth/authEvents";
 import { SakuraBranch } from "./SakuraBranch";
-import { useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
+import { createBoardMessage, useCreateBoard, type CreateBoardFailureKind } from "./useCreateBoard";
 import { skeletonVisible, useSkeletonPhase } from "./useSkeletonPhase";
 import { IconAlert, IconBoard, IconCheck, IconFlower, IconLogout, IconMore, IconPin, IconPlus, IconTrash } from "../ui/icons";
 import { DialogClose } from "../ui/DialogClose";
@@ -77,7 +77,7 @@ import { SpaceSettings } from "./SpaceSettings";
 type ViewState =
   | { kind: "loading" }
   | { kind: "guest"; items: RecentBoard[] }
-  | { kind: "user"; items: BoardListItem[]; user: { displayName: string } }
+  | { kind: "user"; items: BoardListItem[]; user: { displayName: string; avatarUrl: string | null } }
   | { kind: "error"; message: string }
   /** `?space=` 指向的空间不存在 / 已不是成员：404 面板，不自动回退 */
   | { kind: "missing" }
@@ -151,9 +151,9 @@ const SPACE_ROLE_LABEL: Record<string, string> = {
   viewer: "只读",
 };
 
-/** 本页的建板失败文案：沿用这一页原来的措辞，避免因为共用 hook 改掉已有提示 */
+/** 本页的建板失败文案：容量类复用 hook 的同一份口径，避免数字漂移 */
 function boardsMessageFor({ kind, code }: { kind: CreateBoardFailureKind; code?: string }): string {
-  if (kind === "quota") return "已建满 3 块临时板，登录后可以继续。";
+  if (kind === "quota" || kind === "capacity") return createBoardMessage(kind);
   if (kind === "offline") return "连不上服务器，恢复网络后再试。";
   return `没建成（${code}），再试一次。`;
 }
@@ -309,7 +309,7 @@ export function BoardsPage() {
     setView({
       kind: "user",
       items: sortBoards(list.data.boards, list.data.sortMode),
-      user: { displayName: me.data.user.displayName },
+      user: { displayName: me.data.user.displayName, avatarUrl: me.data.user.avatarUrl },
     });
 
     if (!readFlag(CLAIM_DISMISSED_KEY)) {
@@ -1711,6 +1711,7 @@ export function BoardsPage() {
           <SpaceSwitcher
             spaces={spaces}
             currentId={spaceId}
+            avatarUrl={view.kind === "user" ? view.user.avatarUrl : null}
             onSelect={selectSpace}
             onCreated={handleSpaceCreated}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -1734,7 +1735,11 @@ export function BoardsPage() {
             title="账号设置"
             aria-haspopup="dialog"
           >
-            <UserMark />
+            {view.user.avatarUrl ? (
+              <img className="wb-user-chip__avatar" src={view.user.avatarUrl} alt="" />
+            ) : (
+              <UserMark />
+            )}
             <span className="wb-caption" data-testid="boards-user">
               {view.user.displayName}
             </span>
@@ -2132,8 +2137,10 @@ export function BoardsPage() {
             }}
           >
             <DialogClose onClose={() => setGuestTrash(null)} disabled={guestTrashBusy} />
-            <h2 className="wb-dialog__title" id="wb-guest-trash-title">
-              删除临时板「{guestTrash.title}」？
+            <h2 className="wb-dialog__title" id="wb-guest-trash-title" title={`删除临时板「${guestTrash.title}」？`}>
+              <span>删除临时板「</span>
+              <span className="wb-dialog__title-name">{guestTrash.title}</span>
+              <span>」？</span>
             </h2>
             <p className="wb-dialog__desc">
               游客的临时板不进入回收站，删除后无法恢复；本机的缩略图与最近打开记录会一起清掉。
@@ -2209,7 +2216,9 @@ export function BoardsPage() {
           onUserChange={(user) => {
             setMeUser(user);
             setView((current) =>
-              current.kind === "user" ? { ...current, user: { displayName: user.displayName } } : current,
+              current.kind === "user"
+                ? { ...current, user: { displayName: user.displayName, avatarUrl: user.avatarUrl } }
+                : current,
             );
           }}
           onDeleted={handleAccountDeleted}

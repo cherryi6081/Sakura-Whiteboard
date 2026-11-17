@@ -512,6 +512,7 @@ export function TrashPage() {
       {purgeTarget ? (
         <ConfirmDialog
           title={`彻底删除「${purgeTarget.title}」？`}
+          titleName={purgeTarget.title}
           description="这块白板、所有画布内容与协作记录都会被永久删除，无法恢复。"
           confirmLabel="彻底删除"
           busy={dialogBusy}
@@ -594,6 +595,8 @@ export function TrashPage() {
 
 function ConfirmDialog(props: {
   title: string;
+  /** 标题里嵌的白板名：单独一段，过长时只省略名字，标题不折行 */
+  titleName?: string;
   description: string;
   confirmLabel: string;
   busy: boolean;
@@ -626,7 +629,17 @@ function ConfirmDialog(props: {
         onClick={(event) => event.stopPropagation()}
       >
         <DialogClose onClose={props.onCancel} disabled={props.busy} />
-        <h2 className="wb-dialog__title">{props.title}</h2>
+        <h2 className="wb-dialog__title" title={props.title}>
+          {props.titleName ? (
+            <>
+              <span>彻底删除「</span>
+              <span className="wb-dialog__title-name">{props.titleName}</span>
+              <span>」？</span>
+            </>
+          ) : (
+            props.title
+          )}
+        </h2>
         <p className="wb-dialog__desc">{props.description}</p>
         {props.children}
         <div className="wb-dialog__actions">

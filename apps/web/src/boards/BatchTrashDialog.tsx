@@ -57,6 +57,9 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, guest = false, 
     }
   };
 
+  /** 只删一块时标题里嵌白板名：名字单独一段，过长时只省略名字，不折行 */
+  const singleName = !allBlocked && targets.length === 1 ? (targets[0]?.title ?? "") : null;
+
   const title = allBlocked
     ? guest
       ? `这 ${rows.length} 块不属于这台浏览器`
@@ -89,8 +92,16 @@ export function BatchTrashDialog({ rows, targets, skipped, busy, guest = false, 
         onKeyDown={trapTab}
       >
         <DialogClose onClose={onCancel} disabled={busy} />
-        <h2 id={titleId} className="wb-dialog__title">
-          {title}
+        <h2 id={titleId} className="wb-dialog__title" title={title}>
+          {singleName !== null ? (
+            <>
+              <span>{guest ? "删除「" : "将「"}</span>
+              <span className="wb-dialog__title-name">{singleName}</span>
+              <span>{guest ? "」？" : "」移入回收站？"}</span>
+            </>
+          ) : (
+            title
+          )}
         </h2>
         <p id={descId} className="wb-dialog__desc">
           {desc}

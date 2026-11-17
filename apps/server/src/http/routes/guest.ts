@@ -5,7 +5,7 @@ import { AppError } from '../middlewares/error.js';
 import { identityOf } from '../../auth/identity.js';
 import { issueGuestCookie } from '../../auth/guestCookie.js';
 import { ensurePersonalSpace } from '../../domain/spaceAccess.js';
-import { BOARD_CAPACITY } from '../../domain/boardCapacity.js';
+import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H } from '../../domain/boardCapacity.js';
 
 /**
  * 游客接口（开发文档 §7.1.7）。
@@ -32,14 +32,26 @@ guestRouter.get(
     const identity = identityOf(req);
     const guestId = identity.guestId ?? issueGuestCookie(res);
 
-    let user: { id: string; email: string | null; displayName: string; color: string } | null = null;
+    let user: { id: string; email: string | null; displayName: string; color: string; avatarUrl: string | null } | null =
+      null;
     if (identity.userId) {
-      const { rows } = await pool.query<{ id: string; email: string | null; display_name: string; color: string }>(
-        'select id, email, display_name, color from users where id = $1',
-        [identity.userId],
-      );
+      const { rows } = await pool.query<{
+        id: string;
+        email: string | null;
+        display_name: string;
+        color: string;
+        avatar_url: string | null;
+      }>('select id, email, display_name, color, avatar_url from users where id = $1', [identity.userId]);
       const row = rows[0];
-      if (row) user = { id: row.id, email: row.email, displayName: row.display_name, color: row.color };
+      if (row) {
+        user = {
+          id: row.id,
+          email: row.email,
+          displayName: row.display_name,
+          color: row.color,
+          avatarUrl: row.avatar_url,
+        };
+      }
     }
 
     const { rows: counts } = await pool.query<{ unarchived: number; created_24h: number }>(
@@ -58,9 +70,9 @@ guestRouter.get(
       authenticated: Boolean(identity.userId),
       user,
       quota: {
-        unarchivedMax: 6,
+        unarchivedMax: BOARD_CAPACITY,
         unarchivedUsed: counts[0]?.unarchived ?? 0,
-        per24h: 3,
+        per24h: GUEST_BOARDS_PER_24H,
         created24h: counts[0]?.created_24h ?? 0,
       },
     });

@@ -13,7 +13,7 @@ import { resolveBoardAccess } from '../../domain/access.js';
 import { TRASH_RETENTION_DAYS } from '../../domain/retention.js';
 import { ORDER_STEP, materializeRanks, rankBetween } from '../../domain/boardOrder.js';
 import { ensurePersonalSpace, resolveSpaceRole } from '../../domain/spaceAccess.js';
-import { BOARD_CAPACITY, evictForCapacity } from '../../domain/boardCapacity.js';
+import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H, evictForCapacity } from '../../domain/boardCapacity.js';
 
 /**
  * 白板 REST（M5-1）。
@@ -33,7 +33,6 @@ const handle =
     fn(req, res).catch(next);
   };
 
-const GUEST_BOARDS_PER_24H = 3;
 const GUEST_UNARCHIVED_MAX = BOARD_CAPACITY;
 
 const spaceIdSchema = z.string().regex(/^sp_[A-Za-z0-9_-]{10,32}$/);

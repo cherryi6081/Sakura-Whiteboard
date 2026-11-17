@@ -1,5 +1,8 @@
 import type { PoolClient } from 'pg';
-import { BOARD_CAPACITY as SHARED_BOARD_CAPACITY } from '@whiteboard/shared';
+import {
+  BOARD_CAPACITY as SHARED_BOARD_CAPACITY,
+  GUEST_BOARDS_PER_24H as SHARED_GUEST_BOARDS_PER_24H,
+} from '@whiteboard/shared';
 
 /**
  * 游客（临时板）容量与淘汰。
@@ -16,6 +19,9 @@ import { BOARD_CAPACITY as SHARED_BOARD_CAPACITY } from '@whiteboard/shared';
  */
 
 export const BOARD_CAPACITY = SHARED_BOARD_CAPACITY;
+
+/** 游客 24h 建板频率上限，同样只做转出，避免接口与文案各写一个数字 */
+export const GUEST_BOARDS_PER_24H = SHARED_GUEST_BOARDS_PER_24H;
 
 /** 「刚创建 / 正在编辑」保护窗口 */
 export const EVICT_PROTECT_MS = 10 * 60 * 1000;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BOARD_CAPACITY, GUEST_BOARDS_PER_24H } from "@whiteboard/shared";
 import { createBoard } from "./boardsApi";
 import { boardHref, currentListHref } from "../board/backTarget";
 import { listRecentBoards, recordRecentBoard, type RecentOwner } from "./recentBoards";
@@ -11,7 +12,7 @@ import { listRecentBoards, recordRecentBoard, type RecentOwner } from "./recentB
  * 功能本身没有消失，统一挪到这里，由需要建板入口的页面调用（当前是 `/boards`）；
  * 将来若某个页面重新出现入口，直接复用该 hook 即可，不必再写一遍。
  */
-export type CreateBoardFailureKind = "quota" | "offline" | "error";
+export type CreateBoardFailureKind = "quota" | "capacity" | "offline" | "error";
 
 type CreateBoardFailure = {
   kind: CreateBoardFailureKind;
@@ -30,10 +31,17 @@ type UseCreateBoardOptions = {
 };
 
 const DEFAULT_MESSAGES: Record<CreateBoardFailureKind, string> = {
-  quota: "这个浏览器已建满 3 块临时板。登录后可以继续，临时板也能一起转入账号。",
+  // 3 块是 24h 内的新建频率，不是总量；总量是 12 块，满后会先淘汰再建
+  quota: `游客每 24 小时最多新建 ${GUEST_BOARDS_PER_24H} 块临时板，登录后可以继续。`,
+  capacity: `临时板已满 ${BOARD_CAPACITY} 块，且都在置顶或最近使用中；先整理掉一块再新建。`,
   offline: "连不上服务器，恢复网络后再试。",
   error: "没开成，再试一次。",
 };
+
+/** 供页面覆盖文案时复用同一份容量口径，避免再写死数字 */
+export function createBoardMessage(kind: CreateBoardFailureKind): string {
+  return DEFAULT_MESSAGES[kind];
+}
 
 /** 超过这个时长仍未返回，就把 `slow` 置真，供调用方把文案从"正在…"换成"还在连接…" */
 const SLOW_AFTER_MS = 400;
@@ -114,6 +122,10 @@ export function useCreateBoard(options: UseCreateBoardOptions = {}) {
     }
     if (result.status === 429 && result.code === "QUOTA_EXCEEDED") {
       setError(buildFailure("quota", result.code));
+      return;
+    }
+    if (result.status === 429 && result.code === "CAPACITY_ALL_PROTECTED") {
+      setError(buildFailure("capacity", result.code));
       return;
     }
     setError(buildFailure("error", result.code));

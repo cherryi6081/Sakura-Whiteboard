@@ -105,6 +105,10 @@ async function main() {
     const guestId = await guestIdOfBoard(firstBoard.id);
     assert(guestId, "游客 cookie 应落 owner_guest_id");
 
+    const guestMe = await api.get("/api/guest/me");
+    eq(guestMe.json.quota.unarchivedMax, 12, "guest/me 未归档上限应等于 BOARD_CAPACITY");
+    eq(guestMe.json.quota.per24h, 3, "guest/me 24h 建板频率上限");
+
     // 游客 3/24h 限流下拿不到 12 块：用 SQL 补齐边界数据（仍由真实接口触发淘汰）
     // id 是应用侧 nanoid(12)，库表没有默认值，这里补 12 位十六进制
     for (let i = 0; i < 11; i += 1) {
@@ -116,10 +120,15 @@ async function main() {
     }
     const { rows: guestBoards } = await query("select id from boards where owner_guest_id = $1 and deleted_at is null", [guestId]);
     eq(guestBoards.length, 12, "游客 12 块");
+    eq((await api.get("/api/guest/me")).json.quota.unarchivedUsed, 12, "guest/me 已用块数");
 
     const blocked = await api.createBoard({ title: "全置顶", pinnedIds: guestBoards.map((row) => row.id) });
     eq(blocked.status, 429, "全置顶游客建板状态");
     eq(blocked.json?.error?.code, "CAPACITY_ALL_PROTECTED", "游客全保护错误码");
+    assert(
+      (blocked.json?.error?.message ?? "").includes("12"),
+      `429 文案应带上真实容量 12：${blocked.json?.error?.message}`,
+    );
 
     const ok = await api.createBoard({ title: "游客第 13 块", pinnedIds: [guestBoards[0].id] });
     eq(ok.status, 201, `游客第 13 块状态：${JSON.stringify(ok.json)}`);
