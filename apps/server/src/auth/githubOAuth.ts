@@ -50,10 +50,16 @@ export type GithubProfile = {
   email: string;
 };
 
+export type OAuthStateMode = 'login' | 'bind';
+
 type StateRecord = {
   returnTo: string;
   codeVerifier: string;
   createdAt: number;
+  /** 默认 login；bind 表示已登录用户正在绑定 GitHub。 */
+  mode?: OAuthStateMode;
+  /** bind 模式下发起流程的用户；回调必须与当前会话一致。 */
+  userId?: string;
 };
 
 export function githubConfigured(): boolean {
@@ -129,8 +135,20 @@ export function createPkce(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-export function createState(): string {
-  return randomBytes(24).toString('base64url');
+/**
+ * state 值本身带模式前缀：`b~` 为绑定流程。
+ * `~` 不在 base64url 字符集里，不会与普通登录 state 混淆；
+ * 这样即使 Redis 里的 state 已过期，回调也能把用户送回账号设置而不是登录页。
+ */
+const BIND_STATE_PREFIX = 'b~';
+
+export function createState(mode: OAuthStateMode = 'login'): string {
+  const random = randomBytes(24).toString('base64url');
+  return mode === 'bind' ? `${BIND_STATE_PREFIX}${random}` : random;
+}
+
+export function isBindState(state: string): boolean {
+  return state.startsWith(BIND_STATE_PREFIX);
 }
 
 export async function saveState(state: string, record: StateRecord): Promise<void> {
@@ -150,6 +168,8 @@ export async function consumeState(state: string): Promise<StateRecord | null> {
       returnTo: safeReturnTo(parsed.returnTo) ?? '/',
       codeVerifier: parsed.codeVerifier,
       createdAt: Number(parsed.createdAt ?? 0),
+      mode: parsed.mode === 'bind' ? 'bind' : 'login',
+      userId: typeof parsed.userId === 'string' ? parsed.userId : undefined,
     };
   } catch {
     return null;

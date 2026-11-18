@@ -95,6 +95,19 @@ const EnvSchema = z.object({
   /** 仅测试用：把 OAuth 站点与 API 指到本地假 provider。 */
   GITHUB_OAUTH_BASE_URL: z.string().url().default('https://github.com'),
   GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
+  /**
+   * 邮件通道：`auto`（默认）在配置了 SMTP_HOST 时走 SMTP，否则落到日志通道；
+   * `log` 只把邮件写日志，本地开发/测试无需任何真实凭据；`smtp` 强制走 SMTP。
+   */
+  MAIL_DRIVER: z.enum(['auto', 'smtp', 'log']).default('auto'),
+  SMTP_HOST: optionalString(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(587),
+  /** 465 端口通常为 true（隐式 TLS），587 端口保持 false（STARTTLS）。 */
+  SMTP_SECURE: booleanFlag(false),
+  SMTP_USER: optionalString(),
+  SMTP_PASS: optionalString(),
+  /** 发件人；缺省用 `桜花白板 <no-reply@localhost>`。 */
+  MAIL_FROM: optionalString(),
 }).superRefine((value, ctx) => {
   if (value.STORAGE_DRIVER !== 's3') return;
   for (const key of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {

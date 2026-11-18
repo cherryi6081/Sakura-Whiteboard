@@ -21,14 +21,16 @@ import {
   fetchGithubProfile,
   githubConfigured,
   githubRedirectUri,
+  isBindState,
   loginErrorUrl,
   parseStateCookieValue,
   safeReturnTo,
   saveState,
   webAppUrl,
 } from '../../auth/githubOAuth.js';
-import { loginWithGithub } from '../../domain/githubAccount.js';
+import { loginWithGithub, bindGithubAccount, GithubBindingError } from '../../domain/githubAccount.js';
 import { purgeAccount } from '../../domain/accountDeletion.js';
+import { sendEmailVerificationEmail } from '../../auth/emailFlows.js';
 import { AppError } from '../middlewares/error.js';
 import {
   clientIp,
@@ -79,6 +81,28 @@ const closeAccountSchema = z.object({
   currentPassword: z.string().min(1).max(72),
 });
 
+/** 绑定流程结束统一回站点页并打开账号设置（`account=1`），由前端展示结果。 */
+const ACCOUNT_RETURN = '/boards';
+
+function accountReturnUrl(
+  req: Request,
+  next: string | null,
+  params: Record<string, string>,
+): string {
+  const url = new URL(webAppUrl(req, safeReturnTo(next) ?? ACCOUNT_RETURN));
+  url.searchParams.set('account', '1');
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.toString();
+}
+
+export function bindErrorUrl(req: Request, next: string | null, code: string): string {
+  return accountReturnUrl(req, next, { githubError: code });
+}
+
+export function bindSuccessUrl(req: Request, next: string | null, alreadyLinked: boolean): string {
+  return accountReturnUrl(req, next, { github: alreadyLinked ? 'already-linked' : 'linked' });
+}
+
 const handle =
   (fn: (req: Request, res: Response) => Promise<void>) =>
   (req: Request, res: Response, next: NextFunction) => {
@@ -118,6 +142,7 @@ export type UserRow = {
   display_name: string;
   color: string;
   avatar_url: string | null;
+  email_verified_at?: string | null;
 };
 
 type UserWithCredentialRow = UserRow & { password_hash: string; status: string };
@@ -128,6 +153,8 @@ export const toUser = (row: UserRow) => ({
   displayName: row.display_name,
   color: row.color,
   avatarUrl: row.avatar_url,
+  /** 仅表示状态；未验证不影响任何现有功能。 */
+  emailVerified: Boolean(row.email_verified_at),
 });
 
 authRouter.post(
@@ -157,7 +184,7 @@ authRouter.post(
       const inserted = await client.query<UserRow>(
         `insert into users (email, display_name)
          values ($1, $2)
-         returning id, email, display_name, color, avatar_url`,
+         returning id, email, display_name, color, avatar_url, email_verified_at`,
         [body.email, displayName],
       );
       row = inserted.rows[0] ?? null;
@@ -177,6 +204,14 @@ authRouter.post(
     const userId = row.id;
     const loginMethod = 'password' as const;
     await createSession(userId, loginMethod, res);
+    // 注册后自动发一封验证邮件；失败只告警，不影响注册与会话
+    if (row.email) {
+      void sendEmailVerificationEmail(req, {
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+      }).catch((err) => logger.warn({ err, userId: row.id }, 'register verification mail failed'));
+    }
     res.status(201).json({ user: toUser(row), methods: ['password'], loginMethod });
   }),
 );
@@ -197,7 +232,8 @@ authRouter.post(
     }
 
     const { rows } = await pool.query<UserWithCredentialRow>(
-      `select u.id, u.email, u.display_name, u.color, u.avatar_url, u.status, c.password_hash
+      `select u.id, u.email, u.display_name, u.color, u.avatar_url, u.email_verified_at,
+              u.status, c.password_hash
          from users u
          join credentials c on c.user_id = u.id
         where u.email = $1`,
@@ -285,12 +321,15 @@ authRouter.get(
     const remaining = candidates.filter((item) => item !== state);
     res.append('Set-Cookie', remaining.length > 0 ? buildStateCookie(remaining) : clearStateCookie());
 
+    // state 带 `b~` 前缀即为绑定流程：即使 Redis 里的记录已过期，也把用户送回账号设置
+    const bindAttempt = isBindState(state);
+
     if (!githubConfigured()) {
-      res.redirect(302, loginErrorUrl(req, 'not_configured', null));
+      res.redirect(302, bindAttempt ? bindErrorUrl(req, null, 'not_configured') : loginErrorUrl(req, 'not_configured', null));
       return;
     }
     if (!state || !candidates.includes(state)) {
-      res.redirect(302, loginErrorUrl(req, 'state_mismatch', null));
+      res.redirect(302, bindAttempt ? bindErrorUrl(req, null, 'state_mismatch') : loginErrorUrl(req, 'state_mismatch', null));
       return;
     }
 
@@ -304,20 +343,40 @@ authRouter.get(
     }
     if (!record) {
       // cookie 命中但 Redis 里没有：TTL 到期、已被消费（重复回调）或存储不可用
-      res.redirect(302, loginErrorUrl(req, storeFailed ? 'temporarily_unavailable' : 'state_expired', null));
+      const failure = storeFailed ? 'temporarily_unavailable' : 'state_expired';
+      res.redirect(
+        302,
+        bindAttempt ? bindErrorUrl(req, null, failure) : loginErrorUrl(req, failure, null),
+      );
       return;
+    }
+
+    const isBind = record.mode === 'bind';
+    if (isBind) {
+      // 绑定必须在发起流程的同一登录会话里完成，避免 A 账号发起、B 账号回调时串绑
+      const identity = identityOf(req);
+      if (!record.userId || identity.userId !== record.userId) {
+        res.redirect(302, bindErrorUrl(req, record.returnTo, 'bind_session_mismatch'));
+        return;
+      }
     }
 
     const providerError = typeof req.query.error === 'string' ? req.query.error : '';
     if (providerError) {
       const code = providerError === 'access_denied' ? 'access_denied' : 'github_error';
-      res.redirect(302, loginErrorUrl(req, code, record.returnTo));
+      res.redirect(
+        302,
+        isBind ? bindErrorUrl(req, record.returnTo, code) : loginErrorUrl(req, code, record.returnTo),
+      );
       return;
     }
 
     const code = typeof req.query.code === 'string' ? req.query.code : '';
     if (!code) {
-      res.redirect(302, loginErrorUrl(req, 'github_error', record.returnTo));
+      res.redirect(
+        302,
+        isBind ? bindErrorUrl(req, record.returnTo, 'github_error') : loginErrorUrl(req, 'github_error', record.returnTo),
+      );
       return;
     }
 
@@ -328,18 +387,39 @@ authRouter.get(
         verifier: record.codeVerifier,
       });
       const profile = await fetchGithubProfile(token);
+
+      if (isBind) {
+        const userId = record.userId!;
+        const { alreadyLinked } = await bindGithubAccount(userId, profile);
+        res.redirect(302, bindSuccessUrl(req, record.returnTo, alreadyLinked));
+        return;
+      }
+
       const { userId } = await loginWithGithub(profile);
       await createSession(userId, 'oauth:github', res);
       // 回调落在 API 端口，最终跳转要指回前端来源（开发 5173 / 生产同源）
       res.redirect(302, webAppUrl(req, safeReturnTo(record.returnTo) ?? '/'));
     } catch (error) {
+      if (error instanceof GithubBindingError) {
+        logger.warn({ err: error, code: error.code }, 'github bind rejected');
+        res.redirect(302, bindErrorUrl(req, record.returnTo, error.code));
+        return;
+      }
       if (error instanceof GithubOAuthError) {
         logger.warn({ err: error, code: error.code }, 'github oauth rejected');
-        res.redirect(302, loginErrorUrl(req, error.code, record.returnTo));
+        res.redirect(
+          302,
+          isBind ? bindErrorUrl(req, record.returnTo, error.code) : loginErrorUrl(req, error.code, record.returnTo),
+        );
         return;
       }
       logger.error({ err: error }, 'github oauth failed');
-      res.redirect(302, loginErrorUrl(req, 'temporarily_unavailable', record.returnTo));
+      res.redirect(
+        302,
+        isBind
+          ? bindErrorUrl(req, record.returnTo, 'temporarily_unavailable')
+          : loginErrorUrl(req, 'temporarily_unavailable', record.returnTo),
+      );
     }
   }),
 );
@@ -353,7 +433,7 @@ authRouter.get(
     if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
 
     const { rows } = await pool.query<UserRow & { has_password: boolean; has_github: boolean }>(
-      `select u.id, u.email, u.display_name, u.color, u.avatar_url,
+      `select u.id, u.email, u.display_name, u.color, u.avatar_url, u.email_verified_at,
               exists(select 1 from credentials c where c.user_id = u.id) as has_password,
               exists(select 1 from oauth_accounts o where o.user_id = u.id and o.provider = 'github') as has_github
          from users u
@@ -394,7 +474,7 @@ authRouter.patch(
     const { rows } = await pool.query<UserRow>(
       `update users set display_name = $2
         where id = $1 and status = 'active'
-        returning id, email, display_name, color, avatar_url`,
+        returning id, email, display_name, color, avatar_url, email_verified_at`,
       [userId, displayName],
     );
     const row = rows[0];

@@ -3,6 +3,9 @@ import { assessPassword, LIMITS } from "@whiteboard/shared";
 import {
   changePassword,
   deleteAccount,
+  fetchProviders,
+  sendEmailVerification,
+  unbindGithub,
   updateProfile,
   uploadAvatar,
   type AuthUser,
@@ -20,11 +23,64 @@ import { UserMark } from "../ui/UserMark";
 
 type Props = {
   user: AuthUser;
+  /** `/auth/me` 返回的登录方式：password / github */
+  methods: string[];
+  onMethodsChange: (methods: string[]) => void;
+  /** 从 GitHub 绑定回调带回来的结果提示（账号弹窗自动打开时展示） */
+  initialNotice?: string | null;
   onClose: () => void;
   onUserChange: (user: AuthUser) => void;
   /** 销号成功：由调用方做本地会话清理与登出广播 */
   onDeleted: () => void;
 };
+
+/**
+ * GitHub 绑定回调失败码 → 中文提示。服务端只回码，不在 URL 里带第三方原文。
+ * 同时供账号弹窗与列表页读取 query 时使用。
+ */
+export function githubBindErrorMessage(code: string | null): string | null {
+  switch (code) {
+    case "not_configured":
+      return "GitHub 登录尚未启用，暂时无法绑定";
+    case "github_already_linked":
+      return "该 GitHub 账号已绑定到另一个桜花白板账号，请先在那边解绑或换一个 GitHub 账号";
+    case "bind_session_mismatch":
+      return "绑定会话不匹配，请重新登录后再试";
+    case "forbidden":
+      return "绑定请求来源不可信，请从账号设置重新发起";
+    case "state_mismatch":
+    case "state_expired":
+    case "code_expired":
+      return "绑定请求已失效，请重新点击绑定";
+    case "account_disabled":
+      return "账号不存在或已停用，无法绑定";
+    case "access_denied":
+      return "已取消 GitHub 授权";
+    case "github_unreachable":
+      return "无法连接 GitHub（网络或代理异常），请检查网络后重试";
+    case "temporarily_unavailable":
+      return "服务暂时不可用，请稍后重试";
+    case "github_error":
+      return "GitHub 授权失败，请稍后重试";
+    default:
+      return null;
+  }
+}
+
+function bindingMessage(code: string, status: number, message?: string): string {
+  switch (code) {
+    case "LAST_LOGIN_METHOD":
+      return message ?? "这是当前唯一的登录方式，解绑后将无法登录，因此已拒绝";
+    case "NOT_LINKED":
+      return "尚未绑定 GitHub";
+    case "UNAUTHENTICATED":
+      return "登录已失效，请重新登录";
+    case "FORBIDDEN":
+      return "请求被拒绝，请刷新页面后重试";
+    default:
+      return status === 0 ? "网络异常，请稍后重试" : "操作失败，请重试";
+  }
+}
 
 function passwordMessage(code: string, status: number, message?: string): string {
   switch (code) {
@@ -73,7 +129,15 @@ function avatarMessage(code: string, status: number): string {
   }
 }
 
-export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }: Props) {
+export function AccountSettingsDialog({
+  user,
+  methods,
+  onMethodsChange,
+  initialNotice,
+  onClose,
+  onUserChange,
+  onDeleted,
+}: Props) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
@@ -100,7 +164,27 @@ export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  /** 第三方入口由服务端配置决定：没配置时只显示状态，不给无效按钮 */
+  const [providers, setProviders] = useState<{ github: boolean } | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyNotice, setVerifyNotice] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [githubBusy, setGithubBusy] = useState(false);
+  const [githubNotice, setGithubNotice] = useState<string | null>(initialNotice ?? null);
+  const [githubError, setGithubError] = useState<string | null>(null);
+
+  const githubBound = methods.includes("github");
   const assessment = newPassword ? assessPassword(newPassword, { email: user.email ?? undefined }) : null;
+
+  useEffect(() => {
+    let alive = true;
+    void fetchProviders().then((value) => {
+      if (alive) setProviders(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 预览用的是 blob: URL，离开弹窗时统一释放
   useEffect(() => {
@@ -208,6 +292,45 @@ export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }
     setNewPassword("");
     setConfirmPassword("");
     setPasswordNotice("密码已更新，其它设备上的登录已失效");
+  };
+
+  const requestEmailVerification = async () => {
+    if (verifyBusy) return;
+    setVerifyBusy(true);
+    setVerifyNotice(null);
+    setVerifyError(null);
+    const result = await sendEmailVerification();
+    setVerifyBusy(false);
+    if (!result.ok) {
+      setVerifyError(
+        result.code === "TOO_MANY_ATTEMPTS"
+          ? "发送太频繁，请稍后再试"
+          : result.status === 0
+            ? "网络异常，请稍后重试"
+            : result.message ?? "验证邮件发送失败，请稍后重试",
+      );
+      return;
+    }
+    setVerifyNotice(
+      result.data.alreadyVerified
+        ? "这个邮箱已经验证过了"
+        : "验证邮件已发送，请查收；未验证不影响继续使用白板",
+    );
+  };
+
+  const removeGithubBinding = async () => {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setGithubNotice(null);
+    setGithubError(null);
+    const result = await unbindGithub();
+    setGithubBusy(false);
+    if (!result.ok) {
+      setGithubError(bindingMessage(result.code, result.status, result.message));
+      return;
+    }
+    onMethodsChange(result.data.methods);
+    setGithubNotice("已解绑 GitHub");
   };
 
   const closeAccount = async () => {
@@ -327,6 +450,84 @@ export function AccountSettingsDialog({ user, onClose, onUserChange, onDeleted }
               </p>
             ) : null}
           </div>
+        </section>
+
+        <section className="wb-space-settings__section" aria-labelledby="wb-account-security-title">
+          <h3 className="wb-space-settings__subtitle" id="wb-account-security-title">
+            邮箱与登录方式
+          </h3>
+
+          <div className="wb-account__security-row">
+            <div className="wb-account__security-text">
+              <p className="wb-account__security-name">邮箱</p>
+              <p className="wb-caption">{user.email ?? "未绑定邮箱"}</p>
+              <p className="wb-help">
+                {user.emailVerified ? "已验证" : "未验证；不影响登录与白板使用"}
+              </p>
+            </div>
+            {user.email && !user.emailVerified ? (
+              <button
+                className="wb-btn wb-btn--sm"
+                type="button"
+                onClick={() => void requestEmailVerification()}
+                disabled={verifyBusy}
+                data-testid="account-send-verification"
+              >
+                {verifyBusy ? "发送中…" : "发送验证邮件"}
+              </button>
+            ) : null}
+          </div>
+          {verifyNotice ? (
+            <p className="wb-space-lifecycle__notice" role="status">
+              {verifyNotice}
+            </p>
+          ) : null}
+          {verifyError ? (
+            <p className="wb-rename__error" role="alert">
+              {verifyError}
+            </p>
+          ) : null}
+
+          <div className="wb-account__security-row">
+            <div className="wb-account__security-text">
+              <p className="wb-account__security-name">GitHub</p>
+              <p className="wb-help">
+                {githubBound ? "已绑定" : providers?.github ? "未绑定" : "当前未启用"}
+              </p>
+            </div>
+            {githubBound ? (
+              <button
+                className="wb-btn wb-btn--sm"
+                type="button"
+                onClick={() => void removeGithubBinding()}
+                disabled={githubBusy}
+                data-testid="account-unbind-github"
+              >
+                {githubBusy ? "解绑中…" : "解绑"}
+              </button>
+            ) : providers?.github ? (
+              <a
+                className="wb-btn wb-btn--sm"
+                href="/api/auth/github/bind/start?next=%2Fboards"
+                data-testid="account-bind-github"
+              >
+                绑定 GitHub
+              </a>
+            ) : null}
+          </div>
+          <p className="wb-help">
+            解绑前会检查是否还有密码或其它登录方式；这是唯一登录方式时会被拒绝，避免把自己锁在门外。
+          </p>
+          {githubNotice ? (
+            <p className="wb-space-lifecycle__notice" role="status">
+              {githubNotice}
+            </p>
+          ) : null}
+          {githubError ? (
+            <p className="wb-rename__error" role="alert">
+              {githubError}
+            </p>
+          ) : null}
         </section>
 
         <section className="wb-space-settings__section" aria-labelledby="wb-account-password-title">

@@ -5,7 +5,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { fetchClaimPreview, fetchMe, logout, type AuthUser, type ClaimPreview } from "../auth/authApi";
-import { AccountSettingsDialog } from "../auth/AccountSettingsDialog";
+import { AccountSettingsDialog, githubBindErrorMessage } from "../auth/AccountSettingsDialog";
 import { ClaimDialog } from "../auth/ClaimDialog";
 import { migrateGuestLocalData } from "../auth/claimLocalData";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
@@ -197,6 +197,10 @@ export function BoardsPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 顶栏账号胶囊打开的账号设置弹窗；完整 user 用于回填邮箱/颜色与资料更新 */
   const [meUser, setMeUser] = useState<AuthUser | null>(null);
+  /** 与 me 同步的登录方式，账号弹窗用它决定显示「绑定」还是「解绑」 */
+  const [meMethods, setMeMethods] = useState<string[]>([]);
+  /** GitHub 绑定回调带回的提示；打开账号弹窗时展示一次 */
+  const [accountNotice, setAccountNotice] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [preview, setPreview] = useState<ClaimPreview | null>(null);
   const [claimBarVisible, setClaimBarVisible] = useState(false);
@@ -299,7 +303,9 @@ export function BoardsPage() {
         // 游客视图的建板、认领横幅等写操作在这个分支下一律不渲染。
         setClaimBarVisible(false);
         setMeUser(null);
+        setMeMethods([]);
         setAccountOpen(false);
+        setAccountNotice(null);
         setView({ kind: "unknown" });
         return;
       }
@@ -311,7 +317,9 @@ export function BoardsPage() {
       spaceIdRef.current = "";
       setTrashCount(0);
       setMeUser(null);
+      setMeMethods([]);
       setAccountOpen(false);
+      setAccountNotice(null);
       setView({ kind: "guest", items: guestBoardItems() });
       return;
     }
@@ -319,6 +327,7 @@ export function BoardsPage() {
     setActiveOwner(currentOwner);
     setOwner(currentOwner);
     setMeUser(me.data.user);
+    setMeMethods(me.data.methods);
 
     // 空间是列表的一级上下文：先取空间列表，再按空间取白板
     const spacesResult = await fetchSpaces();
@@ -367,6 +376,38 @@ export function BoardsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * GitHub 绑定回调落回列表页：`?account=1&github=linked` / `&githubError=...`。
+   * 自动打开账号弹窗并提示一次，然后把参数从地址栏清掉，刷新不会重复弹。
+   */
+  useEffect(() => {
+    if (!meUser) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("account") !== "1") return;
+    const linked = params.get("github");
+    const error = params.get("githubError");
+    if (!linked && !error) return;
+
+    setAccountNotice(
+      error
+        ? githubBindErrorMessage(error) ?? "GitHub 绑定失败，请稍后重试"
+        : linked === "already-linked"
+          ? "这个 GitHub 账号已经绑定到当前账号"
+          : "GitHub 已绑定",
+    );
+    setAccountOpen(true);
+
+    params.delete("account");
+    params.delete("github");
+    params.delete("githubError");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+  }, [meUser]);
 
   // 搜索输入防抖 250ms：trim 后比较，只敲空格不会触发请求
   useEffect(() => {
@@ -530,6 +571,8 @@ export function BoardsPage() {
   /** 销号成功：服务端已清 cookie 并作废会话，这里广播登出并回首页（不再打 logout 接口）。 */
   const handleAccountDeleted = useCallback(() => {
     setAccountOpen(false);
+    setAccountNotice(null);
+    setMeMethods([]);
     publishLogout();
     window.location.assign("/");
   }, []);
@@ -2488,7 +2531,13 @@ export function BoardsPage() {
       {accountOpen && meUser ? (
         <AccountSettingsDialog
           user={meUser}
-          onClose={() => setAccountOpen(false)}
+          methods={meMethods}
+          onMethodsChange={setMeMethods}
+          initialNotice={accountNotice}
+          onClose={() => {
+            setAccountOpen(false);
+            setAccountNotice(null);
+          }}
           onUserChange={(user) => {
             setMeUser(user);
             setView((current) =>

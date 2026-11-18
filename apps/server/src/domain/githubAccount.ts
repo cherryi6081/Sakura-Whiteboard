@@ -110,3 +110,85 @@ export async function loginWithGithub(profile: GithubProfile): Promise<{ userId:
     throw error;
   }
 }
+
+/**
+ * 登录态绑定 GitHub（不建号、不改邮箱、不碰邮箱验证状态）。
+ *
+ * 并发口径与登录一致：`(provider, provider_user_id)` 唯一键兜底；
+ * 已绑定到同一用户视为幂等成功，已绑定到别人则明确拒绝。
+ */
+
+export type GithubBindingErrorCode = 'github_already_linked' | 'account_disabled';
+
+export class GithubBindingError extends Error {
+  constructor(
+    public readonly code: GithubBindingErrorCode,
+    message: string = code,
+  ) {
+    super(message);
+  }
+}
+
+async function attemptBind(userId: string, profile: GithubProfile): Promise<{ alreadyLinked: boolean }> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    const user = await client.query<{ status: string }>('select status from users where id = $1 for update', [userId]);
+    if (user.rows[0]?.status !== 'active') throw new GithubBindingError('account_disabled');
+
+    const binding = await client.query<{ user_id: string }>(
+      `select user_id from oauth_accounts
+        where provider = 'github' and provider_user_id = $1
+          for update`,
+      [profile.id],
+    );
+    const owner = binding.rows[0]?.user_id;
+    if (owner && owner !== userId) throw new GithubBindingError('github_already_linked');
+
+    if (owner === userId) {
+      await client.query(
+        `update oauth_accounts
+            set provider_email = $2,
+                provider_email_verified = true,
+                scopes = $3,
+                last_used_at = now()
+          where provider = 'github' and provider_user_id = $1`,
+        [profile.id, profile.email, 'read:user user:email'],
+      );
+    } else {
+      await client.query(
+        `insert into oauth_accounts
+           (user_id, provider, provider_user_id, provider_email, provider_email_verified, scopes, last_used_at)
+         values ($1, 'github', $2, $3, true, $4, now())`,
+        [userId, profile.id, profile.email, 'read:user user:email'],
+      );
+    }
+
+    await client.query('commit');
+    return { alreadyLinked: owner === userId };
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function bindGithubAccount(
+  userId: string,
+  profile: GithubProfile,
+): Promise<{ alreadyLinked: boolean }> {
+  try {
+    return await attemptBind(userId, profile);
+  } catch (error) {
+    if ((error as { code?: string }).code !== '23505') throw error;
+    // 并发下别人先绑定了同一个 GitHub 账号：重新读一次归属再决定
+    const { rows } = await pool.query<{ user_id: string }>(
+      `select user_id from oauth_accounts where provider = 'github' and provider_user_id = $1`,
+      [profile.id],
+    );
+    if (rows[0]?.user_id === userId) return { alreadyLinked: true };
+    throw new GithubBindingError('github_already_linked');
+  }
+}

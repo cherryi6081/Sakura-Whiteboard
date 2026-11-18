@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { healthRouter } from './routes/health.js';
 import { boardsRouter } from './routes/boards.js';
 import { authRouter } from './routes/auth.js';
+import { accountSecurityRouter } from './routes/accountSecurity.js';
 import { guestRouter } from './routes/guest.js';
 import { publicBoardRouter } from './routes/publicBoard.js';
 import { sharesRouter } from './routes/shares.js';
@@ -57,6 +58,7 @@ export function createApp() {
 
   app.use('/api', healthRouter);
   app.use('/api', authRouter);
+  app.use('/api', accountSecurityRouter);
   app.use('/api', avatarRouter);
   app.use('/api', guestRouter);
   app.use('/api', publicBoardRouter);

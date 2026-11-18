@@ -251,6 +251,14 @@ export function AuthPage({
               </div>
             </div>
 
+            {mode === "login" ? (
+              <p className="wb-auth__forgot">
+                <a className="wb-link" href="/forgot-password" data-testid="auth-forgot">
+                  忘记密码？
+                </a>
+              </p>
+            ) : null}
+
             {error ? (
               <div className="wb-inline-note wb-inline-note--danger" role="alert">
                 <IconAlert />

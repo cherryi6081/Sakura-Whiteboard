@@ -4560,6 +4560,17 @@ body:has(.wb-home) {
   border-bottom-color: var(--auth-ink);
 }
 
+/* 忘记密码：贴在密码字段右下，弱化为辅助入口 */
+.wb-auth__forgot {
+  align-self: flex-end;
+  margin: -6px 0 0;
+  font-size: var(--text-caption);
+}
+
+.wb-auth__forgot .wb-link {
+  color: var(--auth-muted);
+}
+
 /* GitHub 入口：仅登录 / 注册页；配置缺失时整块不渲染 */
 .wb-auth__oauth {
   display: grid;
@@ -6551,6 +6562,32 @@ button.wb-sortchip:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px var(--space-2);
+}
+
+/* 邮箱 / 第三方登录：一行放状态与操作，窄窗也不撑破弹窗 */
+.wb-account__security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.wb-account__security-text {
+  min-width: 0;
+}
+
+.wb-account__security-name {
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--text-primary);
+}
+
+.wb-account__security-row .wb-btn {
+  flex: none;
 }
 
 .wb-account__actions .wb-rename__error {

@@ -12,6 +12,8 @@ export type AuthUser = {
   color: string;
   /** GitHub 登录写入的头像；用户没设置过时为 null */
   avatarUrl: string | null;
+  /** 仅状态提示；未验证不影响登录与白板使用 */
+  emailVerified: boolean;
 };
 
 export type MePayload = {
@@ -97,6 +99,40 @@ export function uploadAvatar(file: File): Promise<ApiResult<{ user: AuthUser }>>
     headers: { 'content-type': file.type, accept: 'application/json', 'x-wb-upload': '1' },
     body: file,
   });
+}
+
+/** 找回密码：始终返回通用成功，避免暴露邮箱是否注册。 */
+export function forgotPassword(input: { email: string }): Promise<ApiResult<{ ok: true }>> {
+  return request<{ ok: true }>('/api/auth/password/forgot', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** 用邮件里的一次性 token 重置密码；成功后该用户其它会话全部失效。 */
+export function resetPassword(input: { token: string; newPassword: string }): Promise<ApiResult<{ ok: true }>> {
+  return request<{ ok: true }>('/api/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** 登录态重新发送邮箱验证邮件（旧的验证链接会随之失效）。 */
+export function sendEmailVerification(): Promise<ApiResult<{ ok: true; alreadyVerified?: boolean }>> {
+  return request<{ ok: true; alreadyVerified?: boolean }>('/api/auth/email/verification', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/** 消费邮件里的验证 token；只更新验证状态，不创建会话。 */
+export function verifyEmail(token: string): Promise<ApiResult<{ ok: true; emailVerified: true }>> {
+  return request<{ ok: true; emailVerified: true }>('/api/auth/email/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+/** 解绑 GitHub；服务端会在没有其它登录方式时拒绝。 */
+export function unbindGithub(): Promise<ApiResult<{ ok: true; methods: string[] }>> {
+  return request<{ ok: true; methods: string[] }>('/api/auth/github/binding', { method: 'DELETE' });
 }
 
 /** 登录态改密；成功后服务端会作废其它会话，但当前标签页会拿到新 cookie。 */

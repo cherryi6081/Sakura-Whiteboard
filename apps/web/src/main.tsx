@@ -6,6 +6,11 @@ import "./styles/ui.css";
 import "./styles/pages.css";
 import "./styles/excalidraw-theme.css";
 import { AuthFlow } from "./auth/AuthFlow";
+import {
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  VerifyEmailPage,
+} from "./auth/AccountSecurityPages";
 import { RequireLogin } from "./auth/RequireLogin";
 import { BoardPage } from "./board/BoardPage";
 import { parseBoardRoute } from "./board/route";
@@ -30,6 +35,12 @@ createRoot(document.getElementById("root")!).render(
         <BoardPage boardId={route.boardId} />
       ) : route.kind === "auth" ? (
         <AuthFlow mode={route.mode} next={route.next} />
+      ) : route.kind === "forgot-password" ? (
+        <ForgotPasswordPage />
+      ) : route.kind === "reset-password" ? (
+        <ResetPasswordPage token={route.token} />
+      ) : route.kind === "verify-email" ? (
+        <VerifyEmailPage token={route.token} />
       ) : route.kind === "boards" ? (
         <BoardsPage />
       ) : route.kind === "trash" ? (

@@ -15,7 +15,7 @@ import { UserMark } from "../ui/UserMark";
 type AccountState =
   | { status: "pending" }
   | { status: "anon" }
-  | { status: "authed"; user: AuthUser };
+  | { status: "authed"; user: AuthUser; methods: string[] };
 
 /** 首页：富士山场景中的实时协作入口。 */
 export function HomePage() {
@@ -36,7 +36,11 @@ export function HomePage() {
     let alive = true;
     void fetchMe().then((result) => {
       if (!alive) return;
-      setAccount(result.ok ? { status: "authed", user: result.data.user } : { status: "anon" });
+      setAccount(
+        result.ok
+          ? { status: "authed", user: result.data.user, methods: result.data.methods }
+          : { status: "anon" },
+      );
     });
     return () => {
       alive = false;
@@ -206,8 +210,14 @@ export function HomePage() {
       {accountSettingsOpen && account.status === "authed" ? (
         <AccountSettingsDialog
           user={account.user}
+          methods={account.methods}
+          onMethodsChange={(methods) =>
+            setAccount((current) => (current.status === "authed" ? { ...current, methods } : current))
+          }
           onClose={() => setAccountSettingsOpen(false)}
-          onUserChange={(user) => setAccount({ status: "authed", user })}
+          onUserChange={(user) =>
+            setAccount((current) => (current.status === "authed" ? { ...current, user } : current))
+          }
           onDeleted={handleAccountDeleted}
         />
       ) : null}

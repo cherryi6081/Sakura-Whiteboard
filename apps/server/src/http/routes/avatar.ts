@@ -118,7 +118,7 @@ avatarRouter.post(
     const { rows } = await pool.query<UserRow>(
       `update users set avatar_url = $2
         where id = $1 and status = 'active'
-        returning id, email, display_name, color, avatar_url`,
+        returning id, email, display_name, color, avatar_url, email_verified_at`,
       [userId, avatarUrl],
     );
     const row = rows[0];
