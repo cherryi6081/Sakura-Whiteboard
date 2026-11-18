@@ -3180,6 +3180,20 @@ body:has(.wb-home) {
     display: none;
   }
 
+  /* 390 级窄屏：操作区独占一行，搜索框可收缩，放不下的按钮换到下一行，不再撑出视口 */
+  .wb-boards__head-actions {
+    flex: 1 1 100%;
+    max-width: 100%;
+    justify-content: flex-end;
+  }
+
+  .wb-boards__search {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
   .wb-trash__badge {
     position: absolute;
     top: 5px;
@@ -5252,7 +5266,10 @@ body:has(.wb-home) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex: none;
+  /* 允许收缩：max-content 在窄屏会超过视口宽，导致整页横向溢出 */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   /* 窄屏时允许换行，搜索框不挤压其它操作 */
   flex-wrap: wrap;
 }
