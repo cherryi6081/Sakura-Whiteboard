@@ -179,7 +179,7 @@ export function HomePage() {
         <div className="wb-home__brand" aria-label="SakuraWhiteboard SHIRO">
           <span className="wb-home__brand-name">桜花白板</span>
           <span className="wb-home__brand-en">SHIRO</span>
-          <span className="wb-home__brand-eyebrow">实时协作画布</span>
+          <span className="wb-home__brand-eyebrow">REAL-TIME COLLABORATIVE CANVAS</span>
         </div>
 
         <section className="wb-home__hero" id="concept">
