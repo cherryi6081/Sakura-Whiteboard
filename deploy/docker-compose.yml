@@ -96,7 +96,31 @@ services:
       <<: *api-env
     command: ["node", "apps/server/dist/db/migrate.js"]
 
+  # S3 兼容存储的本地联调（默认不启动）：
+  #   docker compose --profile s3 up -d s3
+  # 然后在 .env 里设 STORAGE_DRIVER=s3、S3_ENDPOINT=http://127.0.0.1:9000，
+  # 凭据 minioadmin / minioadmin，桶 whiteboard 在启动时预建，path-style 与既有配置一致。
+  #
+  # 为什么不是 MinIO：MinIO 社区版已停止分发（官方 dl.min.io 对二进制返回 410，
+  # Docker Hub 的 minio/minio 也已无法完整拉取），详见开发文档 §13.4。
+  # 这里用 rclone 自带的 S3 服务端，协议、鉴权（SigV4）、path-style 行为一致，换云只改配置。
+  # 若 Docker Hub 被墙，可先从镜像站拉取后本地改名：docker tag <mirror>/rclone/rclone:latest rclone/rclone:latest
+  s3:
+    image: rclone/rclone:latest
+    container_name: wb-s3
+    profiles: ["s3"]
+    # rclone 镜像的 entrypoint 是 rclone 本身，这里用 shell 预建桶目录再启动服务
+    entrypoint:
+      - /bin/sh
+      - -c
+      - mkdir -p /data/whiteboard && exec rclone serve s3 --addr :9000 --auth-key minioadmin,minioadmin /data
+    ports:
+      - "9000:9000"   # S3 API
+    volumes:
+      - s3data:/data
+
 volumes:
   pgdata:
   redisdata:
   storage:
+  s3data:
