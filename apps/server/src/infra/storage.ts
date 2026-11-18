@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { config } from '../config.js';
+import { isValidStorageKey } from '../domain/storageKeys.js';
 
 /**
- * 图片资产的存储驱动（v1.1）。接口保持窄（put/get/delete），两种实现：
+ * 图片资产的存储驱动（v1.1）。接口保持窄（put/get/delete/list），两种实现：
  * - `local`：本地磁盘（默认，开发/单机部署）；
  * - `s3`：S3 兼容对象存储（AWS S3 / MinIO / R2 / OSS 的 S3 模式），签名与传输交给官方 SDK。
  *
@@ -28,26 +35,26 @@ export class StorageError extends Error {
   }
 }
 
+export type StorageObject = {
+  key: string;
+  size: number;
+  lastModified?: Date;
+};
+
 export type StorageDriver = {
   put: (key: string, bytes: Buffer) => Promise<void>;
   /** 对象不存在返回 `null`；其它 IO 失败抛 `StorageError`。 */
   read: (key: string) => Promise<Buffer | null>;
   delete: (key: string) => Promise<void>;
+  /**
+   * 列出桶/根目录下的全部对象（只读，供一致性校验对账）。
+   * 不做 key 形状过滤：`storage:audit` 需要看到 `.tmp` 残留、未知前缀等异常对象。
+   */
+  list: (prefix?: string) => Promise<StorageObject[]>;
 };
 
-/**
- * 存储 key 只允许三种固定形状，杜绝路径穿越：
- * - 白板图片：`<12 位 boardId>/<64 位 hex sha256>`
- * - 白板缩略图：`<12 位 boardId>/thumbnail`（每板固定一个 key，覆盖式写入）
- * - 用户头像：`avatars/<uuid>.<ext>`（文件名由服务端随机生成，不含用户输入）
- */
-const BOARD_ASSET_KEY = /^[A-Za-z0-9_-]{12}\/[a-f0-9]{64}$/;
-const BOARD_THUMBNAIL_KEY = /^[A-Za-z0-9_-]{12}\/thumbnail$/;
-const AVATAR_KEY = /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg|webp|gif)$/;
-
-export function isValidStorageKey(key: string): boolean {
-  return BOARD_ASSET_KEY.test(key) || BOARD_THUMBNAIL_KEY.test(key) || AVATAR_KEY.test(key);
-}
+/** 存储 key 的形状约束见 `domain/storageKeys.ts`；这里保留旧的导出面。 */
+export { classifyStorageKey, isValidStorageKey } from '../domain/storageKeys.js';
 
 /**
  * 服务端包根目录（`apps/server`）。相对 `STORAGE_ROOT` 一律以它为基准，
@@ -93,6 +100,40 @@ export const localDiskStorage: StorageDriver = {
     } catch (err) {
       throw new StorageError('storage delete failed', err);
     }
+  },
+
+  async list(prefix = '') {
+    const root = storageRootDir();
+    const found: StorageObject[] = [];
+
+    const walk = async (dir: string, rel: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw new StorageError('storage list failed', err);
+      }
+      for (const entry of entries) {
+        const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(fullPath, childRel);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        try {
+          const info = await stat(fullPath);
+          found.push({ key: childRel, size: info.size });
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          throw new StorageError('storage list failed', err);
+        }
+      }
+    };
+
+    await walk(root, '');
+    return prefix ? found.filter((item) => item.key.startsWith(prefix)) : found;
   },
 };
 
@@ -152,6 +193,31 @@ export const s3Storage: StorageDriver = {
     } catch (err) {
       throw new StorageError('storage delete failed', err);
     }
+  },
+
+  async list(prefix = '') {
+    const found: StorageObject[] = [];
+    let continuationToken: string | undefined;
+    try {
+      do {
+        const result = await s3().send(
+          new ListObjectsV2Command({
+            Bucket: config.S3_BUCKET,
+            Prefix: prefix || undefined,
+            ContinuationToken: continuationToken,
+          }),
+        );
+        for (const item of result.Contents ?? []) {
+          if (!item.Key) continue;
+          found.push({ key: item.Key, size: item.Size ?? 0, lastModified: item.LastModified });
+        }
+        continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+      } while (continuationToken);
+    } catch (err) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError('storage list failed', err);
+    }
+    return found;
   },
 };
 

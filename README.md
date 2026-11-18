@@ -156,6 +156,10 @@ docker compose -f deploy/docker-compose.yml up -d
 | `GUEST_COOKIE_SECRET_PREV` | 否 | — | 轮换期并行验签的上一代密钥 |
 | `INSTANCE_ID` | 否 | 主机名 | 日志与双实例验证用 |
 | `STORAGE_ROOT` | 否 | `.storage` | 图片本地磁盘根目录 |
+| `GUEST_GC_ENABLED` | 否 | production 为 `true` | 游客板过期清理调度（每日 03:10） |
+| `ASSET_GC_ENABLED` | 否 | production 为 `true` | 资产 GC 调度（每日 03:20，默认 dry-run） |
+| `ASSET_GC_APPLY` | 否 | `false` | 调度执行的资产 GC 真正回收（还需 production） |
+| `ASSET_GC_GRACE_HOURS` | 否 | `24` | 资产 GC 宽限期（小时） |
 | `ASSET_URL_SECRET` | 否 | 复用 `SESSION_SECRET` | 资产签名密钥（≥32 字节） |
 | `ASSET_URL_TTL_SECONDS` | 否 | `900` | 签名 URL 有效期 |
 | `WEB_DIST` | 否 | — | 前端静态产物目录；容器镜像内已设为 `apps/web/dist` |
@@ -173,6 +177,8 @@ npm test               # server + web 单测（vitest，固定 forks + 单 fork�
 npm run build          # shared → server（tsc）→ web（vite build）
 npm run migrate        # 执行 0001–0008 迁移（幂等）
 npm run asset:gc -w @whiteboard/server -- --grace-hours=24   # 资产回收 dry-run
+npm run guest:gc -w @whiteboard/server -- --apply --yes      # 游客板过期清理（默认 dry-run）
+npm run storage:audit -w @whiteboard/server -- --driver=local # 跨存储一致性报告（只读）
 ```
 
 CI（[ci.yml](.github/workflows/ci.yml)）触发于 push 到 `main` 与所有 PR，三个独立 job：`typecheck`、`test`（server + web）、`build`；统一 `npm ci` + Node 22 + npm 缓存。
@@ -186,15 +192,16 @@ CI（[ci.yml](.github/workflows/ci.yml)）触发于 push 到 `main` 与所有 PR
 
 ## 已知边界
 
-- **生产对象存储未联调**：当前只有本地磁盘驱动（`StorageDriver` 接口已抽象），换 S3/OSS 需要另做驱动与联调。
-- **GC 仅 dry-run**：资产 GC 只输出候选与结论，`--apply` 会被拒绝；真实删除需单独审批与演练。
-- **回收站到期清理跑在 API 进程内**：每日 03:00（Asia/Shanghai）执行一次，进程启动时补跑一次，进程内单飞避免定时器与补跑重叠；多副本同时清理时靠 PostgreSQL 行锁去重（后到者删到 0 行，不报错也不重复删）。仍可手动 `npm run trash:gc`。
+- **生产对象存储未联调**：只有本地磁盘驱动经过完整验收；S3 兼容驱动已在本机 `rclone serve s3` 联调，云厂商桶仍需实测。
+- **资产 GC 默认 dry-run**：`--apply` 必须同时传 `--yes`；调度开启后默认仍只出报告，`ASSET_GC_APPLY=true` 且 production 才真正回收。
+- **生命周期任务都在 API 进程内**：回收站 03:00、游客板 03:10、资产 GC 03:20（Asia/Shanghai），启动各补跑一次，进程内单飞；多副本靠 PostgreSQL 会话级 advisory lock 保证同一时刻只有一份执行，并用 `job_runs` 账本按自然日去重，滚动发布当天不会重复跑。默认仅 production 开启，本地/测试不触发。
+- **跨存储对账只出报告**：`npm run storage:audit` 对账 assets / thumbnail / avatar 三类 key，区分「库有引用但对象缺失」与「对象存在但无引用」，不自动删除或修复。
 - **`last_edited_at` 是 5s 合并回写**：op 落库只把 boardId 写入 Redis `dirty:boards`，每 5s 由 Lua 原子领取最多 200 块板并批量 `UPDATE`；写库失败按原分数重入队。改名、置顶、手动排序不刷新该列，所以编辑后列表「最近编辑」最多晚 5s 生效。
 - **游客删板不可恢复**：登录用户删除进 30 天回收站；游客删除是物理删除（`mode:'purged'`），没有回收站。
 - **移动端裁切**：Excalidraw 工具岛在窄屏下约 20px 被裁切，未修。
 - **视觉**：首页 WebGL 山湖、鹤的独立透明画布、`skyClock` 时辰渐变、SVG 小舟、花瓣与涟漪已落地，规范见 [开发文档 §9](docs/实时协作白板_开发文档.md)；`docs/视觉方案.md` 已降级为历史设计稿。
 - **presence 注册表是进程内的**：多实例下各实例只看到自己的连接，presence 聚合不完整；完整方案需把注册表搬到 Redis 或使用粘性房间。
-- **未实现**：GitHub OAuth、白板级成员管理、空间成员变更/移除/退出/转让、白板归档接口、导出 PNG、游客过期清理任务、SSE。
+- **未实现**：presence 多实例聚合、移动端工具岛裁切、SSE、服务端 / PDF 导出、云厂商对象存储实机联调。
 - **口子**：单张 5MB / 单板 50MB 是硬编码常量（`packages/shared` 的 `LIMITS`），要按套餐区分需改为可配置。
 
 ## License

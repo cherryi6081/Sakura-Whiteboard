@@ -12,6 +12,9 @@ const booleanFlag = (defaultValue: boolean) =>
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
   }, z.boolean().default(defaultValue));
 
+/** 清理/GC 调度默认只在生产开启：本地与测试不会因为启动 API 就触发破坏性任务。 */
+const defaultJobsEnabled = process.env.NODE_ENV === 'production';
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -54,6 +57,20 @@ const EnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: optionalString(),
   /** MinIO 需要 path-style（默认 true）；AWS 虚拟主机风格可置 false。 */
   S3_FORCE_PATH_STYLE: booleanFlag(true),
+  /**
+   * 游客板过期清理调度（每日 03:10 Asia/Shanghai）。
+   * 默认只在 production 开启；本地/测试默认关闭，避免误删开发数据。
+   */
+  GUEST_GC_ENABLED: booleanFlag(defaultJobsEnabled),
+  /**
+   * 资产 GC 调度（每日 03:20 Asia/Shanghai）。默认只在 production 开启。
+   * 调度默认只 dry-run；只有 `ASSET_GC_APPLY=true` 且 NODE_ENV=production 才真正回收。
+   */
+  ASSET_GC_ENABLED: booleanFlag(defaultJobsEnabled),
+  /** 调度执行的资产 GC 是否真正回收（CLI 不受此开关影响，仍要求 --apply --yes）。 */
+  ASSET_GC_APPLY: booleanFlag(false),
+  /** 资产 GC 宽限期（小时）：孤儿与已软删资产的观察期。 */
+  ASSET_GC_GRACE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   /** 签名 URL 的 HMAC 密钥；缺省复用 SESSION_SECRET（生产建议单独配置并可轮换）。 */
   ASSET_URL_SECRET: z.string().min(32).optional(),
   /** 签名 URL 有效期（秒），应短于浏览器 HTTP 缓存时间。 */
