@@ -5,7 +5,7 @@ import {
   deleteAccount,
   fetchProviders,
   sendEmailVerification,
-  unbindGithub,
+  unbindOAuth,
   updateProfile,
   uploadAvatar,
   type AuthUser,
@@ -23,10 +23,10 @@ import { UserMark } from "../ui/UserMark";
 
 type Props = {
   user: AuthUser;
-  /** `/auth/me` 返回的登录方式：password / github */
+  /** `/auth/me` 返回的登录方式：password / github / google */
   methods: string[];
   onMethodsChange: (methods: string[]) => void;
-  /** 从 GitHub 绑定回调带回来的结果提示（账号弹窗自动打开时展示） */
+  /** 从第三方绑定回调带回来的结果提示（账号弹窗自动打开时展示） */
   initialNotice?: string | null;
   onClose: () => void;
   onUserChange: (user: AuthUser) => void;
@@ -35,15 +35,20 @@ type Props = {
 };
 
 /**
- * GitHub 绑定回调失败码 → 中文提示。服务端只回码，不在 URL 里带第三方原文。
- * 同时供账号弹窗与列表页读取 query 时使用。
+ * 第三方绑定回调失败码 → 中文提示。服务端只回码，不在 URL 里带第三方原文。
+ * `provider` 来自回跳 query，用于区分 GitHub / Google 的文案。
  */
-export function githubBindErrorMessage(code: string | null): string | null {
+export function oauthBindErrorMessage(provider: string | null, code: string | null): string | null {
+  const google = provider === "google";
+  const label = google ? "Google" : "GitHub";
   switch (code) {
     case "not_configured":
-      return "GitHub 登录尚未启用，暂时无法绑定";
+      return `${label} 登录尚未启用，暂时无法绑定`;
     case "github_already_linked":
-      return "该 GitHub 账号已绑定到另一个桜花白板账号，请先在那边解绑或换一个 GitHub 账号";
+    case "google_already_linked":
+      return google
+        ? "该 Google 账号已绑定到另一个桜花白板账号，请先在那边解绑或换一个 Google 账号"
+        : "该 GitHub 账号已绑定到另一个桜花白板账号，请先在那边解绑或换一个 GitHub 账号";
     case "bind_session_mismatch":
       return "绑定会话不匹配，请重新登录后再试";
     case "forbidden":
@@ -55,24 +60,28 @@ export function githubBindErrorMessage(code: string | null): string | null {
     case "account_disabled":
       return "账号不存在或已停用，无法绑定";
     case "access_denied":
-      return "已取消 GitHub 授权";
+      return `已取消 ${label} 授权`;
     case "github_unreachable":
       return "无法连接 GitHub（网络或代理异常），请检查网络后重试";
+    case "google_unreachable":
+      return "无法连接 Google（网络或代理异常），请检查网络后重试";
     case "temporarily_unavailable":
       return "服务暂时不可用，请稍后重试";
     case "github_error":
       return "GitHub 授权失败，请稍后重试";
+    case "google_error":
+      return "Google 授权失败，请稍后重试";
     default:
       return null;
   }
 }
 
-function bindingMessage(code: string, status: number, message?: string): string {
+function bindingMessage(label: string, code: string, status: number, message?: string): string {
   switch (code) {
     case "LAST_LOGIN_METHOD":
       return message ?? "这是当前唯一的登录方式，解绑后将无法登录，因此已拒绝";
     case "NOT_LINKED":
-      return "尚未绑定 GitHub";
+      return `尚未绑定 ${label}`;
     case "UNAUTHENTICATED":
       return "登录已失效，请重新登录";
     case "FORBIDDEN":
@@ -129,6 +138,49 @@ function avatarMessage(code: string, status: number): string {
   }
 }
 
+/** 单个第三方登录方式：已绑定给解绑按钮，未绑定且已配置给绑定入口，未配置只显示状态。 */
+function ProviderRow({
+  label,
+  testId,
+  bound,
+  enabled,
+  busy,
+  bindHref,
+  onUnbind,
+}: {
+  label: string;
+  testId: string;
+  bound: boolean;
+  enabled: boolean;
+  busy: boolean;
+  bindHref: string;
+  onUnbind: () => void;
+}) {
+  return (
+    <div className="wb-account__security-row">
+      <div className="wb-account__security-text">
+        <p className="wb-account__security-name">{label}</p>
+        <p className="wb-help">{bound ? "已绑定" : enabled ? "未绑定" : "当前未启用"}</p>
+      </div>
+      {bound ? (
+        <button
+          className="wb-btn wb-btn--sm"
+          type="button"
+          onClick={onUnbind}
+          disabled={busy}
+          data-testid={`account-unbind-${testId}`}
+        >
+          {busy ? "解绑中…" : "解绑"}
+        </button>
+      ) : enabled ? (
+        <a className="wb-btn wb-btn--sm" href={bindHref} data-testid={`account-bind-${testId}`}>
+          绑定 {label}
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
 export function AccountSettingsDialog({
   user,
   methods,
@@ -165,15 +217,21 @@ export function AccountSettingsDialog({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   /** 第三方入口由服务端配置决定：没配置时只显示状态，不给无效按钮 */
-  const [providers, setProviders] = useState<{ github: boolean } | null>(null);
+  const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyNotice, setVerifyNotice] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  /** 绑定回调带回的通用结果；解绑后由各 provider 自己的 notice 接管 */
+  const [bindNotice, setBindNotice] = useState<string | null>(initialNotice ?? null);
   const [githubBusy, setGithubBusy] = useState(false);
-  const [githubNotice, setGithubNotice] = useState<string | null>(initialNotice ?? null);
+  const [githubNotice, setGithubNotice] = useState<string | null>(null);
   const [githubError, setGithubError] = useState<string | null>(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleNotice, setGoogleNotice] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   const githubBound = methods.includes("github");
+  const googleBound = methods.includes("google");
   const assessment = newPassword ? assessPassword(newPassword, { email: user.email ?? undefined }) : null;
 
   useEffect(() => {
@@ -318,19 +376,26 @@ export function AccountSettingsDialog({
     );
   };
 
-  const removeGithubBinding = async () => {
-    if (githubBusy) return;
-    setGithubBusy(true);
-    setGithubNotice(null);
-    setGithubError(null);
-    const result = await unbindGithub();
-    setGithubBusy(false);
+  const removeBinding = async (provider: "github" | "google") => {
+    const busy = provider === "github" ? githubBusy : googleBusy;
+    if (busy) return;
+    const setBusy = provider === "github" ? setGithubBusy : setGoogleBusy;
+    const setNotice = provider === "github" ? setGithubNotice : setGoogleNotice;
+    const setError = provider === "github" ? setGithubError : setGoogleError;
+    const label = provider === "github" ? "GitHub" : "Google";
+
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    setBindNotice(null);
+    const result = await unbindOAuth(provider);
+    setBusy(false);
     if (!result.ok) {
-      setGithubError(bindingMessage(result.code, result.status, result.message));
+      setError(bindingMessage(label, result.code, result.status, result.message));
       return;
     }
     onMethodsChange(result.data.methods);
-    setGithubNotice("已解绑 GitHub");
+    setNotice(`已解绑 ${label}`);
   };
 
   const closeAccount = async () => {
@@ -488,36 +553,15 @@ export function AccountSettingsDialog({
             </p>
           ) : null}
 
-          <div className="wb-account__security-row">
-            <div className="wb-account__security-text">
-              <p className="wb-account__security-name">GitHub</p>
-              <p className="wb-help">
-                {githubBound ? "已绑定" : providers?.github ? "未绑定" : "当前未启用"}
-              </p>
-            </div>
-            {githubBound ? (
-              <button
-                className="wb-btn wb-btn--sm"
-                type="button"
-                onClick={() => void removeGithubBinding()}
-                disabled={githubBusy}
-                data-testid="account-unbind-github"
-              >
-                {githubBusy ? "解绑中…" : "解绑"}
-              </button>
-            ) : providers?.github ? (
-              <a
-                className="wb-btn wb-btn--sm"
-                href="/api/auth/github/bind/start?next=%2Fboards"
-                data-testid="account-bind-github"
-              >
-                绑定 GitHub
-              </a>
-            ) : null}
-          </div>
-          <p className="wb-help">
-            解绑前会检查是否还有密码或其它登录方式；这是唯一登录方式时会被拒绝，避免把自己锁在门外。
-          </p>
+          <ProviderRow
+            label="GitHub"
+            testId="github"
+            bound={githubBound}
+            enabled={Boolean(providers?.github)}
+            busy={githubBusy}
+            bindHref="/api/auth/github/bind/start?next=%2Fboards"
+            onUnbind={() => void removeBinding("github")}
+          />
           {githubNotice ? (
             <p className="wb-space-lifecycle__notice" role="status">
               {githubNotice}
@@ -526,6 +570,35 @@ export function AccountSettingsDialog({
           {githubError ? (
             <p className="wb-rename__error" role="alert">
               {githubError}
+            </p>
+          ) : null}
+
+          <ProviderRow
+            label="Google"
+            testId="google"
+            bound={googleBound}
+            enabled={Boolean(providers?.google)}
+            busy={googleBusy}
+            bindHref="/api/auth/google/bind/start?next=%2Fboards"
+            onUnbind={() => void removeBinding("google")}
+          />
+          {googleNotice ? (
+            <p className="wb-space-lifecycle__notice" role="status">
+              {googleNotice}
+            </p>
+          ) : null}
+          {googleError ? (
+            <p className="wb-rename__error" role="alert">
+              {googleError}
+            </p>
+          ) : null}
+
+          <p className="wb-help">
+            解绑前会检查是否还有密码或其它登录方式（GitHub、Google 都算）；只剩一种时会被拒绝，避免把自己锁在门外。
+          </p>
+          {bindNotice ? (
+            <p className="wb-space-lifecycle__notice" role="status">
+              {bindNotice}
             </p>
           ) : null}
         </section>

@@ -14,7 +14,7 @@ import { SESSION_COOKIE, destroySession, parseSessionCookieValue, readSession } 
 export type Identity = {
   userId: string | null;
   sessionId: string | null;
-  loginMethod: 'password' | 'oauth:github' | null;
+  loginMethod: 'password' | 'oauth:github' | 'oauth:google' | null;
   guestId: string | null;
   guestExp: number | null;
 };

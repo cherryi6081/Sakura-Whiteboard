@@ -19,7 +19,7 @@ export type AuthUser = {
 export type MePayload = {
   user: AuthUser;
   methods: string[];
-  loginMethod: 'password' | 'oauth:github' | null;
+  loginMethod: 'password' | 'oauth:github' | 'oauth:google' | null;
 };
 
 export type ClaimPreview = {
@@ -66,9 +66,12 @@ export function register(input: { email: string; password: string; displayName: 
 }
 
 /** 登录页用：哪些第三方登录已配置。失败按未启用处理，绝不因此卡住表单。 */
-export async function fetchProviders(): Promise<{ github: boolean }> {
-  const result = await request<{ github?: boolean }>('/api/auth/providers', { method: 'GET' });
-  return { github: result.ok ? Boolean(result.data.github) : false };
+export async function fetchProviders(): Promise<{ github: boolean; google: boolean }> {
+  const result = await request<{ github?: boolean; google?: boolean }>('/api/auth/providers', { method: 'GET' });
+  return {
+    github: result.ok ? Boolean(result.data.github) : false,
+    google: result.ok ? Boolean(result.data.google) : false,
+  };
 }
 
 export function login(input: { email: string; password: string }): Promise<ApiResult<MePayload>> {
@@ -130,9 +133,9 @@ export function verifyEmail(token: string): Promise<ApiResult<{ ok: true; emailV
   });
 }
 
-/** 解绑 GitHub；服务端会在没有其它登录方式时拒绝。 */
-export function unbindGithub(): Promise<ApiResult<{ ok: true; methods: string[] }>> {
-  return request<{ ok: true; methods: string[] }>('/api/auth/github/binding', { method: 'DELETE' });
+/** 解绑第三方账号；服务端会在没有其它登录方式时拒绝。 */
+export function unbindOAuth(provider: 'github' | 'google'): Promise<ApiResult<{ ok: true; methods: string[] }>> {
+  return request<{ ok: true; methods: string[] }>(`/api/auth/${provider}/binding`, { method: 'DELETE' });
 }
 
 /** 登录态改密；成功后服务端会作废其它会话，但当前标签页会拿到新 cookie。 */

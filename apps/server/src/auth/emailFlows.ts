@@ -5,7 +5,7 @@ import {
   PASSWORD_RESET_TTL_SECONDS,
   issueEmailToken,
 } from './emailTokens.js';
-import { webAppUrl } from './githubOAuth.js';
+import { webAppUrl } from './oauthShared.js';
 
 /**
  * 两类账号邮件的组装与发送。链接指向前端来源（开发 5173 / 生产同源），

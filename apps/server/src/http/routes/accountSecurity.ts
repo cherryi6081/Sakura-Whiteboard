@@ -9,16 +9,28 @@ import { identityOf, requireUser } from '../../auth/identity.js';
 import { parseCookieHeader } from '../../auth/guestCookie.js';
 import {
   GITHUB_STATE_COOKIE,
-  authorizeUrl,
-  buildStateCookie,
-  createPkce,
-  createState,
+  authorizeUrl as githubAuthorizeUrl,
+  buildGithubStateCookie,
   githubConfigured,
   githubRedirectUri,
+  saveGithubState,
+} from '../../auth/githubOAuth.js';
+import {
+  GOOGLE_STATE_COOKIE,
+  authorizeUrl as googleAuthorizeUrl,
+  buildGoogleStateCookie,
+  googleConfigured,
+  googleRedirectUri,
+  saveGoogleState,
+} from '../../auth/googleOAuth.js';
+import {
+  createPkce,
+  createState,
   parseStateCookieValue,
   safeReturnTo,
-  saveState,
-} from '../../auth/githubOAuth.js';
+  type OAuthProvider,
+  type OAuthStateRecord,
+} from '../../auth/oauthShared.js';
 import { consumeEmailToken, hashEmailToken } from '../../auth/emailTokens.js';
 import { sendEmailVerificationEmail, sendPasswordResetEmail } from '../../auth/emailFlows.js';
 import { bindErrorUrl, sameOriginOnly } from './auth.js';
@@ -36,7 +48,7 @@ import {
 } from '../middlewares/rateLimit.js';
 
 /**
- * 账号安全：找回密码、邮箱验证、GitHub 绑定/解绑。
+ * 账号安全：找回密码、邮箱验证、GitHub / Google 绑定与解绑。
  *
  * 与 `auth.ts` 分开只是为了文件体积；同源校验、会话、限流口径完全复用。
  */
@@ -310,124 +322,179 @@ accountSecurityRouter.post(
   }),
 );
 
+type BindRuntime = {
+  provider: OAuthProvider;
+  label: string;
+  configured: () => boolean;
+  cookieName: string;
+  buildCookie: (states: string[]) => string;
+  saveState: (state: string, record: OAuthStateRecord) => Promise<void>;
+  redirectUri: (req: Request) => string;
+  authorizeUrl: (input: { state: string; redirectUri: string; challenge: string }) => string;
+};
+
+const GITHUB_BIND: BindRuntime = {
+  provider: 'github',
+  label: 'GitHub',
+  configured: githubConfigured,
+  cookieName: GITHUB_STATE_COOKIE,
+  buildCookie: buildGithubStateCookie,
+  saveState: saveGithubState,
+  redirectUri: githubRedirectUri,
+  authorizeUrl: githubAuthorizeUrl,
+};
+
+const GOOGLE_BIND: BindRuntime = {
+  provider: 'google',
+  label: 'Google',
+  configured: googleConfigured,
+  cookieName: GOOGLE_STATE_COOKIE,
+  buildCookie: buildGoogleStateCookie,
+  saveState: saveGoogleState,
+  redirectUri: googleRedirectUri,
+  authorizeUrl: googleAuthorizeUrl,
+};
+
 /**
- * `GET /api/auth/github/bind/start`
+ * `GET /api/auth/{provider}/bind/start`
  *
  * 复用登录 OAuth 的 state + PKCE，只把模式标记为 bind 并记住发起用户；
  * 回调阶段会校验当前会话与 state 用户一致。
  */
-accountSecurityRouter.get(
-  '/auth/github/bind/start',
-  requireUser,
-  handle(async (req, res) => {
-    const identity = identityOf(req);
-    const userId = identity.userId;
-    const next = safeReturnTo(typeof req.query.next === 'string' ? req.query.next : null) ?? '/boards';
+function registerBindStart(runtime: BindRuntime): void {
+  accountSecurityRouter.get(
+    `/auth/${runtime.provider}/bind/start`,
+    requireUser,
+    handle(async (req, res) => {
+      const identity = identityOf(req);
+      const userId = identity.userId;
+      const next = safeReturnTo(typeof req.query.next === 'string' ? req.query.next : null) ?? '/boards';
 
-    if (!userId) {
-      res.redirect(302, bindErrorUrl(req, next, 'bind_session_mismatch'));
-      return;
-    }
-    if (!isTrustedBindNavigation(req)) {
-      logger.warn({ userId }, 'github bind navigation rejected');
-      res.redirect(302, bindErrorUrl(req, next, 'forbidden'));
-      return;
-    }
-    if (!githubConfigured()) {
-      res.redirect(302, bindErrorUrl(req, next, 'not_configured'));
-      return;
-    }
+      if (!userId) {
+        res.redirect(302, bindErrorUrl(req, runtime.provider, next, 'bind_session_mismatch'));
+        return;
+      }
+      if (!isTrustedBindNavigation(req)) {
+        logger.warn({ userId, provider: runtime.provider }, 'oauth bind navigation rejected');
+        res.redirect(302, bindErrorUrl(req, runtime.provider, next, 'forbidden'));
+        return;
+      }
+      if (!runtime.configured()) {
+        res.redirect(302, bindErrorUrl(req, runtime.provider, next, 'not_configured'));
+        return;
+      }
 
-    const state = createState('bind');
-    const pkce = createPkce();
-    const pending = parseStateCookieValue(parseCookieHeader(req.headers.cookie)[GITHUB_STATE_COOKIE]);
-    try {
-      await saveState(state, {
-        returnTo: next,
-        codeVerifier: pkce.verifier,
-        createdAt: Date.now(),
-        mode: 'bind',
-        userId,
-      });
-    } catch (error) {
-      logger.error({ err: error }, 'github bind state store unavailable');
-      res.redirect(302, bindErrorUrl(req, next, 'temporarily_unavailable'));
-      return;
-    }
+      const state = createState('bind');
+      const pkce = createPkce();
+      const pending = parseStateCookieValue(parseCookieHeader(req.headers.cookie)[runtime.cookieName]);
+      try {
+        await runtime.saveState(state, {
+          returnTo: next,
+          codeVerifier: pkce.verifier,
+          createdAt: Date.now(),
+          mode: 'bind',
+          userId,
+        });
+      } catch (error) {
+        logger.error({ err: error }, `${runtime.provider} bind state store unavailable`);
+        res.redirect(302, bindErrorUrl(req, runtime.provider, next, 'temporarily_unavailable'));
+        return;
+      }
 
-    res.append('Set-Cookie', buildStateCookie([...pending, state]));
-    res.redirect(
-      302,
-      authorizeUrl({ state, redirectUri: githubRedirectUri(req), challenge: pkce.challenge }),
-    );
-  }),
-);
+      res.append('Set-Cookie', runtime.buildCookie([...pending, state]));
+      res.redirect(
+        302,
+        runtime.authorizeUrl({ state, redirectUri: runtime.redirectUri(req), challenge: pkce.challenge }),
+      );
+    }),
+  );
+}
 
 /**
- * `DELETE /api/auth/github/binding`
- *
- * 解绑前统计登录方式：密码 + 其它 provider 都不存在时拒绝，避免用户把自己锁死。
- * 本次不做其它 provider，因此 GitHub-only 账号会被明确拒绝，直到补上密码或其它绑定。
+ * 解绑：密码 + 其它 provider 都算「其它登录方式」，只剩当前 provider 时拒绝，
+ * 避免用户把自己锁死。GitHub 与 Google 用同一套统计口径。
  */
+async function unbindProvider(
+  provider: OAuthProvider,
+  label: string,
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const identity = identityOf(req);
+  const userId = identity.userId;
+  if (!userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
+
+  const client = await pool.connect();
+  let methods: Array<'password' | 'github' | 'google'> = [];
+  try {
+    await client.query('begin');
+    const locked = await client.query<{ status: string }>(
+      'select status from users where id = $1 for update',
+      [userId],
+    );
+    if (locked.rows[0]?.status !== 'active') {
+      throw new AppError(401, 'UNAUTHENTICATED', '账号不存在或已停用');
+    }
+
+    const { rows } = await client.query<{
+      has_password: boolean;
+      has_current: boolean;
+      other_providers: number;
+    }>(
+      `select exists(select 1 from credentials c where c.user_id = $1) as has_password,
+              exists(select 1 from oauth_accounts o
+                      where o.user_id = $1 and o.provider = $2) as has_current,
+              (select count(*)::int from oauth_accounts o
+                where o.user_id = $1 and o.provider <> $2) as other_providers`,
+      [userId, provider],
+    );
+    const row = rows[0];
+
+    if (!row?.has_current) {
+      throw new AppError(404, 'NOT_LINKED', `尚未绑定 ${label}`);
+    }
+    if (!row.has_password && row.other_providers === 0) {
+      throw new AppError(
+        409,
+        'LAST_LOGIN_METHOD',
+        '这是当前唯一的登录方式，解绑后将无法登录，因此已拒绝。',
+      );
+    }
+
+    await client.query('delete from oauth_accounts where user_id = $1 and provider = $2', [userId, provider]);
+
+    const remaining = await client.query<{ provider: OAuthProvider }>(
+      'select provider from oauth_accounts where user_id = $1',
+      [userId],
+    );
+    if (row.has_password) methods.push('password');
+    for (const item of ['github', 'google'] as const) {
+      if (remaining.rows.some((entry) => entry.provider === item)) methods.push(item);
+    }
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  res.json({ ok: true, methods });
+}
+
+registerBindStart(GITHUB_BIND);
+registerBindStart(GOOGLE_BIND);
+
 accountSecurityRouter.delete(
   '/auth/github/binding',
   sameOriginOnly,
   requireUser,
-  handle(async (req, res) => {
-    const identity = identityOf(req);
-    const userId = identity.userId;
-    if (!userId) throw new AppError(401, 'UNAUTHENTICATED', '请先登录');
+  handle((req, res) => unbindProvider('github', 'GitHub', req, res)),
+);
 
-    const client = await pool.connect();
-    let methods: Array<'password' | 'github'> = [];
-    try {
-      await client.query('begin');
-      const locked = await client.query<{ status: string }>(
-        'select status from users where id = $1 for update',
-        [userId],
-      );
-      if (locked.rows[0]?.status !== 'active') {
-        throw new AppError(401, 'UNAUTHENTICATED', '账号不存在或已停用');
-      }
-
-      const { rows } = await client.query<{
-        has_password: boolean;
-        has_github: boolean;
-        other_providers: number;
-      }>(
-        `select exists(select 1 from credentials c where c.user_id = $1) as has_password,
-                exists(select 1 from oauth_accounts o
-                        where o.user_id = $1 and o.provider = 'github') as has_github,
-                (select count(*)::int from oauth_accounts o
-                  where o.user_id = $1 and o.provider <> 'github') as other_providers`,
-        [userId],
-      );
-      const row = rows[0];
-
-      if (!row?.has_github) {
-        throw new AppError(404, 'NOT_LINKED', '尚未绑定 GitHub');
-      }
-      if (!row.has_password && row.other_providers === 0) {
-        throw new AppError(
-          409,
-          'LAST_LOGIN_METHOD',
-          '这是当前唯一的登录方式，解绑后将无法登录，因此已拒绝。',
-        );
-      }
-
-      await client.query(`delete from oauth_accounts where user_id = $1 and provider = 'github'`, [userId]);
-      await client.query('commit');
-
-      methods = [];
-      if (row.has_password) methods.push('password');
-      // 其它 provider 暂未开放；解绑后仍可用密码登录（上面的检查已保证至少还有一种方式）
-    } catch (error) {
-      await client.query('rollback').catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-
-    res.json({ ok: true, methods });
-  }),
+accountSecurityRouter.delete(
+  '/auth/google/binding',
+  sameOriginOnly,
+  requireUser,
+  handle((req, res) => unbindProvider('google', 'Google', req, res)),
 );

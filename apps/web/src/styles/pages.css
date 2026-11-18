@@ -4593,8 +4593,9 @@ body:has(.wb-home) {
   background: rgba(107, 96, 88, 0.25);
 }
 
-/* GitHub 入口：与主按钮同高同内边距的描边胶囊，朱色淡底，压在羊皮纸卡片上 */
-.wb-auth__github {
+/* GitHub / Google 入口：与主按钮同高同内边距的描边胶囊，朱色淡底，压在羊皮纸卡片上 */
+.wb-auth__github,
+.wb-auth__google {
   height: 44px;
   padding: 0 var(--space-4);
   border: 1px solid rgba(180, 64, 44, 0.34);
@@ -4610,26 +4611,31 @@ body:has(.wb-home) {
     color var(--dur-fast) var(--ease-standard);
 }
 
-.wb-auth__github:hover {
+.wb-auth__github:hover,
+.wb-auth__google:hover {
   border-color: rgba(180, 64, 44, 0.55);
   background: rgba(180, 64, 44, 0.1);
   color: var(--auth-vermilion);
 }
 
-.wb-auth__github:focus-visible {
+.wb-auth__github:focus-visible,
+.wb-auth__google:focus-visible {
   outline: 2px solid var(--auth-vermilion);
   outline-offset: 2px;
 }
 
 /* 卡片本身昼夜都保持羊皮纸；夜间只把胶囊底与描边压深一点，保证同等可读 */
-:root[data-theme="night"] .wb-auth__github {
+:root[data-theme="night"] .wb-auth__github,
+:root[data-theme="night"] .wb-auth__google {
   border-color: rgba(180, 64, 44, 0.46);
   background: rgba(180, 64, 44, 0.09);
 }
 
 /* 处理中：胶囊样式不变，只压暗并给出进度光标，连点不再触发第二次跳转 */
 .wb-auth__github--busy,
-.wb-auth__github--busy:hover {
+.wb-auth__github--busy:hover,
+.wb-auth__google--busy,
+.wb-auth__google--busy:hover {
   border-color: rgba(180, 64, 44, 0.22);
   background: rgba(180, 64, 44, 0.04);
   color: var(--auth-muted);

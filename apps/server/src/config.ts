@@ -95,6 +95,17 @@ const EnvSchema = z.object({
   /** 仅测试用：把 OAuth 站点与 API 指到本地假 provider。 */
   GITHUB_OAUTH_BASE_URL: z.string().url().default('https://github.com'),
   GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
+  /** Google OAuth（OIDC 授权码 + PKCE）：CLIENT_ID / SECRET 齐备才启用。 */
+  GOOGLE_CLIENT_ID: optionalString(),
+  GOOGLE_CLIENT_SECRET: optionalString(),
+  /** 注册到 Google Cloud 控制台的重定向 URI；缺省按请求的 proto/host 推导。 */
+  GOOGLE_REDIRECT_URI: optionalString(),
+  /** 服务端访问 Google 的出站代理；缺省回落到 HTTPS_PROXY / HTTP_PROXY。 */
+  GOOGLE_PROXY: optionalString(),
+  /** 仅测试用：把授权 / 换 token / 用户资料指到本地假 provider。 */
+  GOOGLE_OAUTH_BASE_URL: z.string().url().default('https://accounts.google.com'),
+  GOOGLE_TOKEN_BASE_URL: z.string().url().default('https://oauth2.googleapis.com'),
+  GOOGLE_API_BASE_URL: z.string().url().default('https://openidconnect.googleapis.com'),
   /**
    * 邮件通道：`auto`（默认）在配置了 SMTP_HOST 时走 SMTP，否则落到日志通道；
    * `log` 只把邮件写日志，本地开发/测试无需任何真实凭据；`smtp` 强制走 SMTP。

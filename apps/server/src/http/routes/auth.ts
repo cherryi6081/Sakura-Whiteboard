@@ -9,26 +9,45 @@ import { clearSessionCookie, createSession, destroySession, bumpAuthEpoch } from
 import { identityOf, requireUser } from '../../auth/identity.js';
 import { parseCookieHeader } from '../../auth/guestCookie.js';
 import {
+  GITHUB_SCOPE,
   GITHUB_STATE_COOKIE,
-  GithubOAuthError,
-  authorizeUrl,
-  buildStateCookie,
-  clearStateCookie,
-  consumeState,
-  createPkce,
-  createState,
-  exchangeCode,
+  authorizeUrl as githubAuthorizeUrl,
+  buildGithubStateCookie,
+  clearGithubStateCookie,
+  consumeGithubState,
+  exchangeCode as githubExchangeCode,
   fetchGithubProfile,
   githubConfigured,
   githubRedirectUri,
+  loginErrorUrl as githubLoginErrorUrl,
+  saveGithubState,
+} from '../../auth/githubOAuth.js';
+import {
+  GOOGLE_SCOPE,
+  GOOGLE_STATE_COOKIE,
+  authorizeUrl as googleAuthorizeUrl,
+  buildGoogleStateCookie,
+  clearGoogleStateCookie,
+  consumeGoogleState,
+  exchangeCode as googleExchangeCode,
+  fetchGoogleProfile,
+  googleConfigured,
+  googleRedirectUri,
+  loginErrorUrl as googleLoginErrorUrl,
+  saveGoogleState,
+} from '../../auth/googleOAuth.js';
+import {
+  createPkce,
+  createState,
   isBindState,
-  loginErrorUrl,
   parseStateCookieValue,
   safeReturnTo,
-  saveState,
   webAppUrl,
-} from '../../auth/githubOAuth.js';
-import { loginWithGithub, bindGithubAccount, GithubBindingError } from '../../domain/githubAccount.js';
+  OAuthError,
+  type OAuthProvider,
+  type OAuthStateRecord,
+} from '../../auth/oauthShared.js';
+import { loginWithOAuth, bindOAuthAccount, OAuthBindingError, type OAuthProfile } from '../../domain/oauthAccount.js';
 import { purgeAccount } from '../../domain/accountDeletion.js';
 import { sendEmailVerificationEmail } from '../../auth/emailFlows.js';
 import { AppError } from '../middlewares/error.js';
@@ -44,7 +63,7 @@ import {
 } from '../middlewares/rateLimit.js';
 
 /**
- * 邮箱 + 密码账号（M5-1）+ GitHub OAuth。
+ * 邮箱 + 密码账号（M5-1）+ GitHub / Google OAuth。
  * 会话存 Redis（`sess:{sid}`），cookie `wb_sess` 为 HttpOnly 签名值。
  */
 
@@ -95,12 +114,22 @@ function accountReturnUrl(
   return url.toString();
 }
 
-export function bindErrorUrl(req: Request, next: string | null, code: string): string {
-  return accountReturnUrl(req, next, { githubError: code });
+export function bindErrorUrl(
+  req: Request,
+  provider: OAuthProvider,
+  next: string | null,
+  code: string,
+): string {
+  return accountReturnUrl(req, next, { [`${provider}Error`]: code });
 }
 
-export function bindSuccessUrl(req: Request, next: string | null, alreadyLinked: boolean): string {
-  return accountReturnUrl(req, next, { github: alreadyLinked ? 'already-linked' : 'linked' });
+export function bindSuccessUrl(
+  req: Request,
+  provider: OAuthProvider,
+  next: string | null,
+  alreadyLinked: boolean,
+): string {
+  return accountReturnUrl(req, next, { [provider]: alreadyLinked ? 'already-linked' : 'linked' });
 }
 
 const handle =
@@ -271,158 +300,242 @@ authRouter.post(
 );
 
 authRouter.get('/auth/providers', (_req, res) => {
-  res.json({ github: githubConfigured() });
+  res.json({ github: githubConfigured(), google: googleConfigured() });
 });
 
 /**
- * GitHub OAuth 起点：生成一次性 state + PKCE，把 state 落到 Redis 与 HttpOnly cookie，
- * 然后 302 到 GitHub。未配置时同样 302 回登录页并带 `oauthError=not_configured`，
- * 前端据此不展示入口，也避免直接访问时白屏。
+ * 每家 provider 的差异收敛到这张表：cookie 名、端点、scope、资料解析与会话里的登录方式。
+ * 登录起点 / 回调只写一份，Google 与 GitHub 走完全相同的 state、PKCE、合并与错误口径。
  */
-authRouter.get(
-  '/auth/github/start',
-  handle(async (req, res) => {
-    const next = safeReturnTo(typeof req.query.next === 'string' ? req.query.next : null) ?? '/';
-    if (!githubConfigured()) {
-      res.redirect(302, loginErrorUrl(req, 'not_configured', next));
-      return;
-    }
-    const state = createState();
-    const pkce = createPkce();
-    // 连点两次会开两条授权流程：cookie 里保留多个候选 state，先回来的那条也能通过校验
-    const pending = parseStateCookieValue(parseCookieHeader(req.headers.cookie)[GITHUB_STATE_COOKIE]);
-    try {
-      await saveState(state, { returnTo: next, codeVerifier: pkce.verifier, createdAt: Date.now() });
-    } catch (error) {
-      logger.error({ err: error }, 'github oauth state store unavailable');
-      res.redirect(302, loginErrorUrl(req, 'temporarily_unavailable', next));
-      return;
-    }
-    res.append('Set-Cookie', buildStateCookie([...pending, state]));
-    res.redirect(
-      302,
-      authorizeUrl({ state, redirectUri: githubRedirectUri(req), challenge: pkce.challenge }),
-    );
-  }),
-);
+type OAuthRuntime = {
+  provider: OAuthProvider;
+  loginMethod: 'oauth:github' | 'oauth:google';
+  configured: () => boolean;
+  loginErrorUrl: (req: Request, code: string, next: string | null) => string;
+  cookieName: string;
+  buildCookie: (states: string[]) => string;
+  clearCookie: () => string;
+  saveState: (state: string, record: OAuthStateRecord) => Promise<void>;
+  consumeState: (state: string) => Promise<OAuthStateRecord | null>;
+  redirectUri: (req: Request) => string;
+  authorizeUrl: (input: { state: string; redirectUri: string; challenge: string }) => string;
+  loadProfile: (input: { code: string; redirectUri: string; verifier: string }) => Promise<OAuthProfile>;
+};
+
+const GITHUB_RUNTIME: OAuthRuntime = {
+  provider: 'github',
+  loginMethod: 'oauth:github',
+  configured: githubConfigured,
+  loginErrorUrl: githubLoginErrorUrl,
+  cookieName: GITHUB_STATE_COOKIE,
+  buildCookie: buildGithubStateCookie,
+  clearCookie: clearGithubStateCookie,
+  saveState: saveGithubState,
+  consumeState: consumeGithubState,
+  redirectUri: githubRedirectUri,
+  authorizeUrl: githubAuthorizeUrl,
+  loadProfile: async (input) => {
+    const token = await githubExchangeCode(input);
+    const profile = await fetchGithubProfile(token);
+    return { provider: 'github', ...profile, scopes: GITHUB_SCOPE };
+  },
+};
+
+const GOOGLE_RUNTIME: OAuthRuntime = {
+  provider: 'google',
+  loginMethod: 'oauth:google',
+  configured: googleConfigured,
+  loginErrorUrl: googleLoginErrorUrl,
+  cookieName: GOOGLE_STATE_COOKIE,
+  buildCookie: buildGoogleStateCookie,
+  clearCookie: clearGoogleStateCookie,
+  saveState: saveGoogleState,
+  consumeState: consumeGoogleState,
+  redirectUri: googleRedirectUri,
+  authorizeUrl: googleAuthorizeUrl,
+  loadProfile: async (input) => {
+    const token = await googleExchangeCode(input);
+    const profile = await fetchGoogleProfile(token);
+    return { provider: 'google', ...profile, scopes: GOOGLE_SCOPE };
+  },
+};
 
 /**
- * GitHub 回调：state 必须同时命中 cookie 与 Redis（消费即删，防重放），
+ * 登录起点：生成一次性 state + PKCE，把 state 落到 Redis 与 HttpOnly cookie，然后 302 到第三方。
+ * 未配置时同样 302 回登录页并带 `oauthError=not_configured&oauth=<provider>`，
+ * 前端据此不展示入口，也避免直接访问时白屏。
+ */
+function registerLoginStart(runtime: OAuthRuntime): void {
+  authRouter.get(
+    `/auth/${runtime.provider}/start`,
+    handle(async (req, res) => {
+      const next = safeReturnTo(typeof req.query.next === 'string' ? req.query.next : null) ?? '/';
+      if (!runtime.configured()) {
+        res.redirect(302, runtime.loginErrorUrl(req, 'not_configured', next));
+        return;
+      }
+      const state = createState();
+      const pkce = createPkce();
+      // 连点两次会开两条授权流程：cookie 里保留多个候选 state，先回来的那条也能通过校验
+      const pending = parseStateCookieValue(parseCookieHeader(req.headers.cookie)[runtime.cookieName]);
+      try {
+        await runtime.saveState(state, { returnTo: next, codeVerifier: pkce.verifier, createdAt: Date.now() });
+      } catch (error) {
+        logger.error({ err: error }, `${runtime.provider} oauth state store unavailable`);
+        res.redirect(302, runtime.loginErrorUrl(req, 'temporarily_unavailable', next));
+        return;
+      }
+      res.append('Set-Cookie', runtime.buildCookie([...pending, state]));
+      res.redirect(
+        302,
+        runtime.authorizeUrl({ state, redirectUri: runtime.redirectUri(req), challenge: pkce.challenge }),
+      );
+    }),
+  );
+}
+
+/**
+ * 回调：state 必须同时命中 cookie 与 Redis（消费即删，防重放），
  * 之后换 token、取已验证邮箱、合并或新建账号，最后种会话并回站内落点。
  * 所有失败都回登录页带可读错误码，不静默登录。
  */
-authRouter.get(
-  '/auth/github/callback',
-  handle(async (req, res) => {
-    const state = typeof req.query.state === 'string' ? req.query.state : '';
-    const cookies = parseCookieHeader(req.headers.cookie);
-    const candidates = parseStateCookieValue(cookies[GITHUB_STATE_COOKIE]);
-    // 只摘掉本次消费的 state，其它并发流程（连点两次）仍然有效
-    const remaining = candidates.filter((item) => item !== state);
-    res.append('Set-Cookie', remaining.length > 0 ? buildStateCookie(remaining) : clearStateCookie());
+function registerLoginCallback(runtime: OAuthRuntime): void {
+  authRouter.get(
+    `/auth/${runtime.provider}/callback`,
+    handle(async (req, res) => {
+      const { provider } = runtime;
+      const state = typeof req.query.state === 'string' ? req.query.state : '';
+      const cookies = parseCookieHeader(req.headers.cookie);
+      const candidates = parseStateCookieValue(cookies[runtime.cookieName]);
+      // 只摘掉本次消费的 state，其它并发流程（连点两次）仍然有效
+      const remaining = candidates.filter((item) => item !== state);
+      res.append('Set-Cookie', remaining.length > 0 ? runtime.buildCookie(remaining) : runtime.clearCookie());
 
-    // state 带 `b~` 前缀即为绑定流程：即使 Redis 里的记录已过期，也把用户送回账号设置
-    const bindAttempt = isBindState(state);
+      // state 带 `b~` 前缀即为绑定流程：即使 Redis 里的记录已过期，也把用户送回账号设置
+      const bindAttempt = isBindState(state);
 
-    if (!githubConfigured()) {
-      res.redirect(302, bindAttempt ? bindErrorUrl(req, null, 'not_configured') : loginErrorUrl(req, 'not_configured', null));
-      return;
-    }
-    if (!state || !candidates.includes(state)) {
-      res.redirect(302, bindAttempt ? bindErrorUrl(req, null, 'state_mismatch') : loginErrorUrl(req, 'state_mismatch', null));
-      return;
-    }
-
-    let record = null;
-    let storeFailed = false;
-    try {
-      record = await consumeState(state);
-    } catch (error) {
-      storeFailed = true;
-      logger.warn({ err: error }, 'github oauth state store unavailable');
-    }
-    if (!record) {
-      // cookie 命中但 Redis 里没有：TTL 到期、已被消费（重复回调）或存储不可用
-      const failure = storeFailed ? 'temporarily_unavailable' : 'state_expired';
-      res.redirect(
-        302,
-        bindAttempt ? bindErrorUrl(req, null, failure) : loginErrorUrl(req, failure, null),
-      );
-      return;
-    }
-
-    const isBind = record.mode === 'bind';
-    if (isBind) {
-      // 绑定必须在发起流程的同一登录会话里完成，避免 A 账号发起、B 账号回调时串绑
-      const identity = identityOf(req);
-      if (!record.userId || identity.userId !== record.userId) {
-        res.redirect(302, bindErrorUrl(req, record.returnTo, 'bind_session_mismatch'));
-        return;
-      }
-    }
-
-    const providerError = typeof req.query.error === 'string' ? req.query.error : '';
-    if (providerError) {
-      const code = providerError === 'access_denied' ? 'access_denied' : 'github_error';
-      res.redirect(
-        302,
-        isBind ? bindErrorUrl(req, record.returnTo, code) : loginErrorUrl(req, code, record.returnTo),
-      );
-      return;
-    }
-
-    const code = typeof req.query.code === 'string' ? req.query.code : '';
-    if (!code) {
-      res.redirect(
-        302,
-        isBind ? bindErrorUrl(req, record.returnTo, 'github_error') : loginErrorUrl(req, 'github_error', record.returnTo),
-      );
-      return;
-    }
-
-    try {
-      const token = await exchangeCode({
-        code,
-        redirectUri: githubRedirectUri(req),
-        verifier: record.codeVerifier,
-      });
-      const profile = await fetchGithubProfile(token);
-
-      if (isBind) {
-        const userId = record.userId!;
-        const { alreadyLinked } = await bindGithubAccount(userId, profile);
-        res.redirect(302, bindSuccessUrl(req, record.returnTo, alreadyLinked));
-        return;
-      }
-
-      const { userId } = await loginWithGithub(profile);
-      await createSession(userId, 'oauth:github', res);
-      // 回调落在 API 端口，最终跳转要指回前端来源（开发 5173 / 生产同源）
-      res.redirect(302, webAppUrl(req, safeReturnTo(record.returnTo) ?? '/'));
-    } catch (error) {
-      if (error instanceof GithubBindingError) {
-        logger.warn({ err: error, code: error.code }, 'github bind rejected');
-        res.redirect(302, bindErrorUrl(req, record.returnTo, error.code));
-        return;
-      }
-      if (error instanceof GithubOAuthError) {
-        logger.warn({ err: error, code: error.code }, 'github oauth rejected');
+      if (!runtime.configured()) {
         res.redirect(
           302,
-          isBind ? bindErrorUrl(req, record.returnTo, error.code) : loginErrorUrl(req, error.code, record.returnTo),
+          bindAttempt
+            ? bindErrorUrl(req, provider, null, 'not_configured')
+            : runtime.loginErrorUrl(req, 'not_configured', null),
         );
         return;
       }
-      logger.error({ err: error }, 'github oauth failed');
-      res.redirect(
-        302,
-        isBind
-          ? bindErrorUrl(req, record.returnTo, 'temporarily_unavailable')
-          : loginErrorUrl(req, 'temporarily_unavailable', record.returnTo),
-      );
-    }
-  }),
-);
+      if (!state || !candidates.includes(state)) {
+        res.redirect(
+          302,
+          bindAttempt
+            ? bindErrorUrl(req, provider, null, 'state_mismatch')
+            : runtime.loginErrorUrl(req, 'state_mismatch', null),
+        );
+        return;
+      }
+
+      let record: OAuthStateRecord | null = null;
+      let storeFailed = false;
+      try {
+        record = await runtime.consumeState(state);
+      } catch (error) {
+        storeFailed = true;
+        logger.warn({ err: error }, `${provider} oauth state store unavailable`);
+      }
+      if (!record) {
+        // cookie 命中但 Redis 里没有：TTL 到期、已被消费（重复回调）或存储不可用
+        const failure = storeFailed ? 'temporarily_unavailable' : 'state_expired';
+        res.redirect(
+          302,
+          bindAttempt
+            ? bindErrorUrl(req, provider, null, failure)
+            : runtime.loginErrorUrl(req, failure, null),
+        );
+        return;
+      }
+
+      const isBind = record.mode === 'bind';
+      if (isBind) {
+        // 绑定必须在发起流程的同一登录会话里完成，避免 A 账号发起、B 账号回调时串绑
+        const identity = identityOf(req);
+        if (!record.userId || identity.userId !== record.userId) {
+          res.redirect(302, bindErrorUrl(req, provider, record.returnTo, 'bind_session_mismatch'));
+          return;
+        }
+      }
+
+      const providerError = typeof req.query.error === 'string' ? req.query.error : '';
+      if (providerError) {
+        const code = providerError === 'access_denied' ? 'access_denied' : `${provider}_error`;
+        res.redirect(
+          302,
+          isBind
+            ? bindErrorUrl(req, provider, record.returnTo, code)
+            : runtime.loginErrorUrl(req, code, record.returnTo),
+        );
+        return;
+      }
+
+      const code = typeof req.query.code === 'string' ? req.query.code : '';
+      if (!code) {
+        res.redirect(
+          302,
+          isBind
+            ? bindErrorUrl(req, provider, record.returnTo, `${provider}_error`)
+            : runtime.loginErrorUrl(req, `${provider}_error`, record.returnTo),
+        );
+        return;
+      }
+
+      try {
+        const profile = await runtime.loadProfile({
+          code,
+          redirectUri: runtime.redirectUri(req),
+          verifier: record.codeVerifier,
+        });
+
+        if (isBind) {
+          const userId = record.userId!;
+          const { alreadyLinked } = await bindOAuthAccount(userId, profile);
+          res.redirect(302, bindSuccessUrl(req, provider, record.returnTo, alreadyLinked));
+          return;
+        }
+
+        const { userId } = await loginWithOAuth(profile);
+        await createSession(userId, runtime.loginMethod, res);
+        // 回调落在 API 端口，最终跳转要指回前端来源（开发 5173 / 生产同源）
+        res.redirect(302, webAppUrl(req, safeReturnTo(record.returnTo) ?? '/'));
+      } catch (error) {
+        if (error instanceof OAuthBindingError) {
+          logger.warn({ err: error, code: error.code }, `${provider} bind rejected`);
+          res.redirect(302, bindErrorUrl(req, provider, record.returnTo, error.code));
+          return;
+        }
+        if (error instanceof OAuthError) {
+          logger.warn({ err: error, code: error.code }, `${provider} oauth rejected`);
+          res.redirect(
+            302,
+            isBind
+              ? bindErrorUrl(req, provider, record.returnTo, error.code)
+              : runtime.loginErrorUrl(req, error.code, record.returnTo),
+          );
+          return;
+        }
+        logger.error({ err: error }, `${provider} oauth failed`);
+        res.redirect(
+          302,
+          isBind
+            ? bindErrorUrl(req, provider, record.returnTo, 'temporarily_unavailable')
+            : runtime.loginErrorUrl(req, 'temporarily_unavailable', record.returnTo),
+        );
+      }
+    }),
+  );
+}
+
+registerLoginStart(GITHUB_RUNTIME);
+registerLoginCallback(GITHUB_RUNTIME);
+registerLoginStart(GOOGLE_RUNTIME);
+registerLoginCallback(GOOGLE_RUNTIME);
 
 authRouter.get(
   '/auth/me',
@@ -432,10 +545,11 @@ authRouter.get(
     const userId = identity.userId;
     if (!userId) throw new AppError(401, 'UNAUTHENTICATED', 'login required');
 
-    const { rows } = await pool.query<UserRow & { has_password: boolean; has_github: boolean }>(
+    const { rows } = await pool.query<UserRow & { has_password: boolean; has_github: boolean; has_google: boolean }>(
       `select u.id, u.email, u.display_name, u.color, u.avatar_url, u.email_verified_at,
               exists(select 1 from credentials c where c.user_id = u.id) as has_password,
-              exists(select 1 from oauth_accounts o where o.user_id = u.id and o.provider = 'github') as has_github
+              exists(select 1 from oauth_accounts o where o.user_id = u.id and o.provider = 'github') as has_github,
+              exists(select 1 from oauth_accounts o where o.user_id = u.id and o.provider = 'google') as has_google
          from users u
         where u.id = $1`,
       [userId],
@@ -443,9 +557,10 @@ authRouter.get(
     const row = rows[0];
     if (!row) throw new AppError(401, 'UNAUTHENTICATED', 'session user missing');
 
-    const methods: Array<'password' | 'github'> = [];
+    const methods: Array<'password' | 'github' | 'google'> = [];
     if (row.has_password) methods.push('password');
     if (row.has_github) methods.push('github');
+    if (row.has_google) methods.push('google');
 
     res.json({
       user: toUser(row),

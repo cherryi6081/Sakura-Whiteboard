@@ -5,7 +5,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { fetchClaimPreview, fetchMe, logout, type AuthUser, type ClaimPreview } from "../auth/authApi";
-import { AccountSettingsDialog, githubBindErrorMessage } from "../auth/AccountSettingsDialog";
+import { AccountSettingsDialog, oauthBindErrorMessage } from "../auth/AccountSettingsDialog";
 import { ClaimDialog } from "../auth/ClaimDialog";
 import { migrateGuestLocalData } from "../auth/claimLocalData";
 import { SaveToAccountBanner } from "../auth/GuestBadge";
@@ -378,29 +378,34 @@ export function BoardsPage() {
   }, [load]);
 
   /**
-   * GitHub 绑定回调落回列表页：`?account=1&github=linked` / `&githubError=...`。
-   * 自动打开账号弹窗并提示一次，然后把参数从地址栏清掉，刷新不会重复弹。
+   * 第三方绑定回调落回列表页：`?account=1&github=linked` / `&githubError=...`，
+   * Google 同理（`google` / `googleError`）。自动打开账号弹窗并提示一次，
+   * 然后把参数从地址栏清掉，刷新不会重复弹。
    */
   useEffect(() => {
     if (!meUser) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("account") !== "1") return;
-    const linked = params.get("github");
-    const error = params.get("githubError");
+    const provider = params.has("google") || params.has("googleError") ? "google" : "github";
+    const linked = params.get(provider);
+    const error = params.get(`${provider}Error`);
     if (!linked && !error) return;
+    const label = provider === "google" ? "Google" : "GitHub";
 
     setAccountNotice(
       error
-        ? githubBindErrorMessage(error) ?? "GitHub 绑定失败，请稍后重试"
+        ? oauthBindErrorMessage(provider, error) ?? `${label} 绑定失败，请稍后重试`
         : linked === "already-linked"
-          ? "这个 GitHub 账号已经绑定到当前账号"
-          : "GitHub 已绑定",
+          ? `这个 ${label} 账号已经绑定到当前账号`
+          : `${label} 已绑定`,
     );
     setAccountOpen(true);
 
     params.delete("account");
     params.delete("github");
     params.delete("githubError");
+    params.delete("google");
+    params.delete("googleError");
     const query = params.toString();
     window.history.replaceState(
       null,

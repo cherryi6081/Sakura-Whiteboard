@@ -16,7 +16,7 @@ const VERSION = 'v1';
 
 export type SessionData = {
   userId: string;
-  loginMethod: 'password' | 'oauth:github';
+  loginMethod: 'password' | 'oauth:github' | 'oauth:google';
   /** 账号级会话代数：改密/销号时 +1，旧会话在下次读取时立即失效（§5.5）。 */
   epoch: number;
   createdAt: number;
@@ -104,7 +104,12 @@ export async function readSession(sid: string): Promise<SessionData | null> {
     if (typeof parsed.userId !== 'string') return null;
     const data: SessionData = {
       userId: parsed.userId,
-      loginMethod: parsed.loginMethod === 'oauth:github' ? 'oauth:github' : 'password',
+      loginMethod:
+        parsed.loginMethod === 'oauth:github'
+          ? 'oauth:github'
+          : parsed.loginMethod === 'oauth:google'
+            ? 'oauth:google'
+            : 'password',
       epoch: Number(parsed.epoch ?? 0),
       createdAt: Number(parsed.createdAt ?? 0),
       lastSeenAt: Date.now(),

@@ -37,14 +37,15 @@ export function AuthPage({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState<string | null>(() =>
-    oauthMessageOf(new URLSearchParams(window.location.search).get("oauthError")),
-  );
+  const [error, setError] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return oauthMessageOf(params.get("oauthError"), params.get("oauth"));
+  });
   const [busy, setBusy] = useState(false);
-  // GitHub 入口的防连点：点击即禁用，避免短时间发起两条授权流程
-  const [githubBusy, setGithubBusy] = useState(false);
+  // 第三方入口的防连点：点哪个就锁哪个，避免短时间发起两条授权流程
+  const [oauthBusy, setOauthBusy] = useState<"github" | "google" | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [providers, setProviders] = useState<{ github: boolean } | null>(null);
+  const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null);
   const period = useThemePeriod();
 
   // 第三方入口由服务端配置决定：缺配置时不渲染按钮；错误码从回跳 URL 读一次后清掉
@@ -54,8 +55,9 @@ export function AuthPage({
       if (alive) setProviders(value);
     });
     const url = new URL(window.location.href);
-    if (url.searchParams.has("oauthError")) {
+    if (url.searchParams.has("oauthError") || url.searchParams.has("oauth")) {
       url.searchParams.delete("oauthError");
+      url.searchParams.delete("oauth");
       window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     }
     return () => {
@@ -63,9 +65,9 @@ export function AuthPage({
     };
   }, []);
 
-  // 从 GitHub 返回（含 bfcache 恢复）或重新回到标签页时解除处理中，避免入口永久禁用
+  // 从第三方返回（含 bfcache 恢复）或重新回到标签页时解除处理中，避免入口永久禁用
   useEffect(() => {
-    const restore = () => setGithubBusy(false);
+    const restore = () => setOauthBusy(null);
     window.addEventListener("pageshow", restore);
     document.addEventListener("visibilitychange", restore);
     return () => {
@@ -78,15 +80,16 @@ export function AuthPage({
   const assessment = mode === "register" && password ? assessPassword(password, { email: email.trim() }) : null;
 
   // 首次点击放行默认跳转；处理中再点直接拦掉，不会发起第二次授权
-  const startGithub = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (githubBusy) {
-      event.preventDefault();
-      return;
-    }
-    setGithubBusy(true);
-    // 兜底：跳转被拦截、或用户在 GitHub 页停留很久，15 秒后恢复可点
-    window.setTimeout(() => setGithubBusy(false), 15_000);
-  };
+  const startOAuth =
+    (provider: "github" | "google") => (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (oauthBusy) {
+        event.preventDefault();
+        return;
+      }
+      setOauthBusy(provider);
+      // 兜底：跳转被拦截、或用户在第三方页停留很久，15 秒后恢复可点
+      window.setTimeout(() => setOauthBusy(null), 15_000);
+    };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -271,22 +274,44 @@ export function AuthPage({
               {busy ? (mode === "login" ? "登录中…" : "注册中…") : mode === "login" ? "登录" : "注册"}
             </button>
 
-            {providers?.github ? (
+            {providers?.github || providers?.google ? (
               <div className="wb-auth__oauth">
                 <span className="wb-auth__divider" aria-hidden>
                   或
                 </span>
-                <a
-                  className={`wb-btn wb-btn--full wb-auth__github${githubBusy ? " wb-auth__github--busy" : ""}`}
-                  data-testid="auth-github"
-                  href={`/api/auth/github/start?next=${encodeURIComponent(oauthNext)}`}
-                  aria-busy={githubBusy || undefined}
-                  aria-disabled={githubBusy || undefined}
-                  onClick={startGithub}
-                >
-                  {githubBusy ? "正在前往 GitHub…" : mode === "login" ? "使用 GitHub 登录" : "使用 GitHub 注册 / 登录"}
-                </a>
-                <p className="wb-auth__github-hint">将打开 GitHub 账号选择页，可切换其他账号</p>
+                {providers.github ? (
+                  <a
+                    className={`wb-btn wb-btn--full wb-auth__github${oauthBusy === "github" ? " wb-auth__github--busy" : ""}`}
+                    data-testid="auth-github"
+                    href={`/api/auth/github/start?next=${encodeURIComponent(oauthNext)}`}
+                    aria-busy={oauthBusy === "github" || undefined}
+                    aria-disabled={oauthBusy === "github" || undefined}
+                    onClick={startOAuth("github")}
+                  >
+                    {oauthBusy === "github"
+                      ? "正在前往 GitHub…"
+                      : mode === "login"
+                        ? "使用 GitHub 登录"
+                        : "使用 GitHub 注册 / 登录"}
+                  </a>
+                ) : null}
+                {providers.google ? (
+                  <a
+                    className={`wb-btn wb-btn--full wb-auth__google${oauthBusy === "google" ? " wb-auth__google--busy" : ""}`}
+                    data-testid="auth-google"
+                    href={`/api/auth/google/start?next=${encodeURIComponent(oauthNext)}`}
+                    aria-busy={oauthBusy === "google" || undefined}
+                    aria-disabled={oauthBusy === "google" || undefined}
+                    onClick={startOAuth("google")}
+                  >
+                    {oauthBusy === "google"
+                      ? "正在前往 Google…"
+                      : mode === "login"
+                        ? "使用 Google 登录"
+                        : "使用 Google 注册 / 登录"}
+                  </a>
+                ) : null}
+                <p className="wb-auth__github-hint">将打开账号选择页，可切换其他账号</p>
               </div>
             ) : null}
 
@@ -316,30 +341,38 @@ export function AuthPage({
 }
 
 /**
- * GitHub OAuth 回调失败码 → 可读文案。服务端只回码，不在 URL 里回显第三方原文。
+ * 第三方 OAuth 回调失败码 → 可读文案。服务端只回码，不在 URL 里回显第三方原文；
+ * `oauth` 参数区分 provider，同一个错误码在两家文案不同。
  */
-function oauthMessageOf(code: string | null): string | null {
+function oauthMessageOf(code: string | null, provider: string | null): string | null {
+  const label = provider === "google" ? "Google" : "GitHub";
   switch (code) {
     case "not_configured":
-      return "GitHub 登录尚未启用";
+      return `${label} 登录尚未启用`;
     case "state_mismatch":
-      return "登录请求已失效或来源不明，请重新点击 GitHub 登录";
+      return `登录请求已失效或来源不明，请重新点击 ${label} 登录`;
     case "state_expired":
-      return "登录请求已过期或已被使用，请重新点击 GitHub 登录";
+      return `登录请求已过期或已被使用，请重新点击 ${label} 登录`;
     case "code_expired":
-      return "GitHub 授权码已过期，请重新登录";
+      return `${label} 授权码已过期，请重新登录`;
     case "email_unverified":
-      return "该 GitHub 账号没有已验证的邮箱，请先在 GitHub 验证邮箱后重试";
+      return provider === "google"
+        ? "该 Google 账号没有已验证的邮箱，请先在 Google 验证邮箱后重试"
+        : "该 GitHub 账号没有已验证的邮箱，请先在 GitHub 验证邮箱后重试";
     case "account_disabled":
       return "该账号已注销，无法登录";
     case "access_denied":
-      return "已取消 GitHub 授权";
+      return `已取消 ${label} 授权`;
     case "github_unreachable":
       return "无法连接 GitHub（网络或代理异常），请检查网络后重试";
+    case "google_unreachable":
+      return "无法连接 Google（网络或代理异常），请检查网络后重试";
     case "temporarily_unavailable":
       return "登录服务暂时不可用，请稍后重试";
     case "github_error":
       return "GitHub 授权失败，请稍后重试";
+    case "google_error":
+      return "Google 授权失败，请稍后重试";
     default:
       return null;
   }
