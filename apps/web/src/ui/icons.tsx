@@ -75,6 +75,17 @@ export function IconShare({ size = 16 }: IconProps) {
   );
 }
 
+/** 导出：托盘 + 向下的箭头 */
+export function IconDownload({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+      <path d="M12 4v10" />
+      <path d="M8 10.5l4 4 4-4" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}
+
 export function IconMove({ size = 14 }: IconProps) {
   return (
     <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>

@@ -3430,7 +3430,7 @@ body:has(.wb-home) {
 
 /* 顶栏用户名 / 登录入口：外观直接复用 .wb-user-chip（ui.css），这里只补顶栏语境——
    28 高不撑高 44 顶栏、不参与换行，名字过长时截断而不是把顶栏顶出横向滚动。 */
-.wb-board__topbar > .wb-user-chip {
+.wb-board__topbar .wb-user-chip {
   max-width: 180px;
   text-decoration: none;
   /* 三颗胶囊（用户 / 连接状态 / 图片）同一套字号节奏 */
@@ -3451,30 +3451,30 @@ body:has(.wb-home) {
 }
 
 /* 图片是真的按钮，胶囊外观下补回手型 */
-.wb-board__topbar > button.wb-user-chip {
+.wb-board__topbar button.wb-user-chip {
   cursor: pointer;
 }
 
 /* 夜间没有更深的中性阶梯，用同一组 token 混出一档：底向 line-strong 提亮、描边再提亮 */
-:root[data-theme="night"] .wb-board__topbar > .wb-user-chip {
+:root[data-theme="night"] .wb-board__topbar .wb-user-chip {
   --wb-chip-bg-raised: color-mix(in srgb, var(--surface-sunken) 84%, var(--line-strong));
   --wb-chip-line-raised: color-mix(in srgb, var(--line-strong) 78%, #ffffff);
 }
 
-.wb-board__topbar > .wb-user-chip:hover {
+.wb-board__topbar .wb-user-chip:hover {
   background: var(--wb-chip-bg-raised);
   border-color: var(--wb-chip-line-raised);
 }
 
 /* 只读的连接状态固定在常态那一档：即使指针扫过也不进档，避免看起来可点。
    选择器要压过上面的 .wb-user-chip:hover（同为三颗类，靠后 + 双类提高特异性）。 */
-.wb-board__topbar > .wb-user-chip.wb-board__status:hover,
-.wb-board__topbar > .wb-user-chip.wb-board__status:focus-visible {
+.wb-board__topbar .wb-user-chip.wb-board__status:hover,
+.wb-board__topbar .wb-user-chip.wb-board__status:focus-visible {
   background: var(--surface-sunken);
   border-color: var(--line-strong);
 }
 
-.wb-board__topbar > .wb-user-chip:focus-visible {
+.wb-board__topbar .wb-user-chip:focus-visible {
   background: var(--wb-chip-bg-raised);
   border-color: var(--wb-chip-line-raised);
   outline: none;
@@ -3501,7 +3501,89 @@ body:has(.wb-home) {
   color: var(--ink-strong);
 }
 
-.wb-board__topbar > .wb-user-chip > .wb-caption {
+/* 导出：胶囊 + 下拉。外层只负责定位，胶囊外观沿用上面 `.wb-board__topbar .wb-user-chip` 那一档，
+   所以用 descendant 选择器而不是直接子代，嵌套一层后样式不丢。 */
+.wb-board__export {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.wb-board__export-trigger {
+  font: inherit;
+}
+
+.wb-board__export-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 下拉展开时保持按下态，与素材库开侧栏的反馈同一档 */
+.wb-board__export-trigger[aria-expanded="true"],
+.wb-board__export-trigger[aria-expanded="true"]:hover {
+  background: var(--neutral-300);
+  border-color: var(--neutral-700);
+  color: var(--neutral-900);
+}
+
+:root[data-theme="night"] .wb-board__export-trigger[aria-expanded="true"],
+:root[data-theme="night"] .wb-board__export-trigger[aria-expanded="true"]:hover {
+  background: color-mix(in srgb, var(--surface-sunken) 66%, var(--line-strong));
+  border-color: color-mix(in srgb, var(--line-strong) 58%, #ffffff);
+  color: var(--ink-strong);
+}
+
+.wb-board__export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 208px;
+  padding: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-3);
+}
+
+.wb-board__export-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-board__export-item:hover {
+  background: var(--surface-sunken);
+}
+
+.wb-board__export-item:focus-visible {
+  background: var(--surface-sunken);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.wb-board__export-name {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+.wb-board__export-hint {
+  font-size: var(--text-micro);
+  line-height: var(--lh-micro);
+  color: var(--ink-muted);
+}
+
+.wb-board__topbar .wb-user-chip > .wb-caption {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;

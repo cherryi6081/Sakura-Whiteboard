@@ -314,7 +314,9 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
         }}
       >
         {/* 用库的 MainMenu 组合项替换默认菜单：默认菜单原样保留，
-            「从云端载入…」紧跟在「打开…」（本地文件）后面，两个来源并列。 */}
+            「从云端载入…」紧跟在「打开…」（本地文件）后面，两个来源并列。
+            库自带的 Export / SaveAsImage 已去掉：导出统一走顶栏自研入口（§13.3），
+            避免同一件事出现两套入口与两套口径。 */}
         <MainMenu>
           <MainMenu.DefaultItems.LoadScene />
           {onCloudLoad ? (
@@ -323,8 +325,6 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
             </MainMenu.Item>
           ) : null}
           <MainMenu.DefaultItems.SaveToActiveFile />
-          <MainMenu.DefaultItems.Export />
-          <MainMenu.DefaultItems.SaveAsImage />
           <MainMenu.DefaultItems.SearchMenu />
           <MainMenu.DefaultItems.Help />
           <MainMenu.DefaultItems.ClearCanvas />

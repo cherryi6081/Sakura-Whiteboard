@@ -19,12 +19,23 @@ import { markBoardOpened, uploadBoardThumbnail } from "../boards/boardsApi";
 import { request } from "../auth/authApi";
 import { captureBoardThumb, peekBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
 import { readBoardThumb } from "../store/cacheDb";
-import { IconAlert, IconBack, IconCopy, IconImage, IconLibrary, IconLock, IconShare } from "../ui/icons";
+import {
+  IconAlert,
+  IconBack,
+  IconCopy,
+  IconDownload,
+  IconImage,
+  IconLibrary,
+  IconLock,
+  IconShare,
+} from "../ui/icons";
 import { UserMark } from "../ui/UserMark";
 import { ShareDrawer } from "./ShareDrawer";
 import { CloudLoadDialog } from "./CloudLoadDialog";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
+import { exportBoard } from "./exportBoard";
+import type { ExportFormat } from "./exportPlan";
 import { resolveBackHref } from "./backTarget";
 import { buildCursorLabels } from "./cursorLabels";
 import { useImageUpload } from "./useImageUpload";
@@ -300,6 +311,55 @@ export function BoardPage({ boardId }: { boardId: string }) {
       if (noticeTimerRef.current !== null) clearTimeout(noticeTimerRef.current);
     },
     [],
+  );
+
+  /**
+   * 导出（§13.3）：顶栏下拉，只做 PNG / SVG，纯客户端生成。
+   * 游客与只读成员同样可用，所以这里不按角色收口，只按「画布 API 是否就绪」和「是否正在导出」禁用。
+   */
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const exportRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (exportRef.current?.contains(event.target as Node)) return;
+      setExportOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExportOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [exportOpen]);
+
+  const runExport = useCallback(
+    async (format: ExportFormat) => {
+      if (exportBusy || !api) return;
+      setExportBusy(true);
+      const result = await exportBoard(api, displayTitle, format, shareToken);
+      setExportBusy(false);
+      setExportOpen(false);
+      if (result.status === "empty") {
+        notify("画布还是空的，先画点什么再导出");
+        return;
+      }
+      if (result.status === "failed") {
+        notify("导出没成功，请稍后再试");
+        return;
+      }
+      notify(
+        result.missingImages > 0
+          ? `已导出 ${format.toUpperCase()}，但有 ${result.missingImages} 张图片未加载，可能缺图`
+          : `已导出 ${format.toUpperCase()}：${result.fileName}`,
+      );
+    },
+    [api, displayTitle, exportBusy, notify, shareToken],
   );
 
   // 被所有者移出：只提示一次；画布已由协作层转成只读并停止重连
@@ -820,6 +880,49 @@ export function BoardPage({ boardId }: { boardId: string }) {
             <span className="wb-board__share-text">素材库</span>
           </button>
         ) : null}
+
+        {/* 导出入口：库自带的 Export / SaveAsImage 已隐藏，统一收到这里。
+            游客与只读成员也能导出，所以不按角色隐藏；画布 API 未就绪或导出进行中只做禁用。 */}
+        <div className="wb-board__export" ref={exportRef}>
+          <button
+            className="wb-user-chip wb-board__export-trigger"
+            type="button"
+            data-testid="export-open"
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            aria-label="导出"
+            title="导出"
+            disabled={!api || exportBusy}
+            onClick={() => setExportOpen((prev) => !prev)}
+          >
+            <IconDownload />
+            <span className="wb-board__share-text">{exportBusy ? "导出中" : "导出"}</span>
+          </button>
+          {exportOpen ? (
+            <div className="wb-board__export-menu" role="menu" aria-label="导出格式" data-testid="export-menu">
+              <button
+                className="wb-board__export-item"
+                type="button"
+                role="menuitem"
+                data-testid="export-png"
+                onClick={() => void runExport("png")}
+              >
+                <span className="wb-board__export-name">PNG 图片</span>
+                <span className="wb-board__export-hint">整张画布 · 白底</span>
+              </button>
+              <button
+                className="wb-board__export-item"
+                type="button"
+                role="menuitem"
+                data-testid="export-svg"
+                onClick={() => void runExport("svg")}
+              >
+                <span className="wb-board__export-name">SVG 矢量图</span>
+                <span className="wb-board__export-hint">整张画布 · 白底</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
 
         <button
           className="wb-btn wb-btn--primary wb-btn--sm wb-board__share"

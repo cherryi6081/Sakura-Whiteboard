@@ -34,11 +34,12 @@ const BLACKBOX = [
   ["user-mark", "12-user-mark.mjs"],
   ["account", "13-account.mjs"],
   ["oauth", "14-oauth.mjs"],
+  ["export", "15-export.mjs"],
 ];
 
 const WHITEBOX = [
   {
-    label: "web: selection / sortOrder / autoScroll / thumbPolicy / boardList / recentBoards / route / returnTo / backTarget",
+    label: "web: selection / sortOrder / autoScroll / thumbPolicy / boardList / recentBoards / route / returnTo / backTarget / exportPlan",
     cwd: path.join(REPO_ROOT, "apps/web"),
     files: [
       "src/boards/selection.test.ts",
@@ -50,6 +51,7 @@ const WHITEBOX = [
       "src/board/route.test.ts",
       "src/auth/returnTo.test.ts",
       "src/board/backTarget.test.ts",
+      "src/board/exportPlan.test.ts",
     ],
   },
   {
