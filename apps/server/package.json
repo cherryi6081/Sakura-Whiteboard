@@ -9,6 +9,7 @@
     "start": "tsx src/index.ts",
     "migrate": "tsx src/db/migrate.ts",
     "asset:gc": "tsx src/jobs/assetGc.ts",
+    "storage:migrate": "tsx src/jobs/storageMigrate.ts",
     "trash:gc": "tsx src/jobs/trashGc.ts",
     "build": "npm run build -w @whiteboard/shared && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,7 @@
     "test": "vitest run --pool=forks --poolOptions.forks.singleFork=true"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1171.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@whiteboard/shared": "*",
     "argon2": "^0.44.0",

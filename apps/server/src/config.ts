@@ -5,6 +5,13 @@ import { z } from 'zod';
 const optionalString = () =>
   z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), z.string().min(1).optional());
 
+/** 布尔开关：只把 1/true/yes/on 当 true（`z.coerce.boolean()` 会把 "false" 也当 true）。 */
+const booleanFlag = (defaultValue: boolean) =>
+  z.preprocess((value) => {
+    if (typeof value !== 'string' || value.trim() === '') return undefined;
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  }, z.boolean().default(defaultValue));
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -34,6 +41,19 @@ const EnvSchema = z.object({
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   /** 图片资产落盘根目录（本地磁盘驱动）；相对路径以进程 cwd 为基准。 */
   STORAGE_ROOT: z.string().min(1).default('.storage'),
+  /**
+   * 存储驱动：`local`（默认，本地磁盘）或 `s3`（S3 兼容对象存储，图片 / 缩略图 / 头像共用）。
+   * 切到 s3 时桶不对外暴露，读仍走 `/api/assets|avatars|boards/:id/thumbnail` 服务端代理。
+   */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  /** S3 兼容端点；AWS 可留空，MinIO / R2 / OSS(S3 模式) 必须显式填写。 */
+  S3_ENDPOINT: optionalString(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: optionalString(),
+  S3_ACCESS_KEY_ID: optionalString(),
+  S3_SECRET_ACCESS_KEY: optionalString(),
+  /** MinIO 需要 path-style（默认 true）；AWS 虚拟主机风格可置 false。 */
+  S3_FORCE_PATH_STYLE: booleanFlag(true),
   /** 签名 URL 的 HMAC 密钥；缺省复用 SESSION_SECRET（生产建议单独配置并可轮换）。 */
   ASSET_URL_SECRET: z.string().min(32).optional(),
   /** 签名 URL 有效期（秒），应短于浏览器 HTTP 缓存时间。 */
@@ -58,6 +78,13 @@ const EnvSchema = z.object({
   /** 仅测试用：把 OAuth 站点与 API 指到本地假 provider。 */
   GITHUB_OAUTH_BASE_URL: z.string().url().default('https://github.com'),
   GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
+}).superRefine((value, ctx) => {
+  if (value.STORAGE_DRIVER !== 's3') return;
+  for (const key of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
+    if (!value[key]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `STORAGE_DRIVER=s3 时 ${key} 必填` });
+    }
+  }
 });
 
 export type Config = z.infer<typeof EnvSchema>;
