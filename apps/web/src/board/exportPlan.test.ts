@@ -40,6 +40,7 @@ describe("exportStamp / buildExportFileName", () => {
   it("文件名 = 安全板名 + 时间戳 + 扩展名", () => {
     expect(buildExportFileName("路线图", "png", date)).toBe("路线图-20260304-0905.png");
     expect(buildExportFileName("路线图", "svg", date)).toBe("路线图-20260304-0905.svg");
+    expect(buildExportFileName("路线图", "pdf", date)).toBe("路线图-20260304-0905.pdf");
   });
 
   it("空标题用「白板」兜底", () => {
@@ -84,5 +85,13 @@ describe("exportAppStateOf", () => {
 
   it("未设置导出倍率时按 1 倍", () => {
     expect(exportAppStateOf({}).exportScale).toBe(1);
+  });
+
+  it("透明背景只关闭铺底，其余口径与白底一致", () => {
+    const state = exportAppStateOf({ viewBackgroundColor: "#121212" }, "transparent");
+    expect(state.exportBackground).toBe(false);
+    expect(state.viewBackgroundColor).toBe("#ffffff");
+    expect(state.exportWithDarkMode).toBe(false);
+    expect(state.exportEmbedScene).toBe(false);
   });
 });

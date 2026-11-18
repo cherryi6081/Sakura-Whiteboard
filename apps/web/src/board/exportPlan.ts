@@ -1,10 +1,13 @@
 /**
  * 导出用纯函数（不依赖 Excalidraw 运行时，便于单测）。
  *
- * 口径：整张画布、白底、文件名 `<板名>-<yyyyMMdd-HHmm>.png|svg`。
+ * 口径：整张画布、默认白底（可选透明）、文件名 `<板名>-<yyyyMMdd-HHmm>.png|svg|pdf`。
  */
 
-export type ExportFormat = "png" | "svg";
+export type ExportFormat = "png" | "svg" | "pdf";
+
+/** 背景：默认白底与历史行为一致；transparent 只对 PNG / SVG 生效 */
+export type ExportBackground = "white" | "transparent";
 
 /** Windows / macOS / Linux 都不接受的文件名字符（控制字符单独按范围处理） */
 const UNSAFE_FILENAME = /[\\/:*?"<>|\u0000-\u001f]/g;
@@ -63,11 +66,14 @@ export function missingImageFileIds(
   return imageFileIds(elements).filter((id) => !files?.[id]);
 }
 
-/** 导出用的 appState：强制白底、不暗色、不嵌入场景（嵌入会让文件体积翻倍且无必要） */
-export function exportAppStateOf(appState: Record<string, any>): Record<string, any> {
+/** 导出用的 appState：默认强制白底；透明背景只关掉铺底，不改画布内容色 */
+export function exportAppStateOf(
+  appState: Record<string, any>,
+  background: ExportBackground = "white",
+): Record<string, any> {
   return {
     ...appState,
-    exportBackground: true,
+    exportBackground: background !== "transparent",
     viewBackgroundColor: "#ffffff",
     exportWithDarkMode: false,
     exportEmbedScene: false,

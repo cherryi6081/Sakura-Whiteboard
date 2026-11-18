@@ -55,9 +55,9 @@ const WHITEBOX = [
     ],
   },
   {
-    label: "server: boardCapacity / roles / boardOrder",
+    label: "server: boardCapacity / roles / boardOrder / pdfExport",
     cwd: path.join(REPO_ROOT, "apps/server"),
-    files: ["src/domain/boardCapacity.test.ts", "src/domain/roles.test.ts", "src/domain/boardOrder.test.ts"],
+    files: ["src/domain/boardCapacity.test.ts", "src/domain/roles.test.ts", "src/domain/boardOrder.test.ts", "src/domain/pdfExport.test.ts"],
   },
 ];
 

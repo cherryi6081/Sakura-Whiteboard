@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../../infra/db.js';
@@ -6,6 +6,8 @@ import { AppError } from '../middlewares/error.js';
 import { boardIdSchema } from '../../domain/opPage.js';
 import { identityOf } from '../../auth/identity.js';
 import { resolveBoardAccess } from '../../domain/access.js';
+import { detectImage } from '../../domain/imageFile.js';
+import { buildPdfFromPng, clampPdfScale } from '../../domain/pdfExport.js';
 import {
   generateShareToken,
   hashShareToken,
@@ -43,12 +45,16 @@ const createShareSchema = z.object({
 type AccessibleBoard = { id: string };
 
 /** 解析 owner 权限；不存在/无权一律按 404 处理（不暴露存在性）。 */
-export async function requireOwner(req: Request, boardId: string): Promise<AccessibleBoard> {
+export async function requireOwner(
+  req: Request,
+  boardId: string,
+  action = '管理分享链接',
+): Promise<AccessibleBoard> {
   const identity = identityOf(req);
   const access = await resolveBoardAccess(boardId, identity);
   if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
   if (access.role !== 'owner') {
-    throw new AppError(403, 'FORBIDDEN', '只有白板所有者可以管理分享链接');
+    throw new AppError(403, 'FORBIDDEN', `只有白板所有者可以${action}`);
   }
   return { id: boardId };
 }
@@ -200,5 +206,59 @@ sharesRouter.delete(
     // 先删缓存再返回：下一次请求必然回落数据库，看到 revoked_at
     await invalidateShareCache(row.token_hash);
     res.status(204).end();
+  }),
+);
+
+/* ------------------------------------------------------------------------------------
+ * PDF 导出（服务端）
+ *
+ * 客户端已经产出整张画布 + 16px 留白的 PNG（描边/字体/图片都按浏览器渲染结果），
+ * 这里只做 PNG → 单页 PDF 的封装，因此不需要 Chromium 之类的浏览器二进制。
+ * 与分享链接管理同一权限口径：仅所有者可调用（requireOwner）。
+ * ------------------------------------------------------------------------------------ */
+
+const PDF_EXPORT_MAX_BYTES = 32 * 1024 * 1024;
+const rawPdfPng = express.raw({ type: () => true, limit: PDF_EXPORT_MAX_BYTES, inflate: false });
+
+const pdfExportQuerySchema = z.object({
+  /** 客户端渲染 PNG 时的倍率；页面尺寸按它还原成逻辑尺寸 */
+  scale: z.coerce.number().min(1).max(4).default(2),
+});
+
+sharesRouter.post(
+  '/boards/:id/export/pdf',
+  rawPdfPng,
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const { scale } = pdfExportQuerySchema.parse(req.query);
+
+    // 与图片上传同一套 CSRF 口径：自定义头强制跨站请求走预检
+    if (req.get('x-wb-export') !== '1') {
+      throw new AppError(403, 'FORBIDDEN', 'missing export intent header');
+    }
+    await requireOwner(req, boardId, '导出 PDF');
+
+    const bytes: unknown = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+      throw new AppError(400, 'INVALID_INPUT', '请求体必须是非空 PNG 二进制');
+    }
+    const detected = detectImage(bytes);
+    if (!detected || detected.mime !== 'image/png') {
+      throw new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'PDF 导出只接受 PNG');
+    }
+
+    let pdf: Uint8Array;
+    try {
+      pdf = await buildPdfFromPng(bytes, clampPdfScale(scale));
+    } catch {
+      throw new AppError(400, 'INVALID_INPUT', 'PNG 解析失败，无法生成 PDF');
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', String(pdf.byteLength));
+    // 每次导出都是即时产物，不缓存
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(Buffer.from(pdf));
   }),
 );

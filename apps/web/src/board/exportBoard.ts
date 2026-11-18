@@ -8,6 +8,7 @@ import {
   exportAppStateOf,
   liveSceneElements,
   missingImageFileIds,
+  type ExportBackground,
   type ExportFormat,
 } from "./exportPlan";
 
@@ -16,13 +17,24 @@ import {
  *
  * 口径（产品已确认）：
  * - 范围：整张画布（内容包围盒），不是可视区域；
- * - 背景：固定白底，不提供透明开关；
- * - 游客与只读成员同样可导出（导出是纯客户端行为）；
- * - 本轮只做 PNG / SVG，不做 PDF；
+ * - 背景：默认白底；透明背景为可选项（PNG / SVG），不替换默认行为；
+ * - 游客与只读成员同样可导出 PNG / SVG（纯客户端行为）；
+ * - PDF 由客户端出 PNG、服务端封装（`POST /api/boards/:id/export/pdf`，仅所有者）；
  * - 库自带的 Export / SaveAsImage 菜单项已隐藏，统一从这个入口走。
  *
  * 文件名与取景等纯逻辑在 `exportPlan.ts`（可单测），这里只负责跑导出与下载。
  */
+
+/** PDF 走服务端转换，请求体是 PNG 原始字节；与后端上限保持一致 */
+const PDF_RASTER_SCALE = 2;
+
+export type ExportOptions = {
+  shareToken?: string | null;
+  /** 只影响 PNG / SVG；PDF 页面始终白底（PDF 无页面级透明） */
+  background?: ExportBackground;
+  /** PDF 必填：服务端导出接口按板校验权限 */
+  boardId?: string;
+};
 
 export type ExportOutcome =
   | { status: "ok"; fileName: string; /** 仍缺字节、导出可能少图的图片数 */ missingImages: number }
@@ -64,6 +76,46 @@ function downloadBlob(blob: Blob, fileName: string): void {
 }
 
 /**
+ * 客户端先按白底出 PNG（复用同一套取景与留白），再交给服务端封 PDF。
+ * 倍率取 2 起步：服务端页面尺寸按倍率还原，因此清晰度提升不会改变页面大小。
+ */
+async function requestPdfBlob(params: {
+  elements: readonly any[];
+  files: ReturnType<ExcalidrawImperativeAPI["getFiles"]>;
+  appState: Record<string, any>;
+  boardId: string;
+  shareToken?: string | null;
+}): Promise<Blob> {
+  const configured = Number(params.appState.exportScale);
+  const scale = Math.min(3, Math.max(PDF_RASTER_SCALE, Number.isFinite(configured) ? configured : 1));
+
+  const raster = await exportToBlob({
+    elements: params.elements as never,
+    appState: { ...exportAppStateOf(params.appState, "white"), exportScale: scale } as never,
+    files: params.files,
+    mimeType: "image/png",
+    exportPadding: EXPORT_PADDING,
+  });
+
+  const response = await fetch(
+    `/api/boards/${encodeURIComponent(params.boardId)}/export/pdf?scale=${scale}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "image/png",
+        // 自定义头强制跨站请求走预检，与图片上传同一套 CSRF 口径
+        "x-wb-export": "1",
+        ...(params.shareToken ? { "x-share-token": params.shareToken } : {}),
+      },
+      body: raster,
+      credentials: "include",
+    },
+  );
+  if (!response.ok) throw new Error(`pdf export failed: HTTP ${response.status}`);
+  return response.blob();
+}
+
+/**
  * 执行一次导出。空画布直接返回 `empty`，由 UI 提示，不生成一张空白图。
  * 失败统一收敛成 `failed`，不把底层异常抛到渲染层。
  */
@@ -71,14 +123,17 @@ export async function exportBoard(
   api: ExcalidrawImperativeAPI,
   title: string,
   format: ExportFormat,
-  shareToken?: string | null,
+  options: ExportOptions = {},
 ): Promise<ExportOutcome> {
   const elements = liveSceneElements(api.getSceneElements() as readonly any[]);
   if (elements.length === 0) return { status: "empty" };
 
   try {
-    const missingImages = await ensureImageFiles(api, elements, shareToken);
-    const appState = exportAppStateOf(api.getAppState() as unknown as Record<string, any>);
+    const missingImages = await ensureImageFiles(api, elements, options.shareToken);
+    const appState = exportAppStateOf(
+      api.getAppState() as unknown as Record<string, any>,
+      options.background,
+    );
     const files = api.getFiles();
     const fileName = buildExportFileName(title || FALLBACK_TITLE, format);
 
@@ -91,7 +146,7 @@ export async function exportBoard(
         exportPadding: EXPORT_PADDING,
       });
       downloadBlob(blob, fileName);
-    } else {
+    } else if (format === "svg") {
       const svg = await exportToSvg({
         elements: elements as never,
         appState: appState as never,
@@ -99,6 +154,16 @@ export async function exportBoard(
         exportPadding: EXPORT_PADDING,
       });
       downloadBlob(new Blob([svg.outerHTML], { type: "image/svg+xml;charset=utf-8" }), fileName);
+    } else {
+      if (!options.boardId) throw new Error("missing boardId for pdf export");
+      const pdfBlob = await requestPdfBlob({
+        elements,
+        files,
+        appState,
+        boardId: options.boardId,
+        shareToken: options.shareToken,
+      });
+      downloadBlob(pdfBlob, fileName);
     }
     return { status: "ok", fileName, missingImages };
   } catch (err) {

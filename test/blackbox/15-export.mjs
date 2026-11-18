@@ -138,6 +138,40 @@ async function main() {
         assert(notice.includes("已导出 SVG"), `应提示导出成功：${notice}`);
       });
 
+      await test("PDF 导出：服务端生成、扩展名与提示正确", async () => {
+        await exportFile(page, "pdf");
+        const file = await waitDownload(dir, ".pdf", { timeout: 40_000 });
+        assert(/-\d{8}-\d{4}\.pdf$/.test(file.name), `PDF 文件名应以时间戳收尾：${file.name}`);
+        const head = fs.readFileSync(file.file).subarray(0, 5).toString("ascii");
+        eq(head, "%PDF-", "PDF 魔数");
+        const notice = await noticeText(page);
+        assert(notice.includes("已导出 PDF"), `应提示导出成功：${notice}`);
+      });
+
+      await test("透明背景：SVG 不再铺白底，PNG 仍可下载", async () => {
+        // 独立下载目录，避免命中前面白底 SVG 的旧文件
+        const transparentDir = await enableDownloads(page);
+        try {
+          await page.click('[data-testid="export-open"]');
+          await page.waitForSelector('[data-testid="export-transparent"]', { timeout: 10_000 });
+          await page.click('[data-testid="export-transparent"]');
+          const menu = await page.$eval('[data-testid="export-menu"]', (node) => node.textContent ?? "");
+          assert(menu.includes("透明"), `菜单应提示当前为透明背景：${menu}`);
+
+          // 菜单仍开着，直接点格式项（再点触发按钮会把它关掉）
+          await page.click('[data-testid="export-svg"]');
+          const svgFile = await waitDownload(transparentDir, ".svg");
+          const svg = fs.readFileSync(svgFile.file, "utf8");
+          assert(!svg.toLowerCase().includes("ffffff"), "透明背景的 SVG 不应包含白底");
+
+          await exportFile(page, "png");
+          const png = await waitDownload(transparentDir, ".png");
+          assert(png.size > 0, "透明背景 PNG 应下载成功");
+        } finally {
+          fs.rmSync(transparentDir, { recursive: true, force: true });
+        }
+      });
+
       await test("只读分享链接同样可导出", async () => {
         const share = await owner.api.createShare(boardId, "read", 7);
         eq(share.status, 201, `建分享：${JSON.stringify(share.json)}`);
@@ -162,6 +196,12 @@ async function main() {
           await exportFile(reader.page, "png");
           const file = await waitDownload(readonlyDir, ".png");
           assert(file.size > 0, "只读导出应生成文件");
+
+          // PDF 走服务端接口、仅所有者可用：只读成员应看到禁用项
+          await reader.page.click('[data-testid="export-open"]');
+          await reader.page.waitForSelector('[data-testid="export-pdf"]', { timeout: 10_000 });
+          const pdfDisabled = await reader.page.$eval('[data-testid="export-pdf"]', (node) => node.disabled);
+          assert(pdfDisabled, "只读成员不应能导出 PDF");
         } finally {
           fs.rmSync(readonlyDir, { recursive: true, force: true });
           await reader.context.close();

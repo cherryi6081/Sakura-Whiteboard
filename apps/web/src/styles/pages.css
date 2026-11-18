@@ -3597,6 +3597,52 @@ body:has(.wb-home) {
   color: var(--ink-muted);
 }
 
+.wb-board__export-item:disabled {
+  cursor: not-allowed;
+  color: var(--ink-muted);
+}
+
+.wb-board__export-item:disabled:hover {
+  background: transparent;
+}
+
+/* 格式与「透明背景」之间一条细分隔线 */
+.wb-board__export-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line-soft);
+}
+
+.wb-board__export-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-strong);
+  cursor: pointer;
+}
+
+.wb-board__export-toggle:hover {
+  background: var(--surface-sunken);
+}
+
+.wb-board__export-toggle:focus-within {
+  background: var(--surface-sunken);
+  box-shadow: var(--focus-ring);
+}
+
+.wb-board__export-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* 「PNG / SVG」靠右，不跟标签文案挤在一起 */
+.wb-board__export-toggle .wb-board__export-hint {
+  margin-left: auto;
+}
+
 .wb-board__topbar .wb-user-chip > .wb-caption {
   min-width: 0;
   overflow: hidden;

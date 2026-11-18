@@ -314,12 +314,16 @@ export function BoardPage({ boardId }: { boardId: string }) {
   );
 
   /**
-   * 导出（§13.3）：顶栏下拉，只做 PNG / SVG，纯客户端生成。
-   * 游客与只读成员同样可用，所以这里不按角色收口，只按「画布 API 是否就绪」和「是否正在导出」禁用。
+   * 导出（§13.3）：顶栏下拉，PNG / SVG 纯客户端生成，PDF 交服务端封装。
+   * 游客与只读成员同样可用 PNG / SVG，所以这里不按角色收口，只按「画布 API 是否就绪」和「是否正在导出」禁用；
+   * PDF 走服务端接口，与分享链接管理同一口径，仅所有者可选。
    */
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  /** 透明背景只影响 PNG / SVG，默认关闭即保持原来的白底 */
+  const [exportTransparent, setExportTransparent] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
+  const canExportPdf = (collabState?.role ?? "unknown") === "owner";
 
   useEffect(() => {
     if (!exportOpen) return;
@@ -342,7 +346,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
     async (format: ExportFormat) => {
       if (exportBusy || !api) return;
       setExportBusy(true);
-      const result = await exportBoard(api, displayTitle, format, shareToken);
+      const result = await exportBoard(api, displayTitle, format, {
+        shareToken,
+        background: exportTransparent ? "transparent" : "white",
+        boardId,
+      });
       setExportBusy(false);
       setExportOpen(false);
       if (result.status === "empty") {
@@ -359,7 +367,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           : `已导出 ${format.toUpperCase()}：${result.fileName}`,
       );
     },
-    [api, displayTitle, exportBusy, notify, shareToken],
+    [api, boardId, displayTitle, exportBusy, exportTransparent, notify, shareToken],
   );
 
   // 被所有者移出：只提示一次；画布已由协作层转成只读并停止重连
@@ -908,7 +916,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 onClick={() => void runExport("png")}
               >
                 <span className="wb-board__export-name">PNG 图片</span>
-                <span className="wb-board__export-hint">整张画布 · 白底</span>
+                <span className="wb-board__export-hint">
+                  整张画布 · {exportTransparent ? "透明" : "白底"}
+                </span>
               </button>
               <button
                 className="wb-board__export-item"
@@ -918,8 +928,35 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 onClick={() => void runExport("svg")}
               >
                 <span className="wb-board__export-name">SVG 矢量图</span>
-                <span className="wb-board__export-hint">整张画布 · 白底</span>
+                <span className="wb-board__export-hint">
+                  整张画布 · {exportTransparent ? "透明" : "白底"}
+                </span>
               </button>
+              <button
+                className="wb-board__export-item"
+                type="button"
+                role="menuitem"
+                data-testid="export-pdf"
+                disabled={!canExportPdf}
+                title={canExportPdf ? "整张画布 · 白底" : "仅所有者可导出 PDF"}
+                onClick={() => void runExport("pdf")}
+              >
+                <span className="wb-board__export-name">PDF 文档</span>
+                <span className="wb-board__export-hint">
+                  {canExportPdf ? "整张画布 · 白底 · 服务端生成" : "仅所有者可导出"}
+                </span>
+              </button>
+              <div className="wb-board__export-sep" role="separator" />
+              <label className="wb-board__export-toggle">
+                <input
+                  type="checkbox"
+                  data-testid="export-transparent"
+                  checked={exportTransparent}
+                  onChange={(event) => setExportTransparent(event.target.checked)}
+                />
+                <span className="wb-board__export-name">透明背景</span>
+                <span className="wb-board__export-hint">PNG / SVG</span>
+              </label>
             </div>
           ) : null}
         </div>
