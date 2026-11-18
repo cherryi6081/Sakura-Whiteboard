@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, Excalidraw, MainMenu } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
@@ -7,6 +7,7 @@ import { AssetApiError, fetchAssetAsDataUrl } from "./assetApi";
 import { isAllowedEmbedUrl } from "./embedPolicy";
 import { installExcalidrawZhFallback } from "./excalidrawZhFallback";
 import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
+import { restoreDefaultTemplates, useSeedLibrary } from "../library/useSeedLibrary";
 import { IconBoard } from "../ui/icons";
 
 /** 画布内的中性配置：白底、新建元素默认描边为品牌色（视觉方案 §5.2）。网格默认关闭，不设 gridSize。 */
@@ -77,6 +78,10 @@ const elementId = () =>
  */
 export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onApiReady, onOps, onCloudLoad }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  /** 素材库 hook 需要 api 作为依赖，ref 变化不会触发重渲染，这里额外存一份 state */
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  // 接管素材库的加载/保存：内容来自 localStorage，首次为空时播种首批 P0 模板
+  useSeedLibrary(excalidrawApi);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const deriverRef = useRef(createOpDeriver());
   const onOpsRef = useRef(onOps);
@@ -280,6 +285,7 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;
+          setExcalidrawApi(api);
           // Excalidraw 刚挂载时还会初始化场景；下一拍再把缓存/快照灌入，
           // 否则 updateScene 会被后续初始化覆盖（表现为刷新后画布空白，直到补拉回来）。
           setTimeout(() => {
@@ -335,6 +341,19 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
           <MainMenu.Separator />
           <MainMenu.DefaultItems.ToggleTheme />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
+          {!viewModeEnabled ? (
+            <>
+              <MainMenu.Separator />
+              <MainMenu.Item
+                onSelect={() => {
+                  const api = apiRef.current;
+                  if (api) restoreDefaultTemplates(api);
+                }}
+              >
+                恢复默认模板
+              </MainMenu.Item>
+            </>
+          ) : null}
         </MainMenu>
       </Excalidraw>
     </div>
