@@ -60,6 +60,8 @@ export type RemoteCursor = {
 export type CollabSnapshot = {
   boardId: string;
   clientId: string;
+  /** 服务端板名（join 时下发）：为空表示尚未握手，页面用本机记录兜底 */
+  boardTitle: string | null;
   /** M3：本标签的 tabId 与浏览器级 guestId */
   tabId: string;
   guestId: string;
@@ -140,6 +142,7 @@ export function createBoardCollab(options: {
   const state: CollabSnapshot = {
     boardId: options.boardId,
     clientId,
+    boardTitle: null,
     tabId: options.tabId,
     guestId: options.guestId,
     status: "connecting",
@@ -502,6 +505,7 @@ export function createBoardCollab(options: {
 
   const handleJoined = (payload: JoinedPayload) => {
     state.joined = true;
+    state.boardTitle = payload.title ?? null;
     state.role = payload.self.role;
     state.identity = payload.self.identity;
     selfConnectionId = payload.self.connectionId ?? null;

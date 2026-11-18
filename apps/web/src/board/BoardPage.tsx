@@ -245,7 +245,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }, [api]);
   /** 标题在身份握手完成后才能按归属读取本机记录，先渲染占位 */
   const [title, setTitle] = useState<string | null>(null);
-  const displayTitle = title ?? "未命名白板";
+  /** 服务端板名（join 下发）：拿到后优先于本机记录，顶栏与导出文件名共用 */
+  const [serverTitle, setServerTitle] = useState<string | null>(null);
+  const displayTitle = serverTitle ?? title ?? "未命名白板";
   const timingRef = useRef<BoardTiming>({ startedAt: performance.now() });
 
   // 最小只读入口：`?view=1`（也接受 `?readonly=1`），join 时向服务端声明 viewOnly。
@@ -426,13 +428,21 @@ export function BoardPage({ boardId }: { boardId: string }) {
     captureFirstFrame();
   }, [boardId, owner, captureFirstFrame]);
 
+  // 服务端板名优先：join 成功后不论 owner / 成员 / 分享链接 / 游客都能拿到，
+  // 本机「最近打开」的标题只作握手完成前的兜底，避免两处来源打架。
+  useEffect(() => {
+    if (collabState?.boardTitle) setServerTitle(collabState.boardTitle);
+  }, [collabState?.boardTitle]);
+
   // 标题解析完成后才写回本机记录，避免占位标题覆盖已存的自定义名。
+  // 服务端板名已到时以它为准（本机记录随之收敛到同一来源）。
   // 游客侧只有一块固定 id 的公共板，不再累积「最近打开」；缩略图仍按身份落 IndexedDB。
   useEffect(() => {
-    if (!owner || title === null) return;
+    const resolved = serverTitle ?? title;
+    if (!owner || resolved === null) return;
     if (owner.kind === "guest") return;
-    recordRecentBoard({ id: boardId, title }, owner);
-  }, [boardId, owner, title]);
+    recordRecentBoard({ id: boardId, title: resolved }, owner);
+  }, [boardId, owner, serverTitle, title]);
 
   useEffect(() => {
     // 打开次数：列表容量 15 的淘汰排序依据；fire-and-forget，不阻塞首帧

@@ -320,6 +320,9 @@ export function attachRealtime(httpServer: HttpServer) {
         heartbeats.set(socket.id, heartbeat);
 
         const joined = {
+          // 板名下发给所有有访问权的连接（含分享 token 与游客）：前端不再只靠本机
+          // 「最近打开」猜标题，顶栏展示与导出文件名共用这一个来源
+          title: access.board.title,
           self: {
             // 合帧后光标会广播给整个房间（含发送者），客户端用它过滤掉自己
             connectionId: socket.id,

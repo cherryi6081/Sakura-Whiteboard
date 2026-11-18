@@ -121,6 +121,8 @@ export async function getBoardLastSeq(boardId: string): Promise<number> {
 
 export type BoardRow = {
   id: string;
+  /** 服务端标题：板内顶栏与导出文件名都以它为准 */
+  title: string;
   share_mode: 'private' | 'link_read' | 'link_edit';
   last_seq: number;
   archived_at: Date | null;
@@ -136,6 +138,7 @@ export type BoardRow = {
 export async function getBoardForJoin(boardId: string): Promise<BoardRow | null> {
   const { rows } = await pool.query<{
     id: string;
+    title: string;
     share_mode: BoardRow['share_mode'];
     last_seq: string;
     archived_at: Date | null;
@@ -145,7 +148,7 @@ export async function getBoardForJoin(boardId: string): Promise<BoardRow | null>
     space_id: string | null;
     is_public: boolean;
   }>(
-    'select id, share_mode, last_seq, archived_at, deleted_at, owner_id, owner_guest_id, space_id, is_public from boards where id = $1',
+    'select id, title, share_mode, last_seq, archived_at, deleted_at, owner_id, owner_guest_id, space_id, is_public from boards where id = $1',
     [boardId],
   );
 

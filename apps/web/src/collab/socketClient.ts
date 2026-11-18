@@ -17,6 +17,8 @@ import type { ElementOp, OpBatch } from "@whiteboard/shared";
 export type JoinRole = "owner" | "editor" | "viewer";
 
 export type JoinedPayload = {
+  /** 服务端板名：顶栏标题与导出文件名的唯一来源 */
+  title?: string;
   self: {
     /** 本连接的 socket.id；合帧后光标广播含自己，客户端据此过滤 */
     connectionId?: string;
