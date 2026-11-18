@@ -22,16 +22,25 @@ import { readBoardThumb } from "../store/cacheDb";
 import {
   IconAlert,
   IconBack,
+  IconCheck,
   IconCopy,
   IconDownload,
   IconImage,
   IconLibrary,
   IconLock,
   IconShare,
+  IconUser,
 } from "../ui/icons";
 import { UserMark } from "../ui/UserMark";
 import { ShareDrawer } from "./ShareDrawer";
+import { CopyBoardDialog } from "./CopyBoardDialog";
 import { CloudLoadDialog } from "./CloudLoadDialog";
+import {
+  fetchEditRequests,
+  fetchMyEditRequest,
+  requestEditAccess,
+  type EditRequest,
+} from "./accessRequestApi";
 import { createBoardStore, type BoardStore, type BoardStoreSnapshot } from "./createBoardStore";
 import { loadBoardScene, type BoardScene } from "./loadScene";
 import { exportBoard } from "./exportBoard";
@@ -135,6 +144,13 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [shareOpen, setShareOpen] = useState(false);
   /** 云端载入弹窗（入口在库主菜单「打开…」旁边） */
   const [cloudOpen, setCloudOpen] = useState(false);
+  /** 复制到我的空间弹窗（只对非所有者的登录用户开放） */
+  const [copyOpen, setCopyOpen] = useState(false);
+  /** 我在当前板的编辑申请（刷新后恢复「已申请 / 已批准」状态） */
+  const [editRequest, setEditRequest] = useState<EditRequest | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
+  /** 所有者：待处理编辑申请数，显示在分享按钮上的角标 */
+  const [pendingEditRequests, setPendingEditRequests] = useState(0);
   /** 画布 API 提到 state：竖工具条要拿它 setActiveTool（ref 变化不会触发重渲染） */
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   /** 当前工具/工具锁/选中数/素材库侧栏开合：驱动竖工具条高亮与顶栏 Library 胶囊的按下态 */
@@ -268,6 +284,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const shareInfo = readShareToken();
   const shareToken = shareInfo.token;
   const collabState = storeState?.collab ?? null;
+  const collabRole = collabState?.role ?? "unknown";
   const requestedViewOnly =
     queryViewOnly ||
     (collabState?.viewOnly ?? false) ||
@@ -312,6 +329,61 @@ export function BoardPage({ boardId }: { boardId: string }) {
     },
     [],
   );
+
+  /**
+   * 编辑权限申请：
+   * - viewer 刷新/换端后恢复自己的申请状态（pending / approved / rejected）；
+   * - owner 拉一次待处理数量，作为分享按钮角标；抽屉里处理完会回写同一个计数。
+   */
+  useEffect(() => {
+    if (!user || collabRole !== "viewer") {
+      setEditRequest(null);
+      return;
+    }
+    let alive = true;
+    void fetchMyEditRequest(boardId, shareToken).then((res) => {
+      if (alive && res.ok) setEditRequest(res.data.request);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [boardId, collabRole, shareToken, user?.id]);
+
+  useEffect(() => {
+    if (collabRole !== "owner") {
+      setPendingEditRequests(0);
+      return;
+    }
+    let alive = true;
+    void fetchEditRequests(boardId).then((res) => {
+      if (alive && res.ok) setPendingEditRequests(res.data.requests.length);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [boardId, collabRole]);
+
+  /** 只读访客向前所有者申请可写权限；重复点击复用同一条 pending 记录。 */
+  const applyForEdit = async () => {
+    if (applyBusy) return;
+    setApplyBusy(true);
+    const res = await requestEditAccess(boardId, shareToken);
+    setApplyBusy(false);
+    if (!res.ok) {
+      notify(
+        res.status === 401
+          ? "登录后才能申请编辑权限"
+          : res.code === "SPACE_ROLE_GOVERNS"
+            ? "你在这个空间里是只读成员，请联系空间所有者调整角色"
+            : res.code === "ALREADY_HAS_EDIT"
+              ? "你已经有编辑权限了"
+              : `申请失败（${res.code}）`,
+      );
+      return;
+    }
+    setEditRequest(res.data.request);
+    notify("已提交编辑权限申请，等待所有者批准");
+  };
 
   /**
    * 导出（§13.3）：顶栏下拉，PNG / SVG 纯客户端生成，PDF 交服务端封装。
@@ -961,6 +1033,49 @@ export function BoardPage({ boardId }: { boardId: string }) {
           ) : null}
         </div>
 
+        {/* 非所有者：把当前画布内容复制成自己的新白板（登录用户） */}
+        {!isGuest && user && role !== "owner" ? (
+          <button
+            className="wb-user-chip"
+            type="button"
+            data-testid="copy-board-open"
+            aria-label="复制到我的空间"
+            title="复制到我的空间"
+            onClick={() => setCopyOpen(true)}
+          >
+            <IconCopy />
+            <span className="wb-board__share-text">存为副本</span>
+          </button>
+        ) : null}
+
+        {/* 只读访客：申请编辑权限；pending / approved 用静态状态替代按钮 */}
+        {!isGuest && user && role === "viewer" ? (
+          editRequest?.status === "pending" ? (
+            <span className="wb-user-chip" data-testid="edit-request-pending" title="等待所有者批准">
+              <IconCheck />
+              <span className="wb-caption">已申请编辑</span>
+            </span>
+          ) : editRequest?.status === "approved" ? (
+            <span className="wb-user-chip" data-testid="edit-request-approved" title="即将切换为可编辑">
+              <IconCheck />
+              <span className="wb-caption">已获批准</span>
+            </span>
+          ) : (
+            <button
+              className="wb-user-chip"
+              type="button"
+              data-testid="request-edit"
+              aria-label="申请编辑权限"
+              title="申请编辑权限"
+              disabled={applyBusy}
+              onClick={() => void applyForEdit()}
+            >
+              <IconUser />
+              <span className="wb-board__share-text">{applyBusy ? "提交中…" : "申请编辑"}</span>
+            </button>
+          )
+        ) : null}
+
         <button
           className="wb-btn wb-btn--primary wb-btn--sm wb-board__share"
           type="button"
@@ -977,6 +1092,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
         >
           {readonly ? <IconCopy /> : <IconShare />}
           <span className="wb-board__share-text">{readonly ? "复制链接" : "分享"}</span>
+          {!readonly && pendingEditRequests > 0 ? (
+            <span className="wb-badge wb-badge--role" data-testid="pending-edit-requests">
+              {pendingEditRequests}
+            </span>
+          ) : null}
         </button>
       </header>
 
@@ -1229,7 +1349,24 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </span>
       </footer>
 
-      {shareOpen ? <ShareDrawer boardId={boardId} readonly={readonly} onClose={() => setShareOpen(false)} /> : null}
+      {shareOpen ? (
+        <ShareDrawer
+          boardId={boardId}
+          readonly={readonly}
+          role={role}
+          onPendingCountChange={setPendingEditRequests}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
+
+      {copyOpen && !isGuest && user && role !== "owner" ? (
+        <CopyBoardDialog
+          boardId={boardId}
+          shareToken={shareToken}
+          sourceTitle={displayTitle}
+          onClose={() => setCopyOpen(false)}
+        />
+      ) : null}
 
       {cloudOpen && canCloudLoad ? (
         <CloudLoadDialog

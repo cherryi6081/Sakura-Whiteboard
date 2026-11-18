@@ -10,6 +10,8 @@ import { guestRouter } from './routes/guest.js';
 import { publicBoardRouter } from './routes/publicBoard.js';
 import { sharesRouter } from './routes/shares.js';
 import { boardMembersRouter } from './routes/boardMembers.js';
+import { editRequestsRouter } from './routes/editRequests.js';
+import { copyBoardRouter } from './routes/copyBoard.js';
 import { boardThumbnailsRouter } from './routes/boardThumbnails.js';
 import { assetsRouter } from './routes/assets.js';
 import { avatarRouter } from './routes/avatar.js';
@@ -60,6 +62,8 @@ export function createApp() {
   app.use('/api', publicBoardRouter);
   app.use('/api', sharesRouter);
   app.use('/api', boardMembersRouter);
+  app.use('/api', editRequestsRouter);
+  app.use('/api', copyBoardRouter);
   app.use('/api', boardThumbnailsRouter);
   app.use('/api', assetsRouter);
   // 必须在 boardsRouter 之前：/boards/trash 不能被 /boards/:id 抢先解析

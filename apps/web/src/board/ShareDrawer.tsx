@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { request } from "../auth/authApi";
-import { IconAlert, IconCopy, IconShare } from "../ui/icons";
+import { IconAlert, IconCheck, IconCopy, IconShare } from "../ui/icons";
 import { DialogClose } from "../ui/DialogClose";
 import { ListSelect } from "../ui/ListSelect";
+import {
+  decideEditRequest,
+  fetchEditRequests,
+  type EditRequestSummary,
+} from "./accessRequestApi";
 
 /**
  * 分享抽屉（视觉方案 §4.3）：只读 / 可编辑链接、有效期、创建、复制、吊销。
@@ -43,11 +48,17 @@ type CreateResult = {
 export function ShareDrawer({
   boardId,
   readonly,
+  role,
   onClose,
+  onPendingCountChange,
 }: {
   boardId: string;
   readonly: boolean;
+  /** 当前协作角色；只有 owner 能看到并处理编辑申请 */
+  role: string;
   onClose: () => void;
+  /** 待处理申请数变化时通知外壳（顶栏分享按钮的角标） */
+  onPendingCountChange?: (count: number) => void;
 }) {
   const [permission, setPermission] = useState<"read" | "edit">("read");
   const [expiry, setExpiry] = useState<ShareExpiry>("7");
@@ -57,6 +68,10 @@ export function ShareDrawer({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** 编辑权限申请：仅 owner 加载；pending 列表就是待处理队列 */
+  const [requests, setRequests] = useState<EditRequestSummary[] | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const isOwner = role === "owner" && !readonly;
 
   const load = useCallback(async () => {
     const res = await request<{ links: ShareLink[] }>(`/api/boards/${boardId}/share-links`);
@@ -69,10 +84,22 @@ export function ShareDrawer({
     setLinks(res.data.links);
   }, [boardId]);
 
+  const loadRequests = useCallback(async () => {
+    if (!isOwner) return;
+    const res = await fetchEditRequests(boardId);
+    if (!res.ok) {
+      setRequests([]);
+      return;
+    }
+    setRequests(res.data.requests);
+    onPendingCountChange?.(res.data.requests.length);
+  }, [boardId, isOwner, onPendingCountChange]);
+
   useEffect(() => {
     if (readonly) return;
     void load();
-  }, [load, readonly]);
+    void loadRequests();
+  }, [load, loadRequests, readonly]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -124,6 +151,24 @@ export function ShareDrawer({
       return;
     }
     void load();
+  };
+
+  /** 批准 / 拒绝编辑申请：批准后申请人立即获得 board_members(editor) */
+  const decide = async (requestId: string, status: "approved" | "rejected") => {
+    if (deciding) return;
+    setDeciding(requestId);
+    setError(null);
+    const res = await decideEditRequest(boardId, requestId, status);
+    setDeciding(null);
+    if (!res.ok) {
+      setError(
+        res.code === "SPACE_ROLE_GOVERNS"
+          ? "申请人是空间只读成员，请到空间设置里调整其角色。"
+          : `处理失败（${res.code}）。`,
+      );
+      return;
+    }
+    await loadRequests();
   };
 
   const copy = async (value: string) => {
@@ -241,6 +286,71 @@ export function ShareDrawer({
                 {copied ? "已复制" : "复制"}
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {isOwner ? (
+          <div>
+            <h3 className="wb-subtitle" style={{ fontSize: "var(--text-body)" }}>
+              编辑申请
+              {requests && requests.length > 0 ? (
+                <span className="wb-badge wb-badge--role" style={{ marginLeft: "var(--space-2)" }}>
+                  {requests.length} 待处理
+                </span>
+              ) : null}
+            </h3>
+            {requests === null ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+                <div className="wb-skeleton" style={{ height: 48 }} />
+              </div>
+            ) : requests.length === 0 ? (
+              <p className="wb-caption" style={{ marginTop: "var(--space-2)" }}>
+                暂无待处理的编辑申请。
+              </p>
+            ) : (
+              <div style={{ marginTop: "var(--space-2)" }} data-testid="edit-request-list">
+                {requests.map((item) => (
+                  <div key={item.id} className="wb-share-row" data-testid="edit-request-row" data-request-id={item.id}>
+                    {item.avatarUrl ? (
+                      <img
+                        src={item.avatarUrl}
+                        alt=""
+                        style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span className="wb-badge wb-badge--neutral" aria-hidden>
+                        {item.displayName.slice(0, 1)}
+                      </span>
+                    )}
+                    <div className="wb-share-row__meta">
+                      <span className="wb-share-row__time">{item.displayName}</span>
+                      <span className="wb-caption" style={{ display: "block" }}>
+                        {item.note ? item.note : "希望获得编辑权限"}
+                      </span>
+                    </div>
+                    <button
+                      className="wb-btn wb-btn--ghost wb-btn--pill"
+                      type="button"
+                      data-testid="edit-request-approve"
+                      disabled={deciding === item.id}
+                      onClick={() => void decide(item.id, "approved")}
+                    >
+                      <IconCheck />
+                      批准
+                    </button>
+                    <button
+                      className="wb-btn wb-btn--ghost wb-btn--pill wb-btn--danger-text"
+                      type="button"
+                      data-testid="edit-request-reject"
+                      disabled={deciding === item.id}
+                      onClick={() => void decide(item.id, "rejected")}
+                    >
+                      拒绝
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
 
