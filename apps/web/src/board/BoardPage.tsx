@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { sceneCoordsToViewportCoords, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI, NormalizedZoomValue } from "@excalidraw/excalidraw/types";
 import type { ElementOp } from "@whiteboard/shared";
 import { BoardCanvas, type BoardCanvasHandle } from "../canvas/BoardCanvas";
 import { EditorToolRail } from "../canvas/EditorToolRail";
@@ -15,7 +16,7 @@ import {
   userOwner,
   type RecentOwner,
 } from "../boards/recentBoards";
-import { markBoardOpened, uploadBoardThumbnail } from "../boards/boardsApi";
+import { markBoardOpened, removeBoardThumbnail, uploadBoardThumbnail } from "../boards/boardsApi";
 import { request } from "../auth/authApi";
 import { captureBoardThumb, peekBoardThumb, scheduleThumbCapture } from "../boards/boardThumb";
 import { readBoardThumb } from "../store/cacheDb";
@@ -32,6 +33,7 @@ import {
   IconUser,
 } from "../ui/icons";
 import { UserMark } from "../ui/UserMark";
+import { PresencePanel } from "./PresencePanel";
 import { ShareDrawer } from "./ShareDrawer";
 import { CopyBoardDialog } from "./CopyBoardDialog";
 import { CloudLoadDialog } from "./CloudLoadDialog";
@@ -112,6 +114,16 @@ type BoardWindow = {
   syncNow: () => void;
   socketDisconnect: () => void;
   socketConnect: () => void;
+  /** 远端光标验收：当前视口（场景坐标 ↔ client 坐标的换算参数） */
+  viewport: () => {
+    zoom: number;
+    scrollX: number;
+    scrollY: number;
+    offsetLeft: number;
+    offsetTop: number;
+  } | null;
+  /** 远端光标验收：直接设定视口；正常交互路径不调用 */
+  setViewport: (view: { zoom?: number; scrollX?: number; scrollY?: number }) => void;
 };
 
 declare global {
@@ -138,10 +150,26 @@ export function BoardPage({ boardId }: { boardId: string }) {
   /** 编辑后的重拍防抖：连续落笔只在停笔后导出一次 */
   const thumbRefreshTimerRef = useRef<number | null>(null);
   const storeRef = useRef<BoardStore | null>(null);
+  /** 光标层覆盖的画布容器：场景坐标换算成 client 坐标后要减掉它的视口偏移 */
+  const canvasAreaRef = useRef<HTMLDivElement | null>(null);
+  const [canvasBox, setCanvasBox] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  /** 本地平移/缩放时强制重渲染光标层：远端光标静止时也要跟着视口走 */
+  const [, setViewportTick] = useState(0);
+  /** 房间里有远端光标时才订阅视口变化，避免单人编辑时每次平移都重渲染整页 */
+  const hasRemoteCursorsRef = useRef(false);
   const [scene, setScene] = useState<BoardScene | null>(null);
   const [storeState, setStoreState] = useState<BoardStoreSnapshot | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed());
   const [shareOpen, setShareOpen] = useState(false);
+  /** 顶栏头像栈是「在线协作者」列表视图的入口；面板本身只展示 presence，不参与分享流程 */
+  const [presenceOpen, setPresenceOpen] = useState(false);
+  const presenceAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const presenceUserCount = storeState?.collab?.presence?.users.length ?? 0;
+
+  // 连接断开 / 名单清空时收起面板，避免入口消失后留下一个悬空弹层
+  useEffect(() => {
+    if (presenceUserCount === 0) setPresenceOpen(false);
+  }, [presenceUserCount]);
   /** 云端载入弹窗（入口在库主菜单「打开…」旁边） */
   const [cloudOpen, setCloudOpen] = useState(false);
   /** 复制到我的空间弹窗（只对非所有者的登录用户开放） */
@@ -154,7 +182,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
   /** 画布 API 提到 state：竖工具条要拿它 setActiveTool（ref 变化不会触发重渲染） */
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   /** 当前工具/工具锁/选中数/素材库侧栏开合：驱动竖工具条高亮与顶栏 Library 胶囊的按下态 */
-  const [uiState, setUiState] = useState({ tool: "selection", locked: false, selected: 0, library: false });
+  const [uiState, setUiState] = useState({
+    tool: "selection",
+    locked: false,
+    selected: 0,
+    library: false,
+    /** 文本/线性元素正在编辑：此时选区为空，但库仍会渲染属性面板 */
+    editing: false,
+  });
   /** 右侧 272 列的折叠：收起后画布回到整宽，偏好写入 localStorage */
   const [inspectorCollapsed, setInspectorCollapsed] = useState(readInspectorCollapsed);
   /** 轮询闭包里读最新的折叠态，避免把整个 interval 跟着状态重建 */
@@ -162,6 +197,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
   inspectorCollapsedRef.current = inspectorCollapsed;
   /** 上一次轮询看到的编辑态元素 id：只在「开始一次新编辑」时展开面板 */
   const editingIdRef = useRef<string | null>(null);
+  /** 上一次轮询看到的选区（排序后的 id 串）：换选/增选/空→非空时展开 */
+  const selectionKeyRef = useRef("");
+  /** 画布上最近一次按下：用于识别「重新点选已选中的元素」这类不改变选区的动作 */
+  const canvasPointerRef = useRef(false);
 
   const toggleInspector = useCallback(() => {
     setInspectorCollapsed((prev) => {
@@ -170,12 +209,155 @@ export function BoardPage({ boardId }: { boardId: string }) {
     });
   }, []);
 
+  /**
+   * 素材库是库自带的浮动侧栏：点它以外的地方会被 useOutsideClick 关掉。
+   * 右侧属性面板与素材库同屏共存，点属性面板不该连累素材库，
+   * 所以给属性面板补上库的豁免标记（它由库渲染，只能在运行时补属性）。
+   */
+  useEffect(() => {
+    const mark = () => {
+      const panel = document.querySelector<HTMLElement>(".App-menu__left");
+      if (!panel) return;
+      panel.setAttribute("data-prevent-outside-click", "true");
+      // 属性面板由库渲染，夜间配色作用域用 dataset 标记，只翻这一块岛
+      panel.dataset.wbIsland = "1";
+    };
+    mark();
+    const frame = requestAnimationFrame(mark);
+    return () => cancelAnimationFrame(frame);
+  }, [api, uiState.selected, uiState.library, inspectorCollapsed]);
+
   // 宽度变化后让库重算画布尺寸（滚轮缩放/元素命中都依赖 viewport 偏移）
   useEffect(() => {
     if (!api) return;
-    const frame = requestAnimationFrame(() => api.refresh());
+    const frame = requestAnimationFrame(() => {
+      api.refresh();
+      // 库刷新完 offsetLeft/Top 才是新值，强制重画一次光标层
+      setViewportTick((tick) => tick + 1);
+    });
     return () => cancelAnimationFrame(frame);
   }, [api, inspectorCollapsed]);
+
+  // 光标层铺满画布容器：容器位置/尺寸变化（属性面板开合、窗口缩放）后重新量一次，
+  // 否则场景坐标换算出的 client 坐标会带上容器偏移。
+  useEffect(() => {
+    const node = canvasAreaRef.current;
+    if (!node) return;
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      setCanvasBox((prev) =>
+        prev.left === rect.left &&
+        prev.top === rect.top &&
+        prev.width === rect.width &&
+        prev.height === rect.height
+          ? prev
+          : { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      );
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(node);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [api]);
+
+  // 本地滚轮平移/缩放时，远端光标位置也要按新视口重算（它们可能静止不动）
+  useEffect(() => {
+    if (!api) return;
+    return api.onScrollChange(() => {
+      if (hasRemoteCursorsRef.current) setViewportTick((tick) => tick + 1);
+    });
+  }, [api]);
+
+  /**
+   * 接管原生「滚动回到内容」。
+   *
+   * 原生 `calculateScrollCenter` 有两处问题：
+   * - 居中用的是 `appState.width`（整个 `.excalidraw` 的宽度），悬浮在画布右侧的
+   *   素材库侧栏（294px）没有被扣掉，内容会偏到可视中心右边；
+   * - 内容比视口大（放大后很常见）时会退回 `getClosestElementBounds`，且锚点把
+   *   `scrollX/scrollY` 当成 client 坐标传入，算出来的「最近元素」跟当前视口无关，
+   *   一点就整块跳向一侧、内容跑出视口。
+   *
+   * 这里不改库代码：拦住按钮点击，按交互画布的真实可视矩形（右侧扣掉侧栏覆盖）
+   * 居中整块内容。用户点按钮会顺带触发侧栏的 outside-click 关闭，所以等两帧、
+   * 布局稳定后再量可视区。
+   */
+  useEffect(() => {
+    if (!api) return;
+    const centerToContent = () => {
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        "canvas.excalidraw__canvas.interactive",
+      );
+      const elements = api.getSceneElements().filter((element) => !element.isDeleted);
+      if (!canvas || elements.length === 0) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      // 素材库侧栏悬浮在画布右侧：真实可视区要把它扣掉
+      const sidebarRect = document
+        .querySelector(".excalidraw .sidebar")
+        ?.getBoundingClientRect();
+      const visibleRight =
+        sidebarRect && sidebarRect.width > 0
+          ? Math.min(rect.right, sidebarRect.left)
+          : rect.right;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const element of elements) {
+        minX = Math.min(minX, element.x);
+        minY = Math.min(minY, element.y);
+        maxX = Math.max(maxX, element.x + element.width);
+        maxY = Math.max(maxY, element.y + element.height);
+      }
+
+      // 与库一致：client = (scene + scroll) * zoom + offset
+      const appState = api.getAppState();
+      const scale = appState.zoom.value || 1;
+      api.updateScene({
+        appState: {
+          scrollX:
+            ((rect.left + visibleRight) / 2 - appState.offsetLeft) / scale - (minX + maxX) / 2,
+          scrollY:
+            ((rect.top + rect.bottom) / 2 - appState.offsetTop) / scale - (minY + maxY) / 2,
+        },
+      });
+    };
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".scroll-back-to-content")) return;
+      // 原生 handler 会先按 appState.width 居中一次；这里整个接管
+      event.preventDefault();
+      event.stopPropagation();
+      requestAnimationFrame(() => requestAnimationFrame(centerToContent));
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [api]);
+
+  /**
+   * 画布上的按下算一次「新的选择动作」（点选 / 增选 / 框选 / 拖拽起点）。
+   * 只监听交互画布，面板里的输入框、侧栏、弹窗都不会置位，
+   * 所以不会干扰正在编辑的属性输入。
+   */
+  useEffect(() => {
+    if (!api) return;
+    const canvas = document.querySelector("canvas.excalidraw__canvas.interactive");
+    if (!canvas) return;
+    const onPointerDown = (event: Event) => {
+      if ((event as PointerEvent).button !== 0) return;
+      canvasPointerRef.current = true;
+    };
+    canvas.addEventListener("pointerdown", onPointerDown, true);
+    return () => canvas.removeEventListener("pointerdown", onPointerDown, true);
+  }, [api]);
 
   // 库的 onChange 只在场景变化时回调，纯选中/切工具不触发，所以低频率读一次 appState。
   // 只取三个字段做浅比较，值没变就不 setState，避免拖动画布时反复重渲染外壳。
@@ -185,13 +367,28 @@ export function BoardPage({ boardId }: { boardId: string }) {
     const sync = () => {
       const appState = api.getAppState();
 
-      // 进入编辑态（双击文本、双击折线加点等）时自动展开右侧面板：
-      // 只在编辑会话开始（id 从空变非空，或换到另一个元素）沿触发一次；
-      // 编辑进行中用户手动收起不会反复弹开，退出编辑后再次进入才算新会话。
+      /*
+       * 右侧属性面板自动展开的统一规则：
+       * - 选区变化（空→非空 / 换选 / 增选）、画布上的重新点选、进入新的编辑会话，
+       *   三类都算「新的活动」；
+       * - 只有面板当前是收起态才展开，展开态一律不动，避免打断面板里的输入；
+       * - 用户手动收起后，选区没变就不会自己弹回来，必须等到下一次选择/编辑动作。
+       */
+      const selectionKey = Object.keys(appState.selectedElementIds).sort().join(",");
+      const selectionChanged = selectionKey !== selectionKeyRef.current;
+      selectionKeyRef.current = selectionKey;
+
       const editingId = appState.editingTextElement?.id ?? appState.editingLinearElement?.elementId ?? null;
-      if (editingId !== editingIdRef.current) {
-        editingIdRef.current = editingId;
-        if (editingId && inspectorCollapsedRef.current) {
+      const editingStarted = editingId !== editingIdRef.current;
+      editingIdRef.current = editingId;
+
+      const pointerAction = canvasPointerRef.current;
+      canvasPointerRef.current = false;
+
+      if (inspectorCollapsedRef.current) {
+        const selectionAction = selectionChanged ? selectionKey !== "" : pointerAction && selectionKey !== "";
+        const editingAction = editingStarted && editingId !== null;
+        if (selectionAction || editingAction) {
           setInspectorCollapsed(false);
           writeInspectorCollapsed(false);
         }
@@ -201,9 +398,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
         tool: appState.activeTool.type,
         locked: appState.activeTool.locked,
         selected: Object.keys(appState.selectedElementIds).length,
-        library: appState.openSidebar?.name === "default",
+        // 文本 / 线性元素编辑中，选中集为空但属性面板仍在（库按 editingTextElement 渲染）
+        editing: editingId !== null,
+        // default 侧栏有 search / library 两个 tab，只有 library 才算「素材库已打开」
+        library:
+          appState.openSidebar?.name === "default" &&
+          appState.openSidebar?.tab === "library",
       };
-      const nextKey = `${next.tool}|${next.locked}|${next.selected}|${next.library}`;
+      const nextKey = `${next.tool}|${next.locked}|${next.selected}|${next.editing}|${next.library}`;
       if (nextKey === lastKey) return;
       lastKey = nextKey;
       setUiState(next);
@@ -387,15 +589,16 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
   /**
    * 导出（§13.3）：顶栏下拉，PNG / SVG 纯客户端生成，PDF 交服务端封装。
-   * 游客与只读成员同样可用 PNG / SVG，所以这里不按角色收口，只按「画布 API 是否就绪」和「是否正在导出」禁用；
-   * PDF 走服务端接口，与分享链接管理同一口径，仅所有者可选。
+   * 只要当前页面能打开这块板（有读权限），三种格式都可用：游客、只读成员不额外收口，
+   * 仅在「画布 API 未就绪」或「正在导出」时禁用。
    */
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   /** 透明背景只影响 PNG / SVG，默认关闭即保持原来的白底 */
   const [exportTransparent, setExportTransparent] = useState(false);
+  /** 服务端像素闸门命中后的可操作提示：改用 1 倍重试，或取消 */
+  const [exportPixelLimit, setExportPixelLimit] = useState<{ message: string } | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
-  const canExportPdf = (collabState?.role ?? "unknown") === "owner";
 
   useEffect(() => {
     if (!exportOpen) return;
@@ -415,13 +618,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }, [exportOpen]);
 
   const runExport = useCallback(
-    async (format: ExportFormat) => {
+    async (format: ExportFormat, overrides: { pdfScale?: number } = {}) => {
       if (exportBusy || !api) return;
       setExportBusy(true);
       const result = await exportBoard(api, displayTitle, format, {
         shareToken,
         background: exportTransparent ? "transparent" : "white",
         boardId,
+        pdfScale: overrides.pdfScale,
       });
       setExportBusy(false);
       setExportOpen(false);
@@ -431,6 +635,19 @@ export function BoardPage({ boardId }: { boardId: string }) {
       }
       if (result.status === "failed") {
         notify("导出没成功，请稍后再试");
+        return;
+      }
+      if (result.status === "rate_limited") {
+        notify(`导出太频繁，请 ${result.retryAfterSeconds} 秒后再试`);
+        return;
+      }
+      if (result.status === "pixel_limit") {
+        // 已经降到 1 倍仍超限：说明画布本身太大，给缩小画布的提示
+        if (overrides.pdfScale === 1) {
+          notify("1 倍导出仍超出像素上限，请缩小画布范围后再试");
+          return;
+        }
+        setExportPixelLimit({ message: result.message });
         return;
       }
       notify(
@@ -646,6 +863,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
     async (tag: string): Promise<void> => {
       if (!tag.startsWith("user:")) return;
       if (storeRef.current?.snapshot().collab?.role === "viewer") return;
+      // 画面已清空：服务端那份旧缩略图必须一起删掉，否则列表仍优先展示它
+      if (apiRef.current?.getSceneElements().every((el) => el.isDeleted)) {
+        await removeBoardThumbnail(boardId);
+        return;
+      }
       const record = await readBoardThumb(tag, boardId).catch(() => null);
       if (!record || !(record.blob instanceof Blob) || record.blob.size === 0) return;
       await uploadBoardThumbnail(boardId, record.blob);
@@ -658,6 +880,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
     async (tag: string, blob: Blob): Promise<void> => {
       if (!tag.startsWith("user:")) return;
       if (storeRef.current?.snapshot().collab?.role === "viewer") return;
+      // 清空后内存里可能还留着清空前的 Blob（pagehide 同步路径）：不能再上传它
+      if (apiRef.current?.getSceneElements().every((el) => el.isDeleted)) {
+        removeBoardThumbnail(boardId);
+        return;
+      }
       if (!(blob instanceof Blob) || blob.size === 0) return;
       await uploadBoardThumbnail(boardId, blob);
     },
@@ -784,6 +1011,30 @@ export function BoardPage({ boardId }: { boardId: string }) {
       syncNow: () => storeRef.current?.syncNow(),
       socketDisconnect: () => storeRef.current?.debugDisconnect(),
       socketConnect: () => storeRef.current?.debugConnect(),
+      viewport: () => {
+        const state = apiRef.current?.getAppState();
+        if (!state) return null;
+        return {
+          zoom: state.zoom.value,
+          scrollX: state.scrollX,
+          scrollY: state.scrollY,
+          offsetLeft: state.offsetLeft,
+          offsetTop: state.offsetTop,
+        };
+      },
+      setViewport: (view) => {
+        const canvasApi = apiRef.current;
+        if (!canvasApi) return;
+        const state = canvasApi.getAppState();
+        canvasApi.updateScene({
+          appState: {
+            zoom: { value: (view.zoom ?? state.zoom.value) as NormalizedZoomValue },
+            scrollX: view.scrollX ?? state.scrollX,
+            scrollY: view.scrollY ?? state.scrollY,
+          },
+        });
+        canvasApi.refresh();
+      },
     };
     window.__board = hook;
     return () => {
@@ -817,11 +1068,16 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const role = collabState?.role ?? "unknown";
   const presence = collabState?.presence ?? null;
   const cursors = collabState?.cursors ?? [];
+  hasRemoteCursorsRef.current = cursors.length > 0;
+  /** 远端光标存的是场景坐标，渲染时按本地视口换算；视口变化由 onScrollChange 触发重渲染 */
+  const cursorAppState = api?.getAppState() ?? null;
   /** 方案 A：同色连接按加入顺序编号，第 2 条起显示「昵称 · 2」（纯函数，最多 40 条，无需缓存） */
   const cursorLabels = buildCursorLabels(cursors);
   const writer = storeState?.writer;
   const tab = storeState;
 
+  /** 首帧用的是缓存且没能确认水位：等 join 补拉完成（synced）后自动消失 */
+  const syncDegraded = scene !== null && scene.sync !== "fresh" && !collabState?.synced;
   const statusText = status === "connected" ? "已连接" : status === "connecting" ? "连接中" : "离线";
   const statusTone = status === "connected" ? "ok" : status === "connecting" ? "busy" : "bad";
   const users = presence?.users ?? [];
@@ -861,9 +1117,19 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
         <div className="wb-board__spacer" />
 
-        {/* presence：一个用户一个头像，多标签用 ×N 标注 */}
+        {/* presence：一个用户一个头像，多标签用 ×N 标注；头像栈同时是在线协作者面板的入口 */}
         {users.length > 0 ? (
-          <div className="wb-avatar-stack" data-testid="presence" aria-label="在线协作者">
+          <button
+            ref={presenceAnchorRef}
+            type="button"
+            className="wb-avatar-stack wb-avatar-stack--entry"
+            data-testid="presence"
+            aria-label={`在线协作者，${users.length} 人`}
+            aria-haspopup="dialog"
+            aria-expanded={presenceOpen}
+            title="在线协作者"
+            onClick={() => setPresenceOpen((prev) => !prev)}
+          >
             {shownUsers.map((member) => (
               <span
                 key={member.identity}
@@ -890,8 +1156,18 @@ export function BoardPage({ boardId }: { boardId: string }) {
               </span>
             ))}
             {extraUsers > 0 ? <span className="wb-avatar wb-avatar--more">+{extraUsers}</span> : null}
-          </div>
+          </button>
         ) : null}
+
+        <PresencePanel
+          open={presenceOpen}
+          users={users}
+          cursors={cursors}
+          selfIdentity={collabState?.identity ?? null}
+          anchorRef={presenceAnchorRef}
+          onClose={() => setPresenceOpen(false)}
+          onMemberContextMenu={openMemberMenu}
+        />
 
         <span className="wb-user-chip wb-board__status" data-testid="collab-status" data-status={status}>
           <span className={`wb-board__dot wb-board__dot--${statusTone}`} aria-hidden />
@@ -949,12 +1225,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
             aria-pressed={uiState.library}
             aria-label="素材库"
             title="素材库"
-            onClick={() =>
-              // 侧栏开着时，库会在 pointerdown 阶段先按「点在外面」把它关掉（见 useOutsideClick），
-              // 此刻再读实时状态会误判成「该打开」。所以按这一刻渲染出的开合态给 force：
-              // 之前是开的 → 关；之前是关的 → 开。
-              api.toggleSidebar({ name: "default", force: !uiState.library })
-            }
+            onClick={() => {
+              // 侧栏是常驻 docked（见 NativeLibraryTools），点这个按钮不会被库当成
+              //「点在外面」先关一次，所以按实时状态取反即可。
+              // 宿主是原生 Library；类别条与搜索由 NativeLibraryTools 注入到它的顶部。
+              const open = api.getAppState().openSidebar;
+              const libraryOpen = open?.name === "default" && open.tab === "library";
+              api.toggleSidebar({ name: "default", tab: "library", force: !libraryOpen });
+            }}
           >
             <IconLibrary />
             <span className="wb-board__share-text">素材库</span>
@@ -1009,14 +1287,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
                 type="button"
                 role="menuitem"
                 data-testid="export-pdf"
-                disabled={!canExportPdf}
-                title={canExportPdf ? "整张画布 · 白底" : "仅所有者可导出 PDF"}
+                title="整张画布 · 白底 · 服务端生成"
                 onClick={() => void runExport("pdf")}
               >
                 <span className="wb-board__export-name">PDF 文档</span>
-                <span className="wb-board__export-hint">
-                  {canExportPdf ? "整张画布 · 白底 · 服务端生成" : "仅所有者可导出"}
-                </span>
+                <span className="wb-board__export-hint">整张画布 · 白底 · 服务端生成</span>
               </button>
               <div className="wb-board__export-sep" role="separator" />
               <label className="wb-board__export-toggle">
@@ -1107,6 +1382,40 @@ export function BoardPage({ boardId }: { boardId: string }) {
         </div>
       ) : null}
 
+      {exportPixelLimit ? (
+        <div
+          className="wb-board__export-limit"
+          role="alertdialog"
+          aria-label="导出像素超限"
+          data-testid="export-pixel-limit"
+        >
+          <div className="wb-board__export-limit-copy">
+            <strong>画布像素超出导出上限</strong>
+            <span>{exportPixelLimit.message}</span>
+          </div>
+          <div className="wb-board__export-limit-actions">
+            <button
+              type="button"
+              className="wb-board__export-limit-primary"
+              data-testid="export-pixel-limit-retry"
+              onClick={() => {
+                setExportPixelLimit(null);
+                void runExport("pdf", { pdfScale: 1 });
+              }}
+            >
+              改用 1 倍导出
+            </button>
+            <button
+              type="button"
+              data-testid="export-pixel-limit-cancel"
+              onClick={() => setExportPixelLimit(null)}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {status === "disconnected" ? (
         <div className="wb-banner wb-banner--warning" role="status" data-testid="offline-banner">
           <IconAlert />
@@ -1115,6 +1424,17 @@ export function BoardPage({ boardId }: { boardId: string }) {
           <button className="wb-btn wb-btn--ghost wb-btn--sm" type="button" onClick={() => storeRef.current?.debugConnect()}>
             重试
           </button>
+        </div>
+      ) : null}
+
+      {syncDegraded && status !== "disconnected" ? (
+        <div className="wb-banner wb-banner--warning" role="status" data-testid="unsynced-banner">
+          <IconAlert />
+          <span>
+            {scene?.sync === "offline"
+              ? "离线打开：当前显示本机缓存，可以继续编辑，联网后会自动同步。"
+              : "本机缓存落后于服务端，正在等待最新版本；联网后会自动补齐。"}
+          </span>
         </div>
       ) : null}
 
@@ -1129,13 +1449,18 @@ export function BoardPage({ boardId }: { boardId: string }) {
 
       <div
         className="wb-board__canvas"
+        ref={canvasAreaRef}
         onPointerMove={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return;
-          storeRef.current?.sendCursor(
-            clamp01((event.clientX - rect.left) / rect.width),
-            clamp01((event.clientY - rect.top) / rect.height),
+          // 上报 Excalidraw 场景坐标（不是 0..1 的屏幕占比）：接收端各用各的 zoom/scroll
+          // 还原，两人的视口不同也不会错位。
+          const canvasApi = apiRef.current;
+          if (!canvasApi) return;
+          const { x, y } = viewportCoordsToSceneCoords(
+            { clientX: event.clientX, clientY: event.clientY },
+            canvasApi.getAppState(),
           );
+          if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+          storeRef.current?.sendCursor(x, y);
         }}
       >
         <div
@@ -1165,6 +1490,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
               refreshThumbSoon();
             }}
             onCloudLoad={canCloudLoad ? () => setCloudOpen(true) : null}
+            inspectorCollapsed={inspectorCollapsed}
+            onOpenInspector={() => {
+              setInspectorCollapsed(false);
+              writeInspectorCollapsed(false);
+            }}
           />
         </div>
 
@@ -1178,37 +1508,34 @@ export function BoardPage({ boardId }: { boardId: string }) {
           />
         ) : null}
 
-        {/* 右侧 272 列的折叠入口：面板/空态共用，只读态不出现 */}
-        {!readonly ? (
+        {/* 属性面板右上角关闭键：与素材库关闭键同形（见 pages.css 的 .wb-inspector-close）。
+            只在面板列可见时渲染；收起后重新打开走主菜单「属性面板」或点选画布元素。 */}
+        {!readonly && !inspectorCollapsed ? (
           <button
             type="button"
-            className={`wb-inspector-toggle${inspectorCollapsed ? " wb-inspector-toggle--collapsed" : ""}`}
-            data-testid="inspector-toggle"
-            aria-expanded={!inspectorCollapsed}
-            title={inspectorCollapsed ? "展开属性面板" : "收起属性面板"}
-            aria-label={inspectorCollapsed ? "展开属性面板" : "收起属性面板"}
+            className="wb-inspector-close"
+            data-testid="inspector-close"
+            data-prevent-outside-click="true"
+            title="关闭属性面板"
+            aria-label="关闭属性面板"
             onClick={toggleInspector}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              style={{ transform: inspectorCollapsed ? "rotate(180deg)" : undefined }}
-            >
-              <path d="M9 6l6 6-6 6" />
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M15 5 5 15M5 5l10 10"
+                stroke="currentColor"
+                strokeWidth="1.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
         ) : null}
 
-        {/* 右侧属性槽：库面板只在选中元素时挂载，未选中时由外壳补空态，避免 272 列空着 */}
-        {!readonly && !inspectorCollapsed && uiState.selected === 0 ? (
-          <aside className="wb-board__inspector-empty" data-testid="inspector-empty">
+        {/* 右侧属性槽：库面板只在选中元素时挂载，未选中时由外壳补空态，避免 272 列空着。
+            文本编辑期间选中集为空但库面板正在显示文字属性，不能被空态盖住。 */}
+        {!readonly && !inspectorCollapsed && uiState.selected === 0 && !uiState.editing ? (
+          <aside className="wb-board__inspector-empty wb-island" data-testid="inspector-empty" data-prevent-outside-click="true">
             <div className="wb-board__inspector-empty-title">样式</div>
             <div className="wb-board__inspector-empty-sub">未选中元素</div>
             <p className="wb-board__inspector-empty-hint">
@@ -1268,49 +1595,76 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </div>
         ) : null}
 
-        {/* 远端光标按连接渲染（同一用户的多标签各有一个，位置不合并） */}
-        {cursors.map((cursor) => (
-          <div
-            key={cursor.connectionId}
-            data-testid="remote-cursor"
-            data-connection={cursor.connectionId}
-            data-identity={cursor.identity}
-            style={{
-              position: "absolute",
-              left: `${cursor.x * 100}%`,
-              top: `${cursor.y * 100}%`,
-              transform: "translate(6px, 6px)",
-              pointerEvents: "none",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              zIndex: 4,
-            }}
-          >
-            <i
+        {/* 远端光标按连接渲染（同一用户的多标签各有一个，位置不合并）。
+            服务端存的是场景坐标，这里按本机 zoom/scroll 换算成 client 坐标，再减掉容器偏移。 */}
+        {cursors.map((cursor) => {
+          if (!cursorAppState || canvasBox.width === 0) return null;
+          const point = sceneCoordsToViewportCoords(
+            { sceneX: cursor.x, sceneY: cursor.y },
+            cursorAppState,
+          );
+          const left = point.x - canvasBox.left;
+          const top = point.y - canvasBox.top;
+          // 双方视口不同时对方光标可能在可视区外：不渲染，也不让它撑出滚动条
+          if (
+            left < -24 ||
+            top < -24 ||
+            left > canvasBox.width + 24 ||
+            top > canvasBox.height + 24
+          ) {
+            return null;
+          }
+          return (
+            <div
+              key={cursor.connectionId}
+              data-testid="remote-cursor"
+              data-connection={cursor.connectionId}
+              data-identity={cursor.identity}
               style={{
-                width: 9,
-                height: 9,
-                borderRadius: "50%",
-                background: cursor.color,
-                boxShadow: "0 0 0 2px rgba(255,255,255,.85)",
-                display: "inline-block",
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                color: "#fff",
-                background: cursor.color,
-                borderRadius: 4,
-                padding: "1px 5px",
-                whiteSpace: "nowrap",
+                position: "absolute",
+                left,
+                top,
+                // 容器左上角 = 指针热点，箭头尖端画在 (0,0)，不再整体平移
+                width: 20,
+                height: 20,
+                pointerEvents: "none",
+                zIndex: 4,
               }}
             >
-              {cursorLabels.get(cursor.connectionId) ?? cursor.displayName}
-            </span>
-          </div>
-        ))}
+              <svg
+                width={20}
+                height={20}
+                viewBox="0 0 20 20"
+                aria-hidden
+                style={{ position: "absolute", left: 0, top: 0, display: "block" }}
+              >
+                <path
+                  d="M0.6 0.6 L0.6 16 L5.5 11.8 L8.4 18.2 L11.6 16.8 L8.7 10.5 L14.6 9.8 Z"
+                  fill={cursor.color}
+                  stroke="#fff"
+                  strokeWidth={1.2}
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span
+                style={{
+                  position: "absolute",
+                  left: 13,
+                  top: 16,
+                  fontSize: 10,
+                  lineHeight: "14px",
+                  color: "#fff",
+                  background: cursor.color,
+                  borderRadius: 4,
+                  padding: "1px 5px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {cursorLabels.get(cursor.connectionId) ?? cursor.displayName}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* 状态条：桌面可见，移动端隐藏；同时承载验收用的调试读数 */}
@@ -1439,11 +1793,6 @@ function readSpaceQuery(): string | undefined {
   const from = params.get("from");
   if (!from) return undefined;
   return pick(new URLSearchParams(from.split("?")[1] ?? "").get("space"));
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(1, Math.max(0, value));
 }
 
 function shortId(value: string): string {

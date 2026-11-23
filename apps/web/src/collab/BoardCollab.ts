@@ -620,7 +620,7 @@ export function createBoardCollab(options: {
     emit();
   };
 
-  /** 光标上行节流；坐标由页面按画布容器归一化到 0..1。 */
+  /** 光标上行节流；坐标是 Excalidraw 场景坐标，接收端按各自视口还原。 */
   const sendCursor = (x: number, y: number) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const nowMs = Date.now();

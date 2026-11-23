@@ -1,0 +1,272 @@
+/*
+ * 在线协作者面板（方案 C 的「在线协作者」段）。
+ * 只使用 tokens.css 的语义变量：夜间由 [data-theme="night"] 自动换板，
+ * 这里不写死任何白天色值。
+ */
+
+/* 顶栏头像栈：从纯展示改成面板入口，外观保持原样，只补按钮复位与焦点反馈 */
+.wb-avatar-stack--entry {
+  appearance: none;
+  margin: -2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-avatar-stack--entry:hover,
+.wb-avatar-stack--entry[aria-expanded="true"] {
+  background: var(--surface-sunken);
+}
+
+.wb-avatar-stack--entry:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 弹层：贴在头像栈下方，宽度对齐设计稿 C 的 294 侧栏 */
+.wb-presence {
+  position: fixed;
+  z-index: 57;
+  display: flex;
+  flex-direction: column;
+  width: 292px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 10px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
+  box-shadow: var(--shadow-raised);
+  font-family: var(--font-sans);
+}
+
+.wb-presence:focus {
+  outline: none;
+}
+
+:root[data-theme="night"] .wb-presence {
+  border-color: var(--line-strong);
+}
+
+/* 分组标题：与设计稿 C 的 .sec-label 同口径（10.5px + 后置分隔线） */
+.wb-presence__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 22px;
+  margin: 0 2px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.wb-presence__head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.wb-presence__title {
+  flex: none;
+}
+
+.wb-presence__count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.wb-presence__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.wb-presence__close:hover {
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
+}
+
+.wb-presence__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 成员多时只滚列表，标题与关闭按钮保持可见 */
+.wb-presence__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  max-height: min(300px, calc(100vh - 160px));
+  padding-right: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* 行：38px 高 / 24px 头像 / 8px 间距，对齐方案 C 的 .person */
+.wb-presence__person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 38px;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+
+.wb-presence__person:hover {
+  background: var(--surface-sunken);
+}
+
+.wb-presence__avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  color: var(--text-on-primary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wb-presence__avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wb-presence__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--ink-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-presence__name em {
+  font-style: normal;
+  color: var(--ink-faint);
+}
+
+.wb-presence__tag {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+
+/* 角色胶囊：owner 用主题链接色派生，夜间自动变亮；viewer 虚线 + 锁表示无写权限 */
+.wb-presence__role {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 17px;
+  padding: 0 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.wb-presence__role--owner {
+  border-color: color-mix(in srgb, var(--ink-link) 40%, transparent);
+  background: color-mix(in srgb, var(--ink-link) 12%, transparent);
+  color: var(--ink-link);
+  font-weight: 600;
+}
+
+.wb-presence__role--editor {
+  color: var(--ink-muted);
+}
+
+.wb-presence__role--viewer {
+  border-style: dashed;
+}
+
+/* 状态点 + 文字：在线用主题成功色，空闲退到弱文字色 */
+.wb-presence__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--success-fill);
+}
+
+.wb-presence__dot + .wb-presence__state {
+  margin-left: -4px;
+}
+
+.wb-presence__state {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--ink-muted);
+}
+
+.wb-presence__person[data-status="idle"] .wb-presence__dot {
+  background: var(--ink-faint);
+  opacity: 0.72;
+}
+
+.wb-presence__person[data-status="idle"] .wb-presence__state {
+  color: var(--ink-faint);
+}
+
+/* 只有自己时的空态：不新开视觉，沿用侧栏的空态卡 */
+.wb-presence__empty {
+  margin: 4px 2px 2px;
+  padding: 14px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  text-align: center;
+}
+
+.wb-presence__empty b {
+  display: block;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.wb-presence__empty span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 15px;
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-avatar-stack--entry {
+    transition: none;
+  }
+}

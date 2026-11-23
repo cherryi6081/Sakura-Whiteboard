@@ -52,10 +52,13 @@ const joinSchema = z.object({
 
 type JoinPayload = z.infer<typeof joinSchema>;
 
-/** M3：归一化光标坐标（0..1），越界/非有限值直接丢弃。 */
+/**
+ * 光标坐标：Excalidraw **场景坐标**（可正可负，随缩放/滚动变化，不是 0..1 的屏幕占比）。
+ * 每个标签各用各的视口还原，所以只需拦下非有限值与极端脏数据。
+ */
 const cursorSchema = z.object({
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
+  x: z.number().finite().min(-1e7).max(1e7),
+  y: z.number().finite().min(-1e7).max(1e7),
   /** 客户端诊断时间戳（压测用），原样回带；生产客户端不发送 */
   t: z.number().finite().nonnegative().optional(),
 });
@@ -458,8 +461,8 @@ export function attachRealtime(httpServer: HttpServer) {
     });
 
     /**
-     * M3：光标按**连接**广播（不回显发送者）。坐标是画布容器内的归一化 0..1，
-     * 不同标签视口不同，因此不能按用户合并成一个位置。
+     * M3：光标按**连接**广播（不回显发送者）。坐标是 Excalidraw 场景坐标，
+     * 不同标签视口不同，接收端各用各的 zoom/scroll 还原，因此不能按用户合并成一个位置。
      */
     socket.on('cursor:move', (payload: unknown) => {
       const state = stateOf(socket);

@@ -5,7 +5,9 @@ import type { AccessRole } from '../domain/access.js';
  *
  * 隔离边界（见开发文档 §6.3）：
  * - 一个 socket = 一条连接（`connectionId`）。同一用户同一块板的两个标签 = 两条连接。
- * - 对外的 `presence:state` 按 `identity`（当前是游客 `guest:{guestId}`）聚合：头像一个 + "×N 标签页"。
+ * - 对外的 `presence:state` 按 `identity` 聚合：登录用户是 `user:{userId}`（多浏览器 / 多标签都并成一个人），
+ *   游客是 `guest:{guestId}`（guestId 存在各自浏览器的 cookie 里，不同浏览器天然是两个人）。
+ *   聚合后是头像一个 + "×N 标签页"。
  * - 光标不进聚合对象：按 `connectionId` 独立走合帧广播（`presence:cursor:frame`），两标签视口不同，
  *   位置不可合并。
  *
@@ -39,6 +41,8 @@ export type PresenceUser = {
   displayName: string;
   avatarUrl: string | null;
   role: AccessRole;
+  /** 该用户最早一条连接的加入时间：客户端用它作为「最近活动」的空闲判定基线 */
+  joinedAt: number;
   /** 该用户在本板的连接数（= 标签页数，同一标签重连会被顶层 map 覆盖而不是相加） */
   connectionCount: number;
   tabIds: string[];
@@ -84,6 +88,7 @@ export function aggregatePresence(
         : sorted.some((conn) => conn.role === 'editor')
           ? 'editor'
           : 'viewer',
+      joinedAt: first.joinedAt,
       connectionCount: sorted.length,
       tabIds: [...new Set(tabIds)],
       connectionIds: sorted.map((conn) => conn.connectionId),

@@ -66,6 +66,8 @@ export type PresenceUserPayload = {
   displayName: string;
   avatarUrl: string | null;
   role: JoinRole;
+  /** 最早一条连接的加入时间（服务端聚合）：空闲判定的基线 */
+  joinedAt: number;
   connectionCount: number;
   tabIds: string[];
   connectionIds: string[];
@@ -89,6 +91,7 @@ export type CursorPayload = {
   displayName: string;
   /** 该连接加入本板的时间，用于同色分组内的稳定排序 */
   joinedAt: number;
+  /** Excalidraw 场景坐标（各端按自己的 zoom/scroll 还原，不是屏幕占比） */
   x: number;
   y: number;
 };

@@ -14,6 +14,7 @@ const state = (totalConnections: number): PresenceState => ({
             displayName: '游客',
             avatarUrl: null,
             role: 'editor',
+            joinedAt: 1000,
             connectionCount: totalConnections,
             tabIds: ['tab_a1'],
             connectionIds: Array.from({ length: totalConnections }, (_, i) => `sock_${i}`),
