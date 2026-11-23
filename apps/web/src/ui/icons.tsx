@@ -125,9 +125,18 @@ export function IconImage({ size = 16 }: IconProps) {
   );
 }
 
+/**
+ * 素材库：沿用 Excalidraw 原生 `LibraryIcon`（tabler book）的几何与描边口径。
+ * 原生那颗是 24 网格、stroke-width 2；这里内联同一份 path，只按按钮尺寸缩放，
+ * 不再用更细的 1.5 描边，恢复胶囊化之前的外观。
+ */
 export function IconLibrary({ size = 16 }: IconProps) {
   return (
-    <svg {...base(size)} className="wb-icon" style={{ width: size, height: size }}>
+    <svg
+      {...base(size)}
+      className="wb-icon"
+      style={{ width: size, height: size, strokeWidth: 2 }}
+    >
       <path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
       <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
       <path d="M3 6v13" />

@@ -353,7 +353,10 @@
   --surface-raised-hover: #232d45;
   --surface-sunken: #0e1422;
   --line-soft: #2b3552;
-  --line-strong: #4e5b84;
+  /* 控件边界（按钮/输入/胶囊）在深纸面上要够 3:1：旧的 #4e5b84 对
+     --surface-raised 只有 2.32，和白天 --control-border 的 3.12 不对等。
+     用 ink-faint 与深纸面按 62/38 混出 ≈3.1:1，不新增色相。 */
+  --line-strong: color-mix(in srgb, var(--ink-faint) 62%, var(--surface-raised));
 
   --ink-strong: #eef2fb;
   --ink-muted: #bfc9de;
@@ -388,6 +391,47 @@
   --skeleton: #34415f;
   --thumb-frame: 1px solid #3a4666;
   --thumb-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+/* ============================================================
+ * 编辑器三块岛：素材库侧栏 / 属性面板 / 左侧工具条
+ *
+ * 作用域只包这三块浮层（.wb-island；Excalidraw 自渲染的两块用
+ * data-wb-island 标记），画布、顶栏、应用外壳都不在作用域内。
+ * 白天这批别名逐项指回旧 token，保证浅色零变化；夜间才换板。
+ * ============================================================ */
+
+.wb-island,
+.wb-canvas .excalidraw .sidebar[data-wb-island],
+.wb-canvas .excalidraw .App-menu__left[data-wb-island] {
+  --island-border: var(--neutral-200);
+  --island-control: var(--control-border);
+  --island-hover: var(--neutral-100);
+  --island-active-bg: var(--rose-100);
+  --island-active-ink: var(--rose-700);
+  --island-disabled: var(--text-disabled);
+}
+
+:root[data-theme="night"] .wb-island,
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island],
+:root[data-theme="night"] .wb-canvas .excalidraw .App-menu__left[data-wb-island] {
+  --surface-raised: #1c2438;
+  --surface-raised-hover: #232d45;
+  --surface-sunken: #0e1422;
+  --line-soft: #2b3552;
+  --line-strong: #66718a;
+  --ink-strong: #eef2fb;
+  --ink-muted: #bfc9de;
+  --ink-faint: #93a0ba;
+  --ink-link: #d39ab1;
+  --ink-link-hover: #e8c3d2;
+
+  --island-border: #2b3552;
+  --island-control: #66718a;
+  --island-hover: #232d45;
+  --island-active-bg: #4a3f54;
+  --island-active-ink: #f5dbe6;
+  --island-disabled: #5d6986;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -3597,15 +3597,6 @@ body:has(.wb-home) {
   color: var(--ink-muted);
 }
 
-.wb-board__export-item:disabled {
-  cursor: not-allowed;
-  color: var(--ink-muted);
-}
-
-.wb-board__export-item:disabled:hover {
-  background: transparent;
-}
-
 /* 格式与「透明背景」之间一条细分隔线 */
 .wb-board__export-sep {
   height: 1px;
@@ -3803,6 +3794,68 @@ body:has(.wb-home) {
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   box-shadow: var(--shadow-raised);
+}
+
+/* PDF 导出像素超限：可操作的提示（改用 1 倍 / 取消），不自动消失 */
+.wb-board__export-limit {
+  position: fixed;
+  top: calc(var(--topbar-h) + var(--space-3));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(460px, calc(100vw - 32px));
+  padding: var(--space-3);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised, var(--warn-bg));
+  color: var(--ink-strong);
+  box-shadow: var(--shadow-raised);
+}
+
+.wb-board__export-limit-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+.wb-board__export-limit-copy strong {
+  font-weight: 600;
+}
+
+.wb-board__export-limit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.wb-board__export-limit-actions button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-strong);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  cursor: pointer;
+}
+
+.wb-board__export-limit-actions button:hover {
+  background: var(--surface-sunken);
+}
+
+.wb-board__export-limit-actions .wb-board__export-limit-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.wb-board__export-limit-actions .wb-board__export-limit-primary:hover {
+  filter: brightness(1.05);
 }
 
 .wb-board__dropzone {
@@ -7384,8 +7437,8 @@ button.wb-sortchip:hover {
 
 
 /* ---------- 编辑页 C′：右侧属性槽空态 + 自研左侧竖工具条 ----------
-   两者都画在库子树之外（挂在 .wb-board__canvas 上），所以一律用不随时辰
-   变化的原始中性/玫瑰 token，保证夜间仍是白纸岛口径。 */
+   两者都画在库子树之外（挂在 .wb-board__canvas 上），白天用纸面档，
+   夜间由 .wb-island 作用域翻深；尺寸/位置/层级沿用原值。 */
 
 .wb-board__inspector-empty {
   position: absolute;
@@ -7398,28 +7451,28 @@ button.wb-sortchip:hover {
   gap: 6px;
   width: 272px;
   padding: 14px 16px 16px;
-  background: var(--paper);
-  border-left: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border-left: 1px solid var(--island-border);
 }
 
 .wb-board__inspector-empty-title {
   font-size: var(--text-body);
   line-height: var(--lh-body);
   font-weight: 600;
-  color: var(--neutral-900);
+  color: var(--ink-strong);
 }
 
 .wb-board__inspector-empty-sub {
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
-  color: var(--neutral-700);
+  color: var(--ink-muted);
 }
 
 .wb-board__inspector-empty-hint {
   margin: 6px 0 0;
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
-  color: var(--neutral-700);
+  color: var(--ink-muted);
 }
 
 .wb-board__inspector-empty-kbd {
@@ -7430,52 +7483,45 @@ button.wb-sortchip:hover {
   height: 18px;
   margin: 0 2px;
   padding: 0 4px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--island-border);
   border-radius: 4px;
-  background: var(--neutral-100);
+  background: var(--surface-sunken);
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--neutral-900);
+  color: var(--ink-strong);
 }
 
-/* 右侧 272 列的折叠入口：展开时在面板标题右角，收起后变成画布右侧中段的把手。
-   面板本体是库渲染的，拿不到它的 DOM，所以入口画在库子树之外。 */
-.wb-inspector-toggle {
+/* 属性面板右上角关闭键：与素材库右上角的关闭键同口径（32 圆、透明底、16 图标、
+   同一 hover 与夜间配色）。面板顶 = 画布顶 +16、正文左右内缩 17，32 高的键放不进
+   14 的顶部内边距，因此压在标题行右侧的留白上：面板顶 +4、面板右 −8，
+   底边正好停在色板行之前，不遮挡任何控件。 */
+.wb-inspector-close {
   position: absolute;
-  top: 8px;
+  top: 20px;
   right: 8px;
-  z-index: 7;
-  display: grid;
-  place-items: center;
+  z-index: 21;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid var(--neutral-200);
+  border: 0;
   border-radius: var(--radius-pill);
-  background: var(--paper);
-  color: var(--neutral-700);
+  background: transparent;
+  color: var(--ink-strong);
   cursor: pointer;
-  box-shadow: var(--shadow-1);
   transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
-.wb-inspector-toggle:hover {
-  background: var(--neutral-100);
-  color: var(--neutral-900);
+/* 与素材库关闭键一致：白天是 rose-100 水洗底（素材库键在同色侧栏内的实测色） */
+.wb-inspector-close:hover {
+  background: var(--rose-100);
 }
 
-.wb-inspector-toggle:focus-visible {
+.wb-inspector-close:focus-visible {
   outline: 2px solid var(--rose-600);
   outline-offset: 1px;
-}
-
-/* 收起后画布铺满 1440，右上角是库的 Library 岛，所以入口落在右侧中段避免打架 */
-.wb-inspector-toggle--collapsed {
-  top: 50%;
-  right: 12px;
-  width: 32px;
-  height: 44px;
-  transform: translateY(-50%);
 }
 
 /* 收起时库面板整体退场，画布回到整宽；只读态没有这个入口，也就不会命中 */
@@ -7496,19 +7542,16 @@ button.wb-sortchip:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-  /* 竖条是白纸岛，夜间也不该跟着 .wb-board 把玫瑰水洗底混成深色（否则选中块变成黑方块） */
-  --rose-100: #f4e3e9;
-  --rose-700: #8e4568;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   width: 48px;
   padding: 4px;
-  background: var(--paper);
-  border: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border: 1px solid var(--island-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-raised);
 }
 
 .wb-toolrail::-webkit-scrollbar {
@@ -7537,19 +7580,19 @@ button.wb-sortchip:hover {
   /* 图标按钮按「我的白板」胶囊口径：32 高 + 999 圆角即正圆，仍与胶囊按钮同语言 */
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .wb-toolrail__btn:hover:not(:disabled):not([aria-pressed="true"]) {
-  background: var(--neutral-100);
-  color: var(--neutral-900);
+  background: var(--island-hover);
+  color: var(--ink-strong);
 }
 
 .wb-toolrail__btn[aria-pressed="true"] {
-  background: var(--rose-100);
-  color: var(--rose-700);
+  background: var(--island-active-bg);
+  color: var(--island-active-ink);
 }
 
 .wb-toolrail__btn:focus-visible {
@@ -7558,7 +7601,7 @@ button.wb-sortchip:hover {
 }
 
 .wb-toolrail__btn:disabled {
-  color: var(--text-disabled);
+  color: var(--island-disabled);
   cursor: not-allowed;
 }
 
@@ -7566,7 +7609,7 @@ button.wb-sortchip:hover {
   width: 28px;
   height: 1px;
   margin: 2px 0;
-  background: var(--neutral-200);
+  background: var(--island-border);
 }
 
 .wb-toolrail__more-wrap {
@@ -7586,13 +7629,10 @@ button.wb-sortchip:hover {
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   padding: 4px;
-  background: var(--paper);
-  border: 1px solid var(--neutral-200);
+  background: var(--surface-raised);
+  border: 1px solid var(--island-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-2);
-  /* 同样固定在白纸口径，夜间不跟着 .wb-board 变深 */
-  --rose-100: #f4e3e9;
-  --rose-700: #8e4568;
+  box-shadow: var(--shadow-raised);
 }
 
 .wb-toolrail__item {
@@ -7604,7 +7644,7 @@ button.wb-sortchip:hover {
   border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--neutral-900);
+  color: var(--ink-strong);
   font-size: var(--text-caption);
   line-height: var(--lh-caption);
   text-align: left;
@@ -7613,8 +7653,8 @@ button.wb-sortchip:hover {
 
 .wb-toolrail__item:hover,
 .wb-toolrail__item[aria-pressed="true"] {
-  background: var(--rose-100);
-  color: var(--rose-700);
+  background: var(--island-active-bg);
+  color: var(--island-active-ink);
 }
 
 .wb-toolrail__item:focus-visible {
@@ -7626,5 +7666,22 @@ button.wb-sortchip:hover {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--neutral-700);
+  color: var(--ink-muted);
+}
+
+/* 夜间收尾：属性面板关闭键的悬停与焦点环（它不在 .wb-island 作用域，
+   颜色取 :root 夜间的 --ink-strong），以及浮岛的焦点环与禁用态。浅色侧不命中。 */
+:root[data-theme="night"] .wb-inspector-close:hover {
+  /* 与素材库关闭键统一到岛的中性 hover，避免浅玫瑰底压浅字 */
+  background: #232d45;
+}
+
+:root[data-theme="night"] .wb-inspector-close:focus-visible,
+:root[data-theme="night"] .wb-island.wb-toolrail .wb-toolrail__btn:focus-visible,
+:root[data-theme="night"] .wb-island .wb-toolrail__item:focus-visible {
+  outline-color: #d39ab1;
+}
+
+:root[data-theme="night"] .wb-island.wb-toolrail .wb-toolrail__btn:disabled {
+  opacity: 0.55;
 }

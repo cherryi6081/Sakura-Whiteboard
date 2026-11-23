@@ -139,7 +139,11 @@
   height: 16px;
 }
 
-/* 固定态底色用写死的浅玫瑰/深玫瑰（侧栏白底钉死昼夜不变，--rose-100 在夜间会被压深） */
+/* 注入条（类别胶囊 / 搜索框 / 计数 / 恢复默认模板）跟随侧栏一起翻深：
+   夜间由 .sidebar[data-wb-island] 上的语义层接管（见 tokens.css 的三块岛段落），
+   这里不再把注入条钉回白天值。 */
+
+/* 固定态底色用写死的浅玫瑰/深玫瑰（浅色侧沿用原值；夜间见文件末尾的岛内覆盖） */
 .wb-canvas .excalidraw .sidebar .sidebar__dock.selected {
   background: #f4e3e9;
   color: #8e4568;
@@ -152,6 +156,14 @@
 .wb-canvas .excalidraw .sidebar .sidebar__dock.selected svg {
   stroke: #8e4568;
   fill: #8e4568;
+}
+
+/* 素材库侧栏常驻 docked（见 NativeLibraryTools 的 defaultSidebarDockedPreference），
+   库会因此在头部多渲染一颗「固定」键。这里不提供解除常驻的入口：开合仍只走顶栏
+   「素材库」、关闭键与 Esc（点画布不关），避免误点后拖拽又把侧栏关掉。
+   只在素材库 tab 生效，搜索 tab 的固定键（库自己强制 docked）维持原样。 */
+.wb-canvas .excalidraw .sidebar:has([data-testid="library"]) .sidebar__dock {
+  display: none;
 }
 
 /* 「Browse libraries」大按钮：36 高/14 圆角/12 号字 → 32 高/999/13 号字 */
@@ -269,9 +281,9 @@
 
 /* 属性面板：白纸 + 14 圆角，标题弱化，与外壳的卡片口径一致 */
 .wb-canvas .excalidraw .App-menu__left {
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--island-border);
   border-radius: var(--radius-lg);
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-2);
 }
 
@@ -310,7 +322,7 @@
 }
 
 /* 面板从「左上浮岛」改为「右侧通栏列」：无圆角、无投影，只留左分隔线。
-   底色仍是白纸岛（夜间也不跟随），否则库内浅色控件会不可读。 */
+   底色与分隔线走岛内语义层：浅色仍是白纸 + 浅灰线，夜间随岛翻深。 */
 .wb-canvas--docked .excalidraw .App-menu__left {
   left: calc(100% + 16px) !important;
   right: auto !important;
@@ -320,10 +332,20 @@
   width: var(--wb-inspector-w) !important;
   padding: 14px 16px 16px;
   border: 0;
-  border-left: 1px solid var(--line-soft);
+  border-left: 1px solid var(--island-border);
   border-radius: 0;
-  background: var(--paper);
+  background: var(--surface-raised);
   box-shadow: none;
+}
+
+/* 素材库与属性面板共存：库是覆盖在画布右缘的浮层（不挤压画布坐标），
+   但它停靠时 Excalidraw 会把属性面板的包含块（.layer-ui__wrapper）收窄
+   `--right-sidebar-width`(302px)，于是上面的 left 也随之内缩，面板正好被库
+   盖住（1280 下库 714–1008、面板 706–978，库 z-index 更高）。
+   把面板按同一宽度补回去，让它留在 .excalidraw 右侧的 272 槽位里：
+   库与面板左右相邻、互不遮挡，C′ 停靠与画布宽度计算都不变。 */
+.wb-canvas--docked .excalidraw:has(.sidebar--docked) .App-menu__left {
+  left: calc(100% + 16px + var(--right-sidebar-width, 302px)) !important;
 }
 
 /* 顶部横条工具条由自研竖条取代；它下方的英文操作提示随横条一起收掉。
@@ -649,5 +671,245 @@
     width: 100%;
     margin-top: 6px;
   }
+}
+
+/* ==========================================================================
+ * 三块岛 · 夜间（design/night-sidebar-design.html 01–03）
+ *
+ * 只作用于带 data-wb-island 的库侧栏与属性面板；画布、顶栏、应用外壳不在
+ * 作用域内。语义色由 tokens.css 的 .wb-island 段给出，这里补齐 Excalidraw
+ * 原生件消费的变量、以及停靠/圆角这类只能贴着库结构写的视觉收边。
+ * ========================================================================== */
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island],
+:root[data-theme="night"] .wb-canvas .excalidraw .App-menu__left[data-wb-island] {
+  --island-bg-color: #1c2438;
+  --sidebar-bg-color: #1c2438;
+  --sidebar-border-color: #2b3552;
+  --sidebar-shadow: -10px 0 26px rgba(8, 12, 24, 0.3);
+
+  --color-surface-lowest: #1c2438;
+  --color-surface-low: #232d45;
+  --color-surface-mid: #2a3654;
+  --color-surface-high: #232d45;
+  --color-surface-primary-container: #4a3f54;
+  --color-on-surface: #eef2fb;
+  --color-muted: #bfc9de;
+  --color-muted-darker: #eef2fb;
+  --color-muted-darkest: #ffffff;
+  --color-disabled: #66718a;
+
+  --color-border-outline: #66718a;
+  --color-border-outline-variant: #2b3552;
+  --default-border-color: #2b3552;
+  --dialog-border-color: #2b3552;
+
+  --input-bg-color: #0e1422;
+  --input-border-color: #66718a;
+  --input-hover-bg-color: #232d45;
+  --input-label-color: #93a0ba;
+
+  --popup-bg-color: #1c2438;
+  --popup-secondary-bg-color: #232d45;
+  --popup-text-color: #eef2fb;
+  --popup-text-inverted-color: #1c2438;
+
+  --color-primary: #d39ab1;
+  --color-primary-darker: #e8c3d2;
+  --color-primary-darkest: #f5dbe6;
+  --color-primary-hover: #e8c3d2;
+  --color-brand-hover: #e8c3d2;
+  --color-brand-active: #f5dbe6;
+  --color-primary-light: #433a50;
+  --color-primary-light-darker: #4a3f54;
+  --color-on-primary-container: #1c2438;
+  /* 主色块上的图标/文字：亮玫瑰底必须配深纸字，否则白字只有 2.0:1 */
+  --color-icon-white: #1c2438;
+  --color-selection: #d39ab1;
+  --select-highlight-color: #4a3f54;
+
+  /* 属性面板的滑杆与数值：浅色默认轨道是 #e9e9e9，在深底上过亮 */
+  --color-slider-track: #2b3552;
+  --color-slider-thumb: #d39ab1;
+  --text-primary-color: #eef2fb;
+  --color-on-surface-hover: #ffffff;
+}
+
+/* 侧栏顶部的标签条与侧栏同色；原本是固定的白色 --default-bg-color */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .sidebar-triggers {
+  border-color: #2b3552;
+  background: #1c2438;
+}
+
+/* 属性面板正文默认继承 .excalidraw 的白天字色，夜间整块换成主文色 */
+:root[data-theme="night"] .wb-canvas .excalidraw .App-menu__left[data-wb-island] {
+  color: #eef2fb;
+}
+
+/* 分段控件的选中段：底色是深玫瑰水洗，图标也要跟着用浅玫瑰（
+   on-primary-container 的深纸字是配亮玫瑰实底用的，在这里会掉到 2:1） */
+:root[data-theme="night"] .wb-canvas .excalidraw .App-menu__left[data-wb-island] .buttonList label.active {
+  color: #f5dbe6;
+}
+
+/* 视觉收边 A：只圆白画布这一侧的左上/左下角，右缘留给属性面板的接缝；
+   宽度、位置、滚动结构不变，投影只朝画布一侧溢出。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] {
+  border-radius: 12px 0 0 12px;
+  overflow: hidden;
+  box-shadow: -10px 0 26px rgba(8, 12, 24, 0.3);
+}
+
+/* 库顶部的固定键：夜间改成深玫瑰水洗底，避免浅粉块贴在深色岛顶 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .sidebar__dock.selected {
+  background: #433a50;
+  color: #e8c3d2;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .sidebar__dock.selected:hover {
+  background: #4a3f54;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .sidebar__dock.selected svg {
+  stroke: #e8c3d2;
+}
+
+/* 底部「浏览素材库」是库自渲染的主按钮：夜间改用亮玫瑰 + 深纸字，和属性面板主按钮同口径 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .library-menu-browse-button {
+  color: #1c2438;
+}
+
+/* 属性面板分组标题：原值 #6b5a61 在深底上只有 2.6:1，夜间提亮到弱文档 */
+:root[data-theme="night"] .wb-canvas .excalidraw .App-menu__left[data-wb-island] .panelColumn h3 {
+  color: #93a0ba;
+}
+
+/* 附图工具条的汉堡键（Excalidraw 主菜单触发器）与竖条同属一组工具岛：
+   只换这颗键的底色，缩放/撤销等画布控件仍维持浅色，画布本身不动。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .main-menu-trigger {
+  background: #1c2438;
+  border-color: #2b3552;
+  color: #eef2fb;
+  box-shadow: 0 8px 20px rgba(8, 12, 24, 0.35);
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .main-menu-trigger:hover {
+  background: #232d45;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .main-menu-trigger:active {
+  background: #2a3654;
+}
+
+/* 底部浮岛：缩放胶囊、撤销重做胶囊、帮助按钮。原样式靠 Excalidraw 的 .Island
+   白底 + --default-bg-color；夜间按 .wb-island 同口径换色，尺寸/位置/圆角不变。 */
+:root[data-theme="night"] .wb-canvas .excalidraw {
+  --default-bg-color: #1c2438;
+  --default-foreground-color: #eef2fb;
+  --default-border-color: #2b3552;
+  --color-button-group-bg: #232d45;
+  --color-button-group-hover: #2a3654;
+  --color-button-hover: #232d45;
+  --color-button-active: #2a3654;
+  --color-tool-icon-bg: #1c2438;
+  --color-tool-icon-bg-hover: #232d45;
+  --color-tool-icon-bg-active: #2a3654;
+  --color-tool-icon-border: #2b3552;
+  --color-tool-icon-foreground: #eef2fb;
+  --color-tool-icon-foreground-muted: #bfc9de;
+  --color-tool-icon-foreground-faint: #93a0ba;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .zoom-actions,
+:root[data-theme="night"] .wb-canvas .excalidraw .undo-redo-buttons {
+  background: #1c2438;
+  border-color: #2b3552;
+  box-shadow: 0 8px 20px rgba(8, 12, 24, 0.35);
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .zoom-actions .zoom-button,
+:root[data-theme="night"] .wb-canvas .excalidraw .undo-redo-buttons .ToolIcon_type_button {
+  color: #eef2fb;
+  border-color: transparent;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .zoom-actions .zoom-button:hover,
+:root[data-theme="night"] .wb-canvas .excalidraw .undo-redo-buttons .ToolIcon_type_button:hover {
+  background: #232d45;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .zoom-actions .zoom-button:active,
+:root[data-theme="night"] .wb-canvas .excalidraw .undo-redo-buttons .ToolIcon_type_button:active {
+  background: #2a3654;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .zoom-actions .reset-zoom-button {
+  color: #bfc9de;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .help-icon {
+  background: #1c2438;
+  border-color: #2b3552;
+  color: #eef2fb;
+  box-shadow: 0 8px 20px rgba(8, 12, 24, 0.35);
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .help-icon:hover {
+  background: #232d45;
+}
+
+/* 下拉菜单容器（主菜单弹出）：夜间按 .wb-island 同口径换色，尺寸/圆角/展开方向不变。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-container {
+  background: #1c2438;
+  border-color: #2b3552;
+  box-shadow: 0 8px 24px rgba(8, 12, 24, 0.45);
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item {
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item:hover {
+  background: #232d45;
+  color: #eef2fb;
+}
+
+/* 「属性面板」勾选项：白天是玫瑰水洗底，夜间必须压成深玫瑰水洗，
+   否则会从白底画布子树继承到 #f4e3e9 的浅底配浅字。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item--selected {
+  background: #433a50;
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item--selected .dropdown-menu-item__icon {
+  color: #e8c3d2;
+}
+
+/* 素材库关闭键的夜间悬停：原规则落在白底侧栏的玫瑰水洗色上，深底时是浅底浅字；
+   与属性面板新关闭键统一到岛的中性 hover。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .sidebar__close:hover {
+  background: #232d45;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item__icon {
+  color: #bfc9de;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item:hover .dropdown-menu-item__icon {
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item__shortcut {
+  color: #93a0ba;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-group-title {
+  color: #bfc9de;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .dropdown-menu-item-separator {
+  background: #2b3552;
 }
 
