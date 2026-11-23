@@ -8,6 +8,8 @@ import { isAllowedEmbedUrl } from "./embedPolicy";
 import { installExcalidrawZhFallback } from "./excalidrawZhFallback";
 import { createOpBatcher, createOpDeriver } from "../collab/deriveOps";
 import { restoreDefaultTemplates, useSeedLibrary } from "../library/useSeedLibrary";
+import { NativeLibraryTools } from "../library/NativeLibraryTools";
+import { CanvasSearchIndex } from "./CanvasSearchIndex";
 import { IconBoard } from "../ui/icons";
 
 /** 画布内的中性配置：白底、新建元素默认描边为品牌色（视觉方案 §5.2）。网格默认关闭，不设 gridSize。 */
@@ -55,6 +57,10 @@ type Props = {
   onOps?: (ops: ElementOp[]) => void;
   /** 云端载入入口（与库主菜单的「打开…」并列）；传 null 时不渲染，游客/只读看不到 */
   onCloudLoad?: (() => void) | null;
+  /** 属性面板是否收起：驱动主菜单「属性面板」项的勾选态 */
+  inspectorCollapsed?: boolean;
+  /** 主菜单「属性面板」：展开面板（已展开时点击无副作用） */
+  onOpenInspector?: () => void;
 };
 
 let nonceSeed = 0;
@@ -68,6 +74,12 @@ const elementId = () =>
     ? crypto.randomUUID()
     : `img_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
+/** 场景指纹（id + 版本三元组）：只用于判断某一帧 onChange 是否就是刚回放的那份场景 */
+const sceneKeyOf = (elements: readonly any[]) =>
+  elements
+    .map((el) => `${el.id}:${el.version}:${el.versionNonce}:${el.isDeleted ? 1 : 0}`)
+    .join("|");
+
 /**
  * 渲染与派生解耦：本组件只负责把 `onChange` 的全量数组交给 `deriveOps`，
  * 再由 50ms 静默 flush（或 pointerup 立即 flush）交出批量 op。
@@ -76,7 +88,7 @@ const elementId = () =>
  * 远端/快照里的图片元素只带 `fileId`（= assetId），由这里按签名 URL 拉回字节补进 `addFiles`，
  * 元素先到、字节后到时会有背压重试，不会留下永久破图。
  */
-export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onApiReady, onOps, onCloudLoad }: Props) {
+export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onApiReady, onOps, onCloudLoad, inspectorCollapsed, onOpenInspector }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   /** 素材库 hook 需要 api 作为依赖，ref 变化不会触发重渲染，这里额外存一份 state */
   const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null);
@@ -96,6 +108,8 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
   /** 远端回放触发的下一帧 onChange 只同步基线，不产出 op */
   const suppressDeriveRef = useRef(0);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 最近一次远端回放的场景指纹：用来区分"回放帧"和夹在其中的用户本地改动 */
+  const remoteSceneKeyRef = useRef("");
   /** 正在拉取字节的 fileId，避免同一张图并发重复请求 */
   const loadingFilesRef = useRef(new Set<string>());
 
@@ -129,6 +143,7 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
     getElements: () => apiRef.current?.getSceneElements() ?? [],
     applyRemoteElements: (elements) => {
       suppressDeriveRef.current += 1;
+      remoteSceneKeyRef.current = sceneKeyOf(elements);
       if (suppressTimerRef.current !== null) clearTimeout(suppressTimerRef.current);
       // 兜底：极端情况下 updateScene 没有触发 onChange，别把后续用户改动一起吞掉
       suppressTimerRef.current = setTimeout(() => {
@@ -303,17 +318,29 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
         validateEmbeddable={isAllowedEmbedUrl}
         viewModeEnabled={viewModeEnabled ?? false}
         // 内置 image 工具走"本地 base64 + 元素"路径，协作者拿不到字节；统一收口到自研上传入口
-        UIOptions={{ tools: { image: false } }}
+        UIOptions={{
+          tools: { image: false },
+          // 停止按宽度推断「放不放得下」：属性面板停靠后 `.excalidraw` 会收窄 272px
+          // （见 excalidraw-theme.css 的 --wb-inspector-w），1200 宽窗口下只剩 928px，
+          // 低于之前的 1000 断点 → `canFitSidebar` 为 false。库在
+          // `addElementsFromPasteOrLibrary` 里用这个值决定插入后是否保留 openSidebar，
+          // 于是插入一次素材库就被关掉；侧栏的 useOutsideClick / Esc 也会因此退回到
+          // 「点外面就关」。素材库要求只有用户主动关闭才消失，所以把它钉成恒为 true。
+          dockedSidebarBreakpoint: 1,
+        }}
         onChange={(elements) => {
           if (suppressDeriveRef.current > 0) {
-            // 这一帧来自远端回放/初始灌入：只把实际场景当作新基线
             suppressDeriveRef.current -= 1;
-            if (suppressTimerRef.current !== null) {
-              clearTimeout(suppressTimerRef.current);
-              suppressTimerRef.current = null;
+            // 远端回放只在 React 提交时回调一次，批量 updateScene 会让计数大于实际回调数；
+            // 安全定时器必须在最后一次回放后兜底清零，**不能在这里清掉**，
+            // 否则计数会永久残留，把用户后续的本地改动全部当成远端回放吞掉。
+            if (remoteSceneKeyRef.current === sceneKeyOf(elements)) {
+              // 这一帧确实来自远端回放/初始灌入：只把实际场景当作新基线
+              deriverRef.current.reset(elements as any);
+              return;
             }
-            deriverRef.current.reset(elements as any);
-            return;
+            // 场景与最近一次回放不同：夹着用户的本地改动，正常派生，别丢 op
+            suppressDeriveRef.current = 0;
           }
           const ops = deriverRef.current.derive(elements as any);
           batcherRef.current.push(ops);
@@ -345,6 +372,28 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
             <>
               <MainMenu.Separator />
               <MainMenu.Item
+                icon={
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.25}
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 6h8M15 6h2M3 14h2M9 14h8" />
+                    <circle cx="13" cy="6" r="2" />
+                    <circle cx="7" cy="14" r="2" />
+                  </svg>
+                }
+                selected={!inspectorCollapsed}
+                onSelect={onOpenInspector}
+              >
+                属性面板
+              </MainMenu.Item>
+              <MainMenu.Item
                 onSelect={() => {
                   const api = apiRef.current;
                   if (api) restoreDefaultTemplates(api);
@@ -355,6 +404,12 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
             </>
           ) : null}
         </MainMenu>
+        {/* 原生 Library 的类别条 + 搜索：注入到侧栏顶部，只接管「展示哪些条目」，
+            卡片、点击插入、拖拽、多选、删除仍走库的原生实现。 */}
+        <NativeLibraryTools api={excalidrawApi} rootRef={containerRef} />
+        {/* 「查找文本」页签的空态画布目录：只补空查询时的结果区，
+            原生输入 / 结果列表 / Enter·↑↓·Esc·Ctrl+F 全部保留。 */}
+        <CanvasSearchIndex api={excalidrawApi} rootRef={containerRef} />
       </Excalidraw>
     </div>
   );

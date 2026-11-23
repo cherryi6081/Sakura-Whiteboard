@@ -1,0 +1,448 @@
+/*
+ * 「查找文本」空态目录（design/page-density 方案 B）。
+ *
+ * 侧栏在项目里是「白纸岛」：昼夜都保持白底（见 styles/excalidraw-theme.css），
+ * 所以这里不用会随主题变暗的语义 token，而是在宿主上钉一套不随时辰变化的
+ * 本地变量（与设计稿 .side 的 --s-* 同值）。夜间照样是白底深字，不会出现
+ * 深底配深字或浅底配浅字。
+ */
+
+[data-wb-search],
+[data-wb-search-foot] {
+  --wbs-paper: #ffffff;
+  --wbs-sunken: #f5f1f3;
+  --wbs-line: #efe4e8;
+  --wbs-line-strong: #c9bcc2;
+  --wbs-ink: #3a2e33;
+  --wbs-ink-2: #6b5a61;
+  --wbs-ink-3: #7e6c73;
+  --wbs-accent: #a85c7c;
+  --wbs-accent-strong: #8e4568;
+  --wbs-wash: #f4e3e9;
+  --wbs-accent-border: #edd2de;
+  font-family: var(--font-sans);
+  color: var(--wbs-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-wb-search] {
+  position: absolute;
+  /* 结果计数行在原生里是「有结果才占 44px」，清空查询后还会晚 ~200ms 才收起；
+     把这一行钉成固定 44px、目录往上盖住它，目录的起点就不会跟着结果行上下跳。
+     空查询时这一行本来就是空的，盖住没有信息损失。 */
+  inset: -48px 0 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wbs-paper);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 140ms var(--ease-standard);
+}
+
+/* 查询非空：整块淡出并让出滚动，原生结果在下面照常显示 */
+[data-wb-search][data-hidden="true"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 140ms var(--ease-standard),
+    visibility 0s linear 140ms;
+}
+
+/* 定位锚点常驻：查询非空、目录淡出时也不能让宿主失去定位上下文 */
+.excalidraw .layer-ui__search-result-container.wb-search-anchor {
+  position: relative;
+}
+
+/* 原生结果计数行钉成固定高度（实测有结果时 44px）：
+   目录向上覆盖它，切态时不再带动整块位移；不需要滚动，内容超出也允许溢出显示 */
+.excalidraw .sidebar.default-sidebar .layer-ui__search-count {
+  box-sizing: border-box;
+  height: 44px;
+  overflow: visible;
+}
+
+/* 目录可见时放开裁剪（宿主要向上覆盖结果计数行）；目录自身的 body 负责滚动。
+   查询非空即恢复原生 overflow，结果列表照常滚动。 */
+.excalidraw .layer-ui__search-result-container.wb-search-overlay {
+  overflow: visible;
+}
+
+.wb-search,
+.wb-search * {
+  box-sizing: border-box;
+}
+
+.wb-search {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-search__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 12px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wbs-line-strong) transparent;
+}
+
+.wb-search__body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.wb-search__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--wbs-line-strong);
+}
+
+/* ---------- 范围胶囊 ---------- */
+.wb-search__scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.wb-search__chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--wbs-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wbs-ink-3);
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-search__chip:hover {
+  border-color: var(--wbs-accent);
+  color: var(--wbs-accent-strong);
+}
+
+.wb-search__chip.is-on {
+  border-color: var(--wbs-accent-border);
+  background: var(--wbs-wash);
+  color: var(--wbs-accent-strong);
+  font-weight: 600;
+}
+
+/* ---------- 目录标题 ---------- */
+.wb-search__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.wb-search__sec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--wbs-ink-3);
+}
+
+.wb-search__sec::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--wbs-line);
+}
+
+.wb-search__head-n {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--wbs-ink-3);
+}
+
+/* ---------- 分组 ---------- */
+.wb-search__group {
+  margin-bottom: 10px;
+}
+
+.wb-search__group-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--wbs-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-search__group-h::after {
+  content: "";
+  flex: 1;
+  min-width: 8px;
+  height: 1px;
+  background: var(--wbs-line);
+}
+
+.wb-search__group-h .n {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* ---------- 行 ---------- */
+.wb-search__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-search__row:hover {
+  border-color: var(--wbs-accent-border);
+  background: var(--wbs-wash);
+}
+
+.wb-search__ico {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--wbs-sunken);
+  color: var(--wbs-ink-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wb-search__ico svg {
+  width: 12px;
+  height: 12px;
+}
+
+.wb-search__b {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wb-search__t {
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--wbs-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-search__m {
+  font-size: 9.5px;
+  line-height: 13px;
+  color: var(--wbs-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-search__go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--wbs-ink-3);
+}
+
+.wb-search__go svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* 折叠的「图片与链接」行 */
+.wb-search__row--media {
+  height: 36px;
+}
+
+.wb-search__row--media .wb-search__t {
+  font-size: 10.5px;
+  color: var(--wbs-ink-3);
+}
+
+.wb-search__chev {
+  transition: transform 140ms var(--ease-standard);
+}
+
+.wb-search__chev.is-open {
+  transform: rotate(90deg);
+}
+
+.wb-search__media {
+  padding-left: 10px;
+}
+
+/* ---------- 空态 / 降级提示 ---------- */
+.wb-search__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 36px 12px 28px;
+  text-align: center;
+}
+
+.wb-search__empty-ico {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: var(--wbs-sunken);
+  color: var(--wbs-ink-3);
+}
+
+.wb-search__empty-ico svg {
+  width: 16px;
+  height: 16px;
+}
+
+.wb-search__empty-t {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--wbs-ink-2);
+}
+
+.wb-search__empty-d {
+  margin: 0;
+  max-width: 220px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--wbs-ink-3);
+}
+
+.wb-search__empty--scope {
+  padding: 22px 12px;
+}
+
+.wb-search__reset {
+  margin-top: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--wbs-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wbs-ink-2);
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.wb-search__reset:hover {
+  border-color: var(--wbs-accent);
+  color: var(--wbs-accent-strong);
+}
+
+.wb-search__more {
+  margin: 4px 6px 10px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--wbs-ink-3);
+}
+
+/* ---------- 底部状态栏（始终在侧栏底部，替代设计稿的 side__foot） ---------- */
+[data-wb-search-foot] {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.wb-search-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 33px;
+  padding: 0 14px;
+  border-top: 1px solid var(--wbs-line);
+  background: var(--wbs-paper);
+  font-size: 10.5px;
+  color: var(--wbs-ink-3);
+  white-space: nowrap;
+}
+
+.wb-search-foot__t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-search-foot__spacer {
+  flex: 1;
+}
+
+.wb-search-foot__kbd {
+  flex: none;
+  min-width: 36px;
+  padding: 2px 6px;
+  border: 1px solid var(--wbs-line);
+  border-radius: 5px;
+  background: var(--wbs-sunken);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1;
+  color: var(--wbs-ink-2);
+  text-align: center;
+}
+
+/* 键盘焦点：与面板配色一致，不用浏览器默认蓝环 */
+.wb-search__chip:focus-visible,
+.wb-search__row:focus-visible,
+.wb-search__reset:focus-visible {
+  outline: 2px solid var(--wbs-accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-wb-search],
+  [data-wb-search][data-hidden="true"],
+  .wb-search__row,
+  .wb-search__chip {
+    transition: none;
+  }
+}

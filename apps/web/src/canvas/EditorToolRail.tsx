@@ -305,7 +305,7 @@ export function EditorToolRail({ api, activeTool, locked, disabled = false }: Pr
   return (
     <div
       ref={rootRef}
-      className="wb-toolrail"
+      className="wb-toolrail wb-island"
       role="toolbar"
       aria-orientation="vertical"
       aria-label="绘图工具"
@@ -387,7 +387,7 @@ export function EditorToolRail({ api, activeTool, locked, disabled = false }: Pr
           ? createPortal(
               <div
                 ref={moreMenuRef}
-                className="wb-toolrail__more"
+                className="wb-toolrail__more wb-island"
                 role="menu"
                 aria-label="更多工具"
                 style={{
