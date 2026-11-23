@@ -7,9 +7,11 @@ export function uml(p: Palette): Skeleton[] {
   const d = new Pen("sakura.se.uml", p);
   const BW = 232;
 
-  d.box(0, 0, BW, 40, { fill: "head", text: "Order", size: 17 });
-  d.box(0, 40, BW, 72, { text: "- id: UUID\n- total: Money", size: 13, font: "code", align: "left", valign: "top" });
-  d.box(0, 112, BW, 64, { text: "+ pay(): void\n+ cancel(): void", size: 13, font: "code", align: "left", valign: "top" });
+  d.unit(() => {
+    d.box(0, 0, BW, 40, { fill: "head", text: "Order", size: 17 });
+    d.box(0, 40, BW, 72, { text: "- id: UUID\n- total: Money", size: 13, font: "code", align: "left", valign: "top" });
+    d.box(0, 112, BW, 64, { text: "+ pay(): void\n+ cancel(): void", size: 13, font: "code", align: "left", valign: "top" });
+  });
 
   d.text(0, 206, "多重性标注", { size: 11, color: "faint", align: "left" });
   d.text(0, 228, "1", { size: 12, font: "code", color: "muted", align: "left" });
@@ -106,12 +108,14 @@ export function flow(p: Palette): Skeleton[] {
 
 /** 参与者：椭圆头 + 躯干 + 双臂 + 双腿 + 名称（6 个元素） */
 function actor(d: Pen, x: number, y: number, name: string) {
-  d.ellipse(x - 10, y, 20, 20);
-  d.line([[x, y + 20], [x, y + 44]]);
-  d.line([[x - 15, y + 28], [x + 15, y + 28]]);
-  d.line([[x, y + 44], [x - 13, y + 66]]);
-  d.line([[x, y + 44], [x + 13, y + 66]]);
-  d.text(x, y + 82, name, { size: 12, color: "ink" });
+  d.unit(() => {
+    d.ellipse(x - 10, y, 20, 20);
+    d.line([[x, y + 20], [x, y + 44]]);
+    d.line([[x - 15, y + 28], [x + 15, y + 28]]);
+    d.line([[x, y + 44], [x - 13, y + 66]]);
+    d.line([[x, y + 44], [x + 13, y + 66]]);
+    d.text(x, y + 82, name, { size: 12, color: "ink" });
+  });
 }
 
 /** 用例图：系统边界 + 参与者 + 用例椭圆 + include */
@@ -154,8 +158,11 @@ export function state(p: Palette): Skeleton[] {
   const shipped = d.box(302, 150, 124, 46, { round: true, fill: "head", text: "已发货", size: 13 });
   const cancelled = d.box(66, 150, 124, 46, { round: true, fill: "wash", text: "已取消", size: 13 });
 
-  const finalOuter = d.ellipse(322, 272, 26, 26);
-  d.ellipse(330, 280, 10, 10, { fill: "ink", stroke: "ink" });
+  const finalOuter = d.unit(() => {
+    const outer = d.ellipse(322, 272, 26, 26);
+    d.ellipse(330, 280, 10, 10, { fill: "ink", stroke: "ink" });
+    return outer;
+  });
 
   d.arrow([[46, 45], [66, 45]], { start: init, end: unpaid });
   d.arrow([[190, 45], [302, 45]], { start: unpaid, end: paid });
@@ -172,13 +179,15 @@ export function state(p: Palette): Skeleton[] {
 
 /** 实体：表头 + 字段两段（字段是 Code 字体、左上对齐） */
 function entity(d: Pen, x: number, y: number, w: number, name: string, fields: string[]) {
-  d.box(x, y, w, 34, { fill: "head", text: name, size: 12.5 });
-  d.box(x, y + 34, w, fields.length * 20 + 12, {
-    text: fields.join("\n"),
-    size: 11,
-    font: "code",
-    align: "left",
-    valign: "top",
+  d.unit(() => {
+    d.box(x, y, w, 34, { fill: "head", text: name, size: 12.5 });
+    d.box(x, y + 34, w, fields.length * 20 + 12, {
+      text: fields.join("\n"),
+      size: 11,
+      font: "code",
+      align: "left",
+      valign: "top",
+    });
   });
 }
 
@@ -193,30 +202,36 @@ export function er(p: Palette): Skeleton[] {
   entity(d, 330, 226, 154, "OrderItem", ["pk id", "fk order", "qty"]);
 
   // Customer 1 — N Order
-  d.line([[166, 70], [330, 70]], rel);
-  d.line([[176, 62], [176, 78]], rel);
-  d.line([[330, 70], [342, 62]], rel);
-  d.line([[330, 70], [342, 70]], rel);
-  d.line([[330, 70], [342, 78]], rel);
-  d.text(174, 56, "1", { size: 11, font: "code", color: "muted", align: "left" });
-  d.text(318, 56, "N", { size: 11, font: "code", color: "muted", align: "right" });
+  d.unit(() => {
+    d.line([[166, 70], [330, 70]], rel);
+    d.line([[176, 62], [176, 78]], rel);
+    d.line([[330, 70], [342, 62]], rel);
+    d.line([[330, 70], [342, 70]], rel);
+    d.line([[330, 70], [342, 78]], rel);
+    d.text(174, 56, "1", { size: 11, font: "code", color: "muted", align: "left" });
+    d.text(318, 56, "N", { size: 11, font: "code", color: "muted", align: "right" });
+  });
 
   // Order 1 — N OrderItem
-  d.line([[407, 152], [407, 226]], rel);
-  d.line([[399, 162], [415, 162]], rel);
-  d.line([[407, 226], [399, 238]], rel);
-  d.line([[407, 226], [407, 238]], rel);
-  d.line([[407, 226], [415, 238]], rel);
-  d.text(415, 186, "N", { size: 11, font: "code", color: "muted", align: "left" });
+  d.unit(() => {
+    d.line([[407, 152], [407, 226]], rel);
+    d.line([[399, 162], [415, 162]], rel);
+    d.line([[407, 226], [399, 238]], rel);
+    d.line([[407, 226], [407, 238]], rel);
+    d.line([[407, 226], [415, 238]], rel);
+    d.text(415, 186, "N", { size: 11, font: "code", color: "muted", align: "left" });
+  });
 
   // Product 1 — N OrderItem
-  d.line([[166, 272], [330, 272]], rel);
-  d.line([[176, 264], [176, 280]], rel);
-  d.line([[330, 272], [342, 264]], rel);
-  d.line([[330, 272], [342, 272]], rel);
-  d.line([[330, 272], [342, 280]], rel);
-  d.text(174, 258, "1", { size: 11, font: "code", color: "muted", align: "left" });
-  d.text(318, 258, "N", { size: 11, font: "code", color: "muted", align: "right" });
+  d.unit(() => {
+    d.line([[166, 272], [330, 272]], rel);
+    d.line([[176, 264], [176, 280]], rel);
+    d.line([[330, 272], [342, 264]], rel);
+    d.line([[330, 272], [342, 272]], rel);
+    d.line([[330, 272], [342, 280]], rel);
+    d.text(174, 258, "1", { size: 11, font: "code", color: "muted", align: "left" });
+    d.text(318, 258, "N", { size: 11, font: "code", color: "muted", align: "right" });
+  });
 
   return d.els;
 }

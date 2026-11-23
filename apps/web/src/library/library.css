@@ -1,0 +1,576 @@
+/*
+ * 原生 Library 上方的「类别条 + 搜索」（见 NativeLibraryTools.tsx）。
+ *
+ * 这里只做两件事：
+ * 1. 注入块的排版与配色（全部走 tokens.css 的语义变量，浅/暗两套自动适配）；
+ * 2. 给原生卡片贴过滤 class（隐藏 / 一级模板跨两列）。
+ * 原生 `.library-unit` 的内部结构、尺寸、hover 一律不覆盖（唯一的例外是
+ * 卡片右上角的多选复选框，见下方 `.library-unit__checkbox`）。
+ */
+
+[data-wb-libbar] {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/*
+ * 面板骨架：注入条固定占顶部一段，原生网格容器吃掉剩余高度并在内部滚动。
+ * 原生 `.library-menu-items-container` 自带 `height:100%`，在 flex 列布局里会
+ * 按面板整高计算，矮屏时把卡片顶到注入条下面；这里改成 flex 弹性高度 + min-height:0，
+ * 网格只会从注入条下缘开始、在容器内滚到底，不会出现任何卡片被类别条/搜索框压住。
+ */
+.wb-libbar-on {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-libbar-on > .library-menu-items-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.wb-libbar-on .library-menu-items-container__items {
+  min-height: 0;
+}
+
+/*
+ * 原生「…」下拉浮在容器右上角（top:1rem / right:.75rem），正好压在第一行模板卡上。
+ * 类别条接管后它的入口（浏览/重置素材库）与注入条的「恢复默认模板」重复，直接收起。
+ */
+.wb-libbar-on .library-menu-dropdown-container--in-heading {
+  display: none;
+}
+
+/*
+ * 悬停时原生卡片会浮出复选框与删除按钮，个别子元素没有声明 cursor，指针会从
+ * pointer 闪回默认箭头。卡片所在区域统一 pointer，移出卡片仍是默认箭头。
+ */
+.wb-libbar-on .library-menu-items-container__items,
+.wb-libbar-on .library-menu-items-container__items .library-unit,
+.wb-libbar-on .library-menu-items-container__items .library-unit * {
+  cursor: pointer;
+}
+
+/*
+ * 卡片右上角的多选复选框（原生 `.library-unit__checkbox`）：hover 时浮出，
+ * 勾选后是玫瑰实心块 + 白色对勾。按产品口径去掉这个视觉标记；它只是原生多选
+ * （Shift+点卡片勾选、批量插入/删除）的显示入口，勾选状态与相关逻辑不受影响。
+ * 原生用 position:absolute 贴在卡片右上角，隐藏不会改动卡片尺寸与网格间距。
+ */
+.wb-libbar-on .library-unit__checkbox {
+  display: none;
+}
+
+.wb-libbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-raised);
+  color: var(--ink-strong);
+}
+
+.wb-libbar__cats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-libbar__cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.wb-libbar__cat:hover {
+  border-color: var(--rose-600);
+  color: var(--rose-700);
+}
+
+.wb-libbar__cat.is-on {
+  border-color: var(--rose-400);
+  background: color-mix(in srgb, var(--rose-600) 14%, var(--surface-raised));
+  color: var(--rose-800);
+  font-weight: 600;
+}
+
+.wb-libbar__cat.is-search {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.wb-libbar__cat .n {
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.wb-libbar__search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * 聚焦态不用强调色：鼠标点进来时只把描边从 --line-soft 抬到 --line-strong，
+ * 和面板其它分隔线同档，不出现突兀的色块或外发光。
+ */
+.wb-libbar__search:focus-within {
+  border-color: var(--line-strong);
+}
+
+/*
+ * 键盘 Tab 进入时仍要看得见焦点：输入框自身不画 outline（避免双层），
+ * 改由容器给一圈中性细环，与面板配色一致。
+ * `data-pointer-focus` 由输入框外壳在指针按下时写入（见 NativeLibraryTools），
+ * 鼠标点入因此不会出现焦点环。
+ */
+.wb-libbar__search:has(input:focus-visible):not([data-pointer-focus="1"]) {
+  border-color: var(--ink-faint);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink-faint) 22%, transparent);
+}
+
+.wb-libbar__search svg {
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wb-libbar__search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink-strong);
+  font: inherit;
+  font-size: 12px;
+}
+
+/*
+ * 内层 input 自己不要任何焦点装饰。
+ * 库的 `.excalidraw input:focus-visible` 会补一圈 1px 品牌色 box-shadow（就是那个"细框"），
+ * 外层胶囊已经有 focus-within/键盘环，双层焦点很突兀。这里只处理这一处输入框。
+ */
+.wb-libbar__search input:focus,
+.wb-libbar__search input:focus-visible {
+  outline: none;
+  background: transparent;
+  box-shadow: none !important;
+}
+
+.wb-libbar__search input::placeholder {
+  color: var(--ink-faint);
+}
+
+.wb-libbar__search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.wb-libbar__clear {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-libbar__clear:hover {
+  background: var(--surface-raised);
+  color: var(--ink-strong);
+}
+
+.wb-libbar__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.wb-libbar__restore {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-link);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wb-libbar__restore:hover {
+  color: var(--ink-link-hover);
+  text-decoration: underline;
+}
+
+.wb-libbar__empty {
+  padding: 4px 2px 2px;
+}
+
+.wb-libbar__empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wb-libbar__empty p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 11.5px;
+  line-height: 17px;
+}
+
+.wb-libbar__empty .wb-libbar__restore {
+  margin-top: 6px;
+  padding-left: 0;
+}
+
+/*
+ * 原生分区标题（「个人素材库 / Excalidraw 素材库」）与类别条语义重复，
+ * 类别条接管后统一隐藏；卡片本身不受影响。
+ */
+.wb-libbar-on .library-menu-items-container__header {
+  display: none;
+}
+
+/* 原生「个人素材库还是空的」文案与类别条/空态重复，接管后统一由注入块表达 */
+.wb-libbar-on .library-menu-items__no-items {
+  display: none;
+}
+
+/*
+ * 过滤：只切属性，不改原生卡片的尺寸与内部结构。
+ * 用 `data-*` 而不是 class，是因为卡片 hover 时 React 会重写 className
+ * （追加 `library-unit--hover`），class 会被整串覆盖，宽卡会缩回 55px、
+ * 隐藏卡会闪回一帧。dataset 不归 React 管，不会被抹掉。
+ */
+.wb-libbar-on .library-unit[data-wb-off="1"] {
+  display: none !important;
+}
+
+/*
+ * 一级的整图模板跨两列，二级的元件保持一格。
+ * 这只是样式参数：以后若要改成全部一格，删掉这条规则即可，不涉及数据结构。
+ *
+ * 原生网格在只显示跨列卡片时会缩到 min-content（两格宽），并把每列压成 19.5px，
+ * 所以这里把网格撑满面板；宽卡用更高特异性压过原生 `.library-unit` 的固定 55px。
+ */
+.wb-libbar-on .library-menu-items-container__grid {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.library-menu-items-container__grid .library-unit[data-wb-wide="1"] {
+  grid-column: span 2;
+  width: 100%;
+}
+
+/* 搜索态：结果由注入列表接管，原生网格整体让位 */
+.wb-lib-units--hidden {
+  display: none !important;
+}
+
+/* ---------- 二级：面包屑 + 插入整张模板 ---------- */
+.wb-libbar__crumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wb-libbar__back {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-libbar__back:hover {
+  background: var(--surface-sunken);
+  color: var(--ink-strong);
+}
+
+.wb-libbar__crumb-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 2px 2px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wb-libbar__crumb-path:hover {
+  color: var(--ink-muted);
+}
+
+.wb-libbar__crumb-path .sep {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+
+.wb-libbar__crumb-path b {
+  color: var(--ink-strong);
+  font-weight: 600;
+}
+
+.wb-libbar__insert {
+  flex: 0 0 auto;
+  margin-left: auto;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--rose-400);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--rose-600) 12%, var(--surface-raised));
+  color: var(--rose-800);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wb-libbar__insert:hover {
+  border-color: var(--rose-600);
+  background: color-mix(in srgb, var(--rose-600) 20%, var(--surface-raised));
+}
+
+/* ---------- 搜索结果列表 ---------- */
+.wb-libbar__hits {
+  display: flex;
+  flex-direction: column;
+  max-height: 42vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--line-soft);
+}
+
+.wb-libbar__hits-head {
+  position: sticky;
+  top: 0;
+  padding: 6px 2px 5px;
+  background: var(--surface-raised);
+  color: var(--ink-faint);
+  font-size: 10.5px;
+}
+
+.wb-lib-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 2px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.wb-lib-hit__thumb {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--surface-sunken);
+}
+
+.wb-lib-hit__thumb svg {
+  width: 100%;
+  height: 100%;
+}
+
+.wb-lib-hit__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wb-lib-hit__name {
+  overflow: hidden;
+  color: var(--ink-strong);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-lib-hit__meta {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-lib-hit__act {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-lib-hit__act:hover {
+  border-color: var(--rose-400);
+  color: var(--rose-700);
+}
+
+.wb-libbar__empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wb-libbar__empty-actions .wb-libbar__insert {
+  margin-left: 0;
+}
+
+/* ==========================================================================
+ * 夜间覆写（design/night-sidebar-design.html §01）
+ *
+ * 结构与尺寸一行不动，只补玫瑰系在深底上不够用的状态：saas 层已经由
+ * tokens.css 的 .wb-island 段接管，这里只处理仍写死玫瑰的状态、搜索框
+ * 的控件边界，以及白纸缩略图在深色卡底上的摆放。
+ * ========================================================================== */
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__cat:hover {
+  border-color: #8e9ac0;
+  background: #232d45;
+  color: #eef2fb;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__cat.is-on {
+  border-color: #cc8aa5;
+  background: #4a3f54;
+  color: #f5dbe6;
+}
+
+/* 搜索框：默认边界抬到 3.16:1；聚焦按稿子用亮玫瑰描边 + 24% 光环 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__search {
+  border-color: #66718a;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__search:focus-within {
+  border-color: #d39ab1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d39ab1 24%, transparent);
+}
+
+:root[data-theme="night"]
+  .wb-canvas
+  .excalidraw
+  .sidebar[data-wb-island]
+  .wb-libbar__search:has(input:focus-visible):not([data-pointer-focus="1"]) {
+  border-color: #d39ab1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d39ab1 24%, transparent);
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__back:hover {
+  background: #232d45;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__insert {
+  border-color: #cc8aa5;
+  background: #433a50;
+  color: #f0c9da;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar__insert:hover {
+  border-color: #e8c3d2;
+  background: #544861;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-lib-hit__act:hover {
+  border-color: #cc8aa5;
+  color: #e8c3d2;
+}
+
+/* 搜索结果缩略图：内容仍是白纸生成的线稿，放进白板而不是深凹槽 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-lib-hit__thumb {
+  border-color: #2b3552;
+  background: #ffffff;
+}
+
+/* 库卡片：白纸板放在深色卡底上；3px 深色内框 + 1px 描边用 inset 阴影画，
+   不进盒模型、不改卡片尺寸/网格，缩略图也不重新生成。 */
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar-on .library-unit {
+  background: #ffffff;
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 3px #232d45,
+    inset 0 0 0 4px #2b3552;
+}
+
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar-on .library-unit:hover,
+:root[data-theme="night"] .wb-canvas .excalidraw .sidebar[data-wb-island] .wb-libbar-on .library-unit--hover {
+  background: #ffffff;
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 3px #2a3654,
+    inset 0 0 0 4px #66718a;
+}
+

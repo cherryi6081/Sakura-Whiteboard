@@ -15,9 +15,11 @@ export function cicd(p: Palette): Skeleton[] {
 
   const ids = stages.map(([name, sub], i) => {
     const x = 20 + i * 100;
-    const id = d.box(x, 70, 86, 72, { round: true, fill: "head", text: `${name}\n${sub}`, size: 11 });
-    d.ellipse(x + 72, 78, 8, 8, { fill: "accent", stroke: "accent" });
-    return id;
+    return d.unit(() => {
+      const id = d.box(x, 70, 86, 72, { round: true, fill: "head", text: `${name}\n${sub}`, size: 11 });
+      d.ellipse(x + 72, 78, 8, 8, { fill: "accent", stroke: "accent" });
+      return id;
+    });
   });
   for (let i = 0; i < 4; i += 1) {
     d.arrow([[20 + i * 100 + 86, 106], [20 + (i + 1) * 100, 106]], { start: ids[i], end: ids[i + 1] });

@@ -36,8 +36,10 @@ export function gantt(p: Palette): Skeleton[] {
 
   const lastY = TOP + 4 * RH;
   d.box(0, lastY, LX, RH, { text: "上线发布", size: 11.5, align: "left" });
-  d.diamond(466, lastY + 12, 18, 18, { fill: "accent", stroke: "accent" });
-  d.text(490, lastY + 21, "上线", { size: 10, color: "muted", align: "left" });
+  d.unit(() => {
+    d.diamond(466, lastY + 12, 18, 18, { fill: "accent", stroke: "accent" });
+    d.text(490, lastY + 21, "上线", { size: 10, color: "muted", align: "left" });
+  });
 
   return d.els;
 }

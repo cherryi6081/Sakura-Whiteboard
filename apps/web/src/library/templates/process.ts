@@ -8,9 +8,12 @@ export function bpmn(p: Palette): Skeleton[] {
 
   const start = d.ellipse(16, 88, 32, 32, { sw: 1 });
   const submit = d.box(70, 78, 110, 52, { round: true, fill: "head", text: "提交订单", size: 12 });
-  const gateway = d.diamond(206, 76, 64, 64);
-  d.line([[222, 92], [254, 124]], { sw: 1.5 });
-  d.line([[254, 92], [222, 124]], { sw: 1.5 });
+  const gateway = d.unit(() => {
+    const g = d.diamond(206, 76, 64, 64);
+    d.line([[222, 92], [254, 124]], { sw: 1.5 });
+    d.line([[254, 92], [222, 124]], { sw: 1.5 });
+    return g;
+  });
 
   const online = d.box(300, 20, 130, 50, { round: true, fill: "head", text: "在线支付", size: 12 });
   const cod = d.box(300, 150, 130, 50, { round: true, fill: "head", text: "货到付款", size: 12 });

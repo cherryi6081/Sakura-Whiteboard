@@ -1,25 +1,29 @@
 /**
- * 把 skeleton 模板打包成 Excalidraw 库条目。
+ * 把 skeleton 目录（整图模板 + 元件）打包成 Excalidraw 库条目。
  *
  * 关键约束：
  * - 条目 id 与元素 versionNonce 必须稳定，`mergeLibraryItems` 用「元素数 + 逐个 id/versionNonce」判重；
- * - 改模板内容必须升 `TEMPLATE_VERSION`，否则 merge 认为条目已存在而不更新；
+ * - 改模板/元件内容必须升 `TEMPLATE_VERSION`，否则 merge 认为条目已存在而不更新；
  * - `created` 固定，避免每次启动时间戳变化导致排序抖动。
  */
 import { convertToExcalidrawElements, mergeLibraryItems } from "@excalidraw/excalidraw";
+import { CATALOG, type CatalogEntry } from "./catalog";
 import { PALETTE, type Theme } from "./spec";
-import { TEMPLATES, type Template } from "./templates";
 
 export type LibraryItems = Parameters<typeof mergeLibraryItems>[0];
 export type LibraryItem = LibraryItems[number];
 
-/** 模板内容版本：内容变更时 +1，配合 pruneStale 清理旧副本 */
-export const TEMPLATE_VERSION = 1;
+/** 模板/元件内容版本：内容变更时 +1，配合 pruneStale 清理旧副本 */
+export const TEMPLATE_VERSION = 4;
 
 /** 自播种条目的 id 前缀，用于区分用户自建条目 */
 export const SEED_PREFIX = "sakura.";
 
 const versionTag = (theme: Theme) => `@${TEMPLATE_VERSION}-${theme}`;
+
+/** 带版本与主题的完整 library item id */
+export const seedItemId = (entry: CatalogEntry, theme: Theme = "light") =>
+  `${entry.id}${versionTag(theme)}`;
 
 /** FNV-1a：把 id 变成稳定的 32 位正整数（替代 randomInteger） */
 function stableHash(key: string): number {
@@ -32,8 +36,8 @@ function stableHash(key: string): number {
 }
 
 /** skeleton → 原生元素，并把随机 seed / versionNonce 归一化成确定性值 */
-export function buildTemplate(template: Template, theme: Theme) {
-  const elements = convertToExcalidrawElements(template.build(PALETTE[theme]), {
+export function buildCatalogEntry(entry: CatalogEntry, theme: Theme) {
+  const elements = convertToExcalidrawElements(entry.build(PALETTE[theme]), {
     regenerateIds: false,
   });
   return elements.map((el) => ({
@@ -44,11 +48,11 @@ export function buildTemplate(template: Template, theme: Theme) {
 }
 
 export function makeLibraryItems(theme: Theme = "light"): LibraryItem[] {
-  return TEMPLATES.map((template) => ({
-    id: `${SEED_PREFIX}${template.cat}.${template.slug}${versionTag(theme)}`,
+  return CATALOG.map((entry) => ({
+    id: seedItemId(entry, theme),
     status: "published" as const,
     created: 0,
-    elements: buildTemplate(template, theme),
+    elements: buildCatalogEntry(entry, theme),
   }));
 }
 
@@ -60,7 +64,7 @@ export function pruneStale(items: LibraryItems): LibraryItems {
   );
 }
 
-/** 升级后合并当前版本模板：只补回缺失项，不会复活用户主动删掉的条目 */
+/** 版本升级时补齐当前版本条目（旧版存过一次的板子会把删掉的模板再回填一次） */
 export function withDefaults(items: LibraryItems, theme: Theme = "light"): LibraryItems {
   return mergeLibraryItems(pruneStale(items), makeLibraryItems(theme));
 }

@@ -64,11 +64,14 @@ export function micro(p: Palette): Skeleton[] {
     return id;
   });
 
-  // 圆柱体：柱身 + 上下椭圆 + 名称
-  const dbBody = d.box(410, 159, 76, 78, { fill: "head" });
-  d.ellipse(410, 150, 76, 18, { fill: "head" });
-  d.ellipse(410, 228, 76, 18, { fill: "head" });
-  d.text(448, 260, "订单库", { size: 10.5, color: "muted" });
+  // 圆柱体：柱身 + 上下椭圆 + 名称（一个逻辑单元）
+  const dbBody = d.unit(() => {
+    const body = d.box(410, 159, 76, 78, { fill: "head" });
+    d.ellipse(410, 150, 76, 18, { fill: "head" });
+    d.ellipse(410, 228, 76, 18, { fill: "head" });
+    d.text(448, 260, "订单库", { size: 10.5, color: "muted" });
+    return body;
+  });
 
   d.arrow([[390, 204], [410, 204]], { start: svcIds[2], end: dbBody });
 

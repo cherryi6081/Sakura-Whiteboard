@@ -5,8 +5,8 @@
  * 否则素材库只是内存态（刷新即清空）。
  *
  * 播种语义：
- * - 首次 load 返回首批 13 条浅色模板；Excalidraw 会把它当作「已保存」基线，
- *   用户删掉的条目不会被刷新回填；
+ * - 首次 load 返回当前版本的整套浅色条目（13 条模板 + 83 个元件）；Excalidraw
+ *   会把它当作「已保存」基线，用户删掉的条目不会被刷新回填；
  * - 只有检测到旧版本种子条目（模板升级）时才合并当前版本默认项；
  * - save 前清掉旧版本种子条目，避免升级后堆叠同名副本。
  */
@@ -15,6 +15,25 @@ import { makeLibraryItems, pruneStale, TEMPLATE_VERSION, withDefaults, type Libr
 const STORAGE_KEY = "sakura.library.v2";
 
 type Persisted = { libraryItems: LibraryItems };
+
+type Listener = (items: LibraryItems) => void;
+
+const listeners = new Set<Listener>();
+
+/** 最近一次 load/save 的完整列表：「恢复默认模板」需要据此保留用户自建条目 */
+let lastKnown: LibraryItems = [];
+
+export function getKnownLibraryItems(): LibraryItems {
+  return lastKnown;
+}
+
+/** 自建面板订阅素材库变化（用户新增/删除条目后刷新「我的素材」） */
+export function subscribeLibrary(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 function readStored(): LibraryItems | null {
   try {
@@ -31,16 +50,25 @@ function readStored(): LibraryItems | null {
 export const libraryAdapter = {
   async load(): Promise<Persisted | null> {
     const stored = readStored();
-    if (!stored) return { libraryItems: makeLibraryItems("light") };
+    if (!stored) {
+      const items = makeLibraryItems("light");
+      lastKnown = items;
+      return { libraryItems: items };
+    }
 
     // 只有存在旧版本种子条目（模板升级）时才补当前版本，避免复活用户删掉的条目
     const hasStale = stored.some(
       (item) => item.id.startsWith("sakura.") && !item.id.includes(`@${TEMPLATE_VERSION}-`),
     );
-    return { libraryItems: hasStale ? withDefaults(stored, "light") : stored };
+    const items = hasStale ? withDefaults(stored, "light") : stored;
+    lastKnown = items;
+    return { libraryItems: items };
   },
 
   async save({ libraryItems }: Persisted): Promise<void> {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pruneStale(libraryItems)));
+    const pruned = pruneStale(libraryItems);
+    lastKnown = pruned;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+    listeners.forEach((fn) => fn(pruned));
   },
 };

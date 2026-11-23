@@ -45,7 +45,20 @@ export type LineOpts = {
   sw?: number;
 };
 
-export type ArrowHead = "arrow" | "triangle" | "triangle_outline" | "diamond" | "diamond_outline";
+/** Excalidraw 0.18 支持的箭头形态（空心三角 / 实心三角 / 菱形 / 开口箭头 / 鸦爪） */
+export type ArrowHead =
+  | "arrow"
+  | "triangle"
+  | "triangle_outline"
+  | "diamond"
+  | "diamond_outline"
+  | "bar"
+  | "dot"
+  | "circle"
+  | "circle_outline"
+  | "crowfoot_one"
+  | "crowfoot_many"
+  | "crowfoot_one_or_many";
 
 export type ArrowOpts = LineOpts & {
   head?: ArrowHead;
@@ -68,15 +81,14 @@ function measureLine(line: string, size: number, font: FontKey): number {
 export class Pen {
   readonly els: Skeleton[] = [];
   private seq = 0;
-  private readonly group: string;
+  /** 当前逻辑单元的分组 id；为 null 时元素不分组 */
+  private unitId: string | null = null;
+  private unitSeq = 0;
 
   constructor(
     readonly prefix: string,
     private readonly p: Palette,
-  ) {
-    // 一个模板一个组：插入后整组被选中，Ctrl+Shift+G 可解组
-    this.group = `${prefix}.g`;
-  }
+  ) {}
 
   private next(): string {
     this.seq += 1;
@@ -84,7 +96,23 @@ export class Pen {
   }
 
   private base(): Record<string, unknown> {
-    return { roughness: 1, groupIds: [this.group] };
+    return { roughness: 1, groupIds: this.unitId ? [this.unitId] : [] };
+  }
+
+  /**
+   * 把一组基础元素合为一个「逻辑小块」（如一个类框、一个人形）。
+   * 注意：不要用它包住整张模板——Excalidraw 的框选会按组整体命中，
+   * 整模板分一组会导致用户无法多选内部元素。
+   */
+  unit<T>(fn: () => T): T {
+    const prev = this.unitId;
+    this.unitSeq += 1;
+    this.unitId = `${this.prefix}.u${this.unitSeq}`;
+    try {
+      return fn();
+    } finally {
+      this.unitId = prev;
+    }
   }
 
   private fill(key?: FillKey): string {
