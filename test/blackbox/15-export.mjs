@@ -5,7 +5,7 @@ import { registerGuest, registerUser } from "../lib/api.mjs";
 import { assert, eq, finish, sleep, test, until } from "../lib/harness.mjs";
 import { launchBrowser, newPage } from "../lib/browser.mjs";
 import { closePool, opsCount } from "../lib/db.mjs";
-import { WEB } from "../lib/config.mjs";
+import { WEB, API } from "../lib/config.mjs";
 
 const spec = "export";
 
@@ -75,6 +75,17 @@ async function exportFile(page, format) {
 async function noticeText(page) {
   await page.waitForSelector('[data-testid="image-notice"]', { timeout: 20_000 });
   return page.$eval('[data-testid="image-notice"]', (node) => node.textContent ?? "");
+}
+
+/** 造一个只含签名 + IHDR 的 PNG 头，用于服务端像素闸门/畸形头断言（不进入解码） */
+function pngHeader(width, height) {
+  const buf = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+  buf.writeUInt32BE(13, 8);
+  buf.write("IHDR", 12, "ascii");
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return buf;
 }
 
 /** 顶栏当前显示的板名：直接当文件名前缀，避免依赖本机最近打开记录 */
@@ -148,6 +159,108 @@ async function main() {
         assert(notice.includes("已导出 PDF"), `应提示导出成功：${notice}`);
       });
 
+      await test("PDF 导出上限：超 32MB 返回导出专属 413 文案", async () => {
+        const oversize = Buffer.alloc(32 * 1024 * 1024 + 1024);
+        oversize.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+        const res = await fetch(`${API}/api/boards/${boardId}/export/pdf?scale=2`, {
+          method: "POST",
+          headers: {
+            "content-type": "image/png",
+            "x-wb-export": "1",
+            cookie: owner.api.cookieHeader(),
+          },
+          body: oversize,
+        });
+        eq(res.status, 413, "超限状态码");
+        const json = await res.json();
+        eq(json.error?.code, "FILE_TOO_LARGE", "超限错误码");
+        assert(/导出文件过大/.test(json.error?.message ?? ""), `应为导出专属文案：${json.error?.message}`);
+      });
+
+      await test("PDF 像素闸门：24MP+1 行直接 413，畸形 PNG 头 400", async () => {
+        const request = (body) =>
+          fetch(`${API}/api/boards/${boardId}/export/pdf?scale=2`, {
+            method: "POST",
+            headers: { "content-type": "image/png", "x-wb-export": "1", cookie: owner.api.cookieHeader() },
+            body,
+          });
+
+        const over = await request(pngHeader(5000, 4801));
+        eq(over.status, 413, "超过 24MP 的状态码");
+        const overJson = await over.json();
+        eq(overJson.error?.code, "PIXEL_LIMIT_EXCEEDED", "像素超限错误码");
+        assert(/24MP/.test(overJson.error?.message ?? ""), `应说明上限：${overJson.error?.message}`);
+        assert(/1 倍/.test(overJson.error?.message ?? ""), `应建议 1 倍：${overJson.error?.message}`);
+
+        const broken = await request(pngHeader(5000, 4800).subarray(0, 16));
+        eq(broken.status, 400, "截断 PNG 头应回 400");
+        const brokenJson = await broken.json();
+        eq(brokenJson.error?.code, "INVALID_INPUT", "畸形 PNG 头错误码");
+      });
+
+      await test("PDF 像素超限：前端给出可操作提示，可改用 1 倍或取消", async () => {
+        const limitDir = await enableDownloads(page);
+        let retryScale = null;
+        const onRequest = (req) => {
+          if (!req.url().includes("/export/pdf")) {
+            void req.continue();
+            return;
+          }
+          const scale = new URL(req.url()).searchParams.get("scale");
+          if (scale === "1") {
+            retryScale = scale;
+            void req.respond({
+              status: 200,
+              headers: { "content-type": "application/pdf" },
+              body: Buffer.from("%PDF-1.4\n% pixel gate retry\n"),
+            });
+            return;
+          }
+          void req.respond({
+            status: 413,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              error: {
+                code: "PIXEL_LIMIT_EXCEEDED",
+                message: "导出画布像素超限：当前 25MP，上限 24MP；请降低导出倍率（建议改用 1 倍导出）",
+              },
+            }),
+          });
+        };
+        await page.setRequestInterception(true);
+        page.on("request", onRequest);
+        try {
+          await exportFile(page, "pdf");
+          await page.waitForSelector('[data-testid="export-pixel-limit"]', { timeout: 20_000 });
+          const copy = await page.$eval('[data-testid="export-pixel-limit"]', (node) => node.textContent ?? "");
+          assert(/超出导出上限/.test(copy), `提示应说明像素超限：${copy}`);
+          assert(/24MP/.test(copy) && /1 倍/.test(copy), `提示应含上限与建议：${copy}`);
+
+          // 取消：提示消失且不触发第二次请求
+          await page.click('[data-testid="export-pixel-limit-cancel"]');
+          await page.waitForFunction(
+            () => !document.querySelector('[data-testid="export-pixel-limit"]'),
+            { timeout: 10_000 },
+          );
+
+          // 再次导出 → 点「改用 1 倍导出」→ 请求带 scale=1，成功后提示卡片消失
+          await exportFile(page, "pdf");
+          await page.waitForSelector('[data-testid="export-pixel-limit"]', { timeout: 20_000 });
+          await page.click('[data-testid="export-pixel-limit-retry"]');
+          await until(async () => retryScale === "1", { label: "1 倍重试请求", timeout: 20_000 });
+          const pdf = await waitDownload(limitDir, ".pdf", { timeout: 30_000 });
+          eq(fs.readFileSync(pdf.file).subarray(0, 5).toString("ascii"), "%PDF-", "1 倍重试应拿到 PDF");
+          await page.waitForFunction(
+            () => !document.querySelector('[data-testid="export-pixel-limit"]'),
+            { timeout: 10_000 },
+          );
+        } finally {
+          page.off("request", onRequest);
+          await page.setRequestInterception(false);
+          fs.rmSync(limitDir, { recursive: true, force: true });
+        }
+      });
+
       await test("透明背景：SVG 不再铺白底，PNG 仍可下载", async () => {
         // 独立下载目录，避免命中前面白底 SVG 的旧文件
         const transparentDir = await enableDownloads(page);
@@ -197,11 +310,10 @@ async function main() {
           const file = await waitDownload(readonlyDir, ".png");
           assert(file.size > 0, "只读导出应生成文件");
 
-          // PDF 走服务端接口、仅所有者可用：只读成员应看到禁用项
-          await reader.page.click('[data-testid="export-open"]');
-          await reader.page.waitForSelector('[data-testid="export-pdf"]', { timeout: 10_000 });
-          const pdfDisabled = await reader.page.$eval('[data-testid="export-pdf"]', (node) => node.disabled);
-          assert(pdfDisabled, "只读成员不应能导出 PDF");
+          // PDF 走服务端接口：只读成员同样有读权限，应能正常拿到 PDF
+          await exportFile(reader.page, "pdf");
+          const pdf = await waitDownload(readonlyDir, ".pdf", { timeout: 40_000 });
+          eq(fs.readFileSync(pdf.file).subarray(0, 5).toString("ascii"), "%PDF-", "只读成员 PDF 魔数");
         } finally {
           fs.rmSync(readonlyDir, { recursive: true, force: true });
           await reader.context.close();
@@ -239,6 +351,11 @@ async function main() {
         await exportFile(pageInfo.page, "svg");
         const file = await waitDownload(guestDir, ".svg");
         assert(file.size > 0, "游客导出应生成文件");
+
+        // 游客的 firstBoard 就是公共临时板（pub_temp_001）：PDF 也应可用
+        await exportFile(pageInfo.page, "pdf");
+        const pdf = await waitDownload(guestDir, ".pdf", { timeout: 40_000 });
+        eq(fs.readFileSync(pdf.file).subarray(0, 5).toString("ascii"), "%PDF-", "游客公共板 PDF 魔数");
       } finally {
         fs.rmSync(guestDir, { recursive: true, force: true });
         await pageInfo.context.close();

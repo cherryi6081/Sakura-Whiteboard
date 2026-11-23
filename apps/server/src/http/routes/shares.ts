@@ -1,13 +1,19 @@
 import express, { Router } from 'express';
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../../infra/db.js';
 import { AppError } from '../middlewares/error.js';
 import { boardIdSchema } from '../../domain/opPage.js';
 import { identityOf } from '../../auth/identity.js';
 import { resolveBoardAccess } from '../../domain/access.js';
-import { detectImage } from '../../domain/imageFile.js';
-import { buildPdfFromPng, clampPdfScale } from '../../domain/pdfExport.js';
+import { buildPdfFromPng, clampPdfScale, isPngSignature, readPngPixelSizeOf, PDF_EXPORT_MAX_PIXELS } from '../../domain/pdfExport.js';
+import { shareTokenOf } from './assets.js';
+import {
+  clientIp,
+  pdfExportIdentityRule,
+  pdfExportIpRule,
+  rateLimitConsumeAll,
+} from '../middlewares/rateLimit.js';
 import {
   generateShareToken,
   hashShareToken,
@@ -214,11 +220,44 @@ sharesRouter.delete(
  *
  * 客户端已经产出整张画布 + 16px 留白的 PNG（描边/字体/图片都按浏览器渲染结果），
  * 这里只做 PNG → 单页 PDF 的封装，因此不需要 Chromium 之类的浏览器二进制。
- * 与分享链接管理同一权限口径：仅所有者可调用（requireOwner）。
+ *
+ * 权限：**能读这块板就能导出**。直接复用 `resolveBoardAccess`（含分享 token 头路径），
+ * 所有者 / 编辑者 / 只读成员 / 持 read token 的匿名访客 / 公共临时板全部放行；
+ * 无权访问者仍按 404 拒绝，不暴露板是否存在。
+ *
+ * 防滥用：按「用户（游客按浏览器身份）+ IP」双闸门限流，阈值对齐实时通道 join
+ * （5 次/分钟/身份、20 次/分钟/IP）；超限回 429 + Retry-After，不静默失败。
+ *
+ * 体积：仅本路由放宽到 32MB（大画布 2x 渲染的 PNG 会顶到统一 5MB 线），
+ * 图片资产 / 头像 / 缩略图仍走 `LIMITS.assetMaxBytes`，没有全局改口径。
  * ------------------------------------------------------------------------------------ */
 
 const PDF_EXPORT_MAX_BYTES = 32 * 1024 * 1024;
-const rawPdfPng = express.raw({ type: () => true, limit: PDF_EXPORT_MAX_BYTES, inflate: false });
+const PDF_EXPORT_MAX_MB = PDF_EXPORT_MAX_BYTES / (1024 * 1024);
+
+/**
+ * `express.raw` 的超限错误发生在进入业务 handler 之前，会绕过 handle()，
+ * 这里包一层把它翻译成本路由专属的 413 文案，避免和图片上传共用一句泛化提示。
+ */
+const rawPdfPng: RequestHandler = (req, res, next) => {
+  express.raw({ type: () => true, limit: PDF_EXPORT_MAX_BYTES, inflate: false })(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if ((err as { type?: string }).type === 'entity.too.large') {
+      next(
+        new AppError(
+          413,
+          'FILE_TOO_LARGE',
+          `导出文件过大（上限 ${PDF_EXPORT_MAX_MB}MB），请降低导出倍率后重试`,
+        ),
+      );
+      return;
+    }
+    next(err);
+  });
+};
 
 const pdfExportQuerySchema = z.object({
   /** 客户端渲染 PNG 时的倍率；页面尺寸按它还原成逻辑尺寸 */
@@ -236,15 +275,47 @@ sharesRouter.post(
     if (req.get('x-wb-export') !== '1') {
       throw new AppError(403, 'FORBIDDEN', 'missing export intent header');
     }
-    await requireOwner(req, boardId, '导出 PDF');
+
+    // 身份维度用 userId / guestId 收敛，未识别身份时退化为 IP 键；所有尝试都计数
+    const identity = identityOf(req);
+    const ip = clientIp(req);
+    const identityKey = identity.userId
+      ? `user:${identity.userId}`
+      : identity.guestId
+        ? `guest:${identity.guestId}`
+        : `ip:${ip}`;
+    const wait = await rateLimitConsumeAll([pdfExportIdentityRule(identityKey), pdfExportIpRule(ip)]);
+    if (wait !== null) {
+      res.setHeader('Retry-After', String(wait));
+      throw new AppError(429, 'TOO_MANY_ATTEMPTS', `导出太频繁，请 ${wait} 秒后再试`);
+    }
+
+    // 读权限：分享 token 与登录/游客身份都走同一套解析
+    const access = await resolveBoardAccess(boardId, identity, shareTokenOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
 
     const bytes: unknown = req.body;
     if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
       throw new AppError(400, 'INVALID_INPUT', '请求体必须是非空 PNG 二进制');
     }
-    const detected = detectImage(bytes);
-    if (!detected || detected.mime !== 'image/png') {
+    if (!isPngSignature(bytes)) {
       throw new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'PDF 导出只接受 PNG');
+    }
+
+    // 像素闸门：只读 IHDR 宽高，在 pdf-lib 解码出整张 RGBA 之前拦截
+    const pixels = readPngPixelSizeOf(bytes);
+    if (!pixels) {
+      throw new AppError(400, 'INVALID_INPUT', 'PNG 头非法或已截断，无法读取画布尺寸');
+    }
+    const totalPixels = pixels.width * pixels.height;
+    if (totalPixels > PDF_EXPORT_MAX_PIXELS) {
+      // 保留 3 位小数并去掉尾零，避免 24.005MP 被四舍五入成「24.00MP」显得没超限
+      const actualMp = (totalPixels / 1_000_000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+      throw new AppError(
+        413,
+        'PIXEL_LIMIT_EXCEEDED',
+        `导出画布像素超限：当前 ${actualMp}MP，上限 ${PDF_EXPORT_MAX_PIXELS / 1_000_000}MP；请降低导出倍率（建议改用 1 倍导出）`,
+      );
     }
 
     let pdf: Uint8Array;
@@ -259,6 +330,7 @@ sharesRouter.post(
     // 每次导出都是即时产物，不缓存
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.status(200).send(Buffer.from(pdf));
+    // 零拷贝包装：pdf-lib 的 save() 已是 Uint8Array，避免为 32MB 级产物再复制一份 Buffer
+    res.status(200).send(Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength));
   }),
 );

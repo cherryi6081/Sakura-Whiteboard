@@ -88,6 +88,26 @@ export const verifyEmailIpRule = (ip: string): RateLimitRule => ({
   windowSeconds: 15 * 60,
 });
 
+/**
+ * PDF 导出（服务端封装 PNG）：按「身份 + IP」双闸门，与实时通道 join 同口径
+ * （socket 5 次/分钟、IP 20 次/分钟）。导出是重 CPU 操作，所有尝试都计数。
+ */
+export const PDF_EXPORT_IDENTITY_LIMIT = 5;
+export const PDF_EXPORT_IP_LIMIT = 20;
+export const PDF_EXPORT_WINDOW_SECONDS = 60;
+
+export const pdfExportIdentityRule = (identityKey: string): RateLimitRule => ({
+  key: `rl:export:pdf:identity:${identityKey}`,
+  limit: PDF_EXPORT_IDENTITY_LIMIT,
+  windowSeconds: PDF_EXPORT_WINDOW_SECONDS,
+});
+
+export const pdfExportIpRule = (ip: string): RateLimitRule => ({
+  key: `rl:export:pdf:ip:${ip}`,
+  limit: PDF_EXPORT_IP_LIMIT,
+  windowSeconds: PDF_EXPORT_WINDOW_SECONDS,
+});
+
 /** 直连部署（compose 暴露 8080）下 `req.ip` 即客户端地址；开发期经 Vite 代理会统一成回环地址。 */
 export function clientIp(req: Request): string {
   const raw = req.ip || req.socket.remoteAddress || 'unknown';

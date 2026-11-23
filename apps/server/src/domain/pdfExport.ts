@@ -16,6 +16,36 @@ const MAX_PAGE_PT = 14400;
 export const PDF_SCALE_MIN = 1;
 export const PDF_SCALE_MAX = 4;
 
+/**
+ * 单张导出 PNG 的像素上限（2400 万）。
+ * pdf-lib 解码 PNG 时会先解出整张 RGBA 再拆通道，峰值与像素数成正比（实测约 12–16MiB/MP），
+ * 因此必须在交给 pdf-lib 之前按 IHDR 宽高拦截；24MP 约对应 2 倍导出下 6000×4000 的逻辑画布。
+ */
+export const PDF_EXPORT_MAX_PIXELS = 24_000_000;
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** 只认 PNG 签名，不做完整解码 */
+export function isPngSignature(bytes: Uint8Array): boolean {
+  if (bytes.length < PNG_SIGNATURE.length) return false;
+  return PNG_SIGNATURE.every((value, index) => bytes[index] === value);
+}
+
+/**
+ * 从 PNG 的 IHDR 直接读宽高，**不进入解码**。
+ * 返回 null 表示头部非法 / 截断（签名对但 IHDR 缺失或长度为 0）。
+ */
+export function readPngPixelSizeOf(bytes: Uint8Array): { width: number; height: number } | null {
+  // 8B 签名 + 4B 长度 + 4B 'IHDR' + 4B 宽 + 4B 高
+  if (!isPngSignature(bytes) || bytes.length < 24) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(8) !== 13) return null;
+  if (String.fromCharCode(bytes[12]!, bytes[13]!, bytes[14]!, bytes[15]!) !== 'IHDR') return null;
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
 /** 导出倍率来自查询参数，越界或非法值一律收敛到合法区间 */
 export function clampPdfScale(scale: number): number {
   if (!Number.isFinite(scale)) return PDF_SCALE_MIN;

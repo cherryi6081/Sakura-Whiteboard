@@ -1,6 +1,15 @@
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { buildPdfFromPng, clampPdfScale, pdfPageSizeOf, PDF_SCALE_MAX, PDF_SCALE_MIN } from './pdfExport.js';
+import {
+  buildPdfFromPng,
+  clampPdfScale,
+  isPngSignature,
+  pdfPageSizeOf,
+  readPngPixelSizeOf,
+  PDF_EXPORT_MAX_PIXELS,
+  PDF_SCALE_MAX,
+  PDF_SCALE_MIN,
+} from './pdfExport.js';
 
 /** 真实可解析的 1×1 PNG（pdf-lib 需要完整 chunk，不能只造文件头） */
 const PNG_1X1 = Buffer.from(
@@ -27,6 +36,39 @@ describe('pdfPageSizeOf', () => {
     const size = pdfPageSizeOf(100_000, 10_000, 1);
     expect(size.width).toBeCloseTo(14400, 5);
     expect(size.height).toBeCloseTo(1440, 5);
+  });
+});
+
+describe('readPngPixelSizeOf', () => {
+  function pngHeader(width: number, height: number, ihdrLength = 13): Buffer {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(ihdrLength, 8);
+    buf.write('IHDR', 12, 'ascii');
+    buf.writeUInt32BE(width, 16);
+    buf.writeUInt32BE(height, 20);
+    return buf;
+  }
+
+  it('只读 IHDR 宽高，不解码像素数据', () => {
+    expect(readPngPixelSizeOf(pngHeader(5000, 4800))).toEqual({ width: 5000, height: 4800 });
+  });
+
+  it('恰好 24MP 等于上限，24MP+1 行超限', () => {
+    const exact = readPngPixelSizeOf(pngHeader(5000, 4800))!;
+    expect(exact.width * exact.height).toBe(PDF_EXPORT_MAX_PIXELS);
+    const over = readPngPixelSizeOf(pngHeader(5000, 4801))!;
+    expect(over.width * over.height).toBeGreaterThan(PDF_EXPORT_MAX_PIXELS);
+  });
+
+  it('截断 / IHDR 非法 / 宽高为 0 返回 null', () => {
+    expect(readPngPixelSizeOf(pngHeader(5000, 4800).subarray(0, 20))).toBeNull();
+    expect(readPngPixelSizeOf(pngHeader(5000, 4800, 0))).toBeNull();
+    expect(readPngPixelSizeOf(pngHeader(0, 4800))).toBeNull();
+    const notPng = pngHeader(5000, 4800);
+    notPng[0] = 0xff;
+    expect(readPngPixelSizeOf(notPng)).toBeNull();
+    expect(isPngSignature(notPng)).toBe(false);
   });
 });
 

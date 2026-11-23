@@ -19,7 +19,7 @@ import {
  * - 范围：整张画布（内容包围盒），不是可视区域；
  * - 背景：默认白底；透明背景为可选项（PNG / SVG），不替换默认行为；
  * - 游客与只读成员同样可导出 PNG / SVG（纯客户端行为）；
- * - PDF 由客户端出 PNG、服务端封装（`POST /api/boards/:id/export/pdf`，仅所有者）；
+ * - PDF 由客户端出 PNG、服务端封装（`POST /api/boards/:id/export/pdf`），有读权限即可用；
  * - 库自带的 Export / SaveAsImage 菜单项已隐藏，统一从这个入口走。
  *
  * 文件名与取景等纯逻辑在 `exportPlan.ts`（可单测），这里只负责跑导出与下载。
@@ -34,12 +34,30 @@ export type ExportOptions = {
   background?: ExportBackground;
   /** PDF 必填：服务端导出接口按板校验权限 */
   boardId?: string;
+  /** 覆盖 PDF 的栅格倍率（像素超限时前端引导改用 1 倍） */
+  pdfScale?: number;
 };
 
 export type ExportOutcome =
   | { status: "ok"; fileName: string; /** 仍缺字节、导出可能少图的图片数 */ missingImages: number }
   | { status: "empty" }
+  /** 服务端导出限流（429）：带上 Retry-After，UI 给出明确等待时间 */
+  | { status: "rate_limited"; retryAfterSeconds: number }
+  /** 服务端像素闸门（413 PIXEL_LIMIT_EXCEEDED）：提示改用 1 倍导出 */
+  | { status: "pixel_limit"; message: string }
   | { status: "failed" };
+
+/** 服务端 PDF 接口的非 2xx 响应；429 / 像素超限单独识别用于提示 */
+class PdfExportRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly retryAfterSeconds: number | null,
+    readonly code: string | null = null,
+    readonly serverMessage: string | null = null,
+  ) {
+    super(`pdf export failed: HTTP ${status}`);
+  }
+}
 
 /**
  * 导出前补齐图片字节：远端图片可能是「元素先到、字节后到」，
@@ -85,9 +103,10 @@ async function requestPdfBlob(params: {
   appState: Record<string, any>;
   boardId: string;
   shareToken?: string | null;
+  scaleOverride?: number;
 }): Promise<Blob> {
   const configured = Number(params.appState.exportScale);
-  const scale = Math.min(3, Math.max(PDF_RASTER_SCALE, Number.isFinite(configured) ? configured : 1));
+  const scale = params.scaleOverride ?? Math.min(3, Math.max(PDF_RASTER_SCALE, Number.isFinite(configured) ? configured : 1));
 
   const raster = await exportToBlob({
     elements: params.elements as never,
@@ -111,7 +130,24 @@ async function requestPdfBlob(params: {
       credentials: "include",
     },
   );
-  if (!response.ok) throw new Error(`pdf export failed: HTTP ${response.status}`);
+  if (!response.ok) {
+    const retryAfter = Number(response.headers.get("retry-after"));
+    let code: string | null = null;
+    let serverMessage: string | null = null;
+    try {
+      const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+      code = payload.error?.code ?? null;
+      serverMessage = payload.error?.message ?? null;
+    } catch {
+      // 非 JSON 错误体（网关等）：按状态码处理即可
+    }
+    throw new PdfExportRequestError(
+      response.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+      code,
+      serverMessage,
+    );
+  }
   return response.blob();
 }
 
@@ -162,11 +198,23 @@ export async function exportBoard(
         appState,
         boardId: options.boardId,
         shareToken: options.shareToken,
+        scaleOverride: options.pdfScale,
       });
       downloadBlob(pdfBlob, fileName);
     }
     return { status: "ok", fileName, missingImages };
   } catch (err) {
+    if (err instanceof PdfExportRequestError) {
+      if (err.status === 429) {
+        return { status: "rate_limited", retryAfterSeconds: err.retryAfterSeconds ?? 60 };
+      }
+      if (err.code === "PIXEL_LIMIT_EXCEEDED") {
+        return {
+          status: "pixel_limit",
+          message: err.serverMessage ?? "画布像素超出导出上限，请降低导出倍率（建议改用 1 倍导出）",
+        };
+      }
+    }
     console.warn("[board] 导出失败", err);
     return { status: "failed" };
   }
