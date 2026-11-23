@@ -1,6 +1,6 @@
 import { exportToSvg, getCommonBounds } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { readAllBoardThumbs, readBoardThumb, writeBoardThumb } from "../store/cacheDb";
+import { deleteBoardThumb, readAllBoardThumbs, readBoardThumb, writeBoardThumb } from "../store/cacheDb";
 import {
   THUMB_MAX_EDGE,
   THUMB_MIME,
@@ -134,7 +134,14 @@ async function captureBoardThumbNow(
   try {
     const elements = api.getSceneElements();
     const signature = thumbSignature(elements);
-    if (!signature) return;
+    if (!signature) {
+      // 画面已清空：删掉内存与本地持久化副本，卡片退回线稿占位。
+      // 不删的话列表会一直展示"清空前"的老图（空板指纹为空，后面的拍摄都会被跳过）。
+      thumbMemory.delete(frameKey);
+      const stale = await readBoardThumb(owner, boardId).catch(() => null);
+      if (stale) await deleteBoardThumb(owner, boardId).catch(() => undefined);
+      return;
+    }
 
     const previous = await readBoardThumb(owner, boardId).catch(() => null);
     if (!shouldCapture(previous, signature)) return;

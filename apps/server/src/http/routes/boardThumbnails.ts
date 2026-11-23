@@ -82,6 +82,40 @@ boardThumbnailsRouter.put(
   }),
 );
 
+/**
+ * 画面被清空后删除服务端副本。
+ *
+ * 只改 `boards.thumbnail_url` 不够：列表页优先用服务端 URL，而不透明对象里的旧字节
+ * 仍会通过历史 URL 展示出来。这里同时删对象并置空列，卡片退回本机副本/线稿占位。
+ * 幂等：对象本来就不存在也返回 204。
+ */
+boardThumbnailsRouter.delete(
+  '/boards/:id/thumbnail',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const identity = identityOf(req);
+    if (req.get('x-wb-upload') !== '1') {
+      throw new AppError(403, 'FORBIDDEN', 'missing upload intent header');
+    }
+    if (!identity.userId) {
+      throw new AppError(401, 'UNAUTHENTICATED', '缩略图操作需要登录');
+    }
+    const access = await resolveBoardAccess(boardId, identity, shareTokenOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    if (access.role === 'viewer') {
+      throw new AppError(403, 'FORBIDDEN', '只有对该白板有编辑权的用户可以删除缩略图');
+    }
+    try {
+      await storage.delete(storageKeyOf(boardId));
+    } catch (err) {
+      const message = err instanceof StorageError ? '图片存储服务不可用，请稍后重试' : '缩略图删除失败';
+      throw new AppError(503, 'STORAGE_UNAVAILABLE', message);
+    }
+    await pool.query('update boards set thumbnail_url = null where id = $1', [boardId]);
+    res.status(204).end();
+  }),
+);
+
 boardThumbnailsRouter.get(
   '/boards/:id/thumbnail',
   handle(async (req, res) => {

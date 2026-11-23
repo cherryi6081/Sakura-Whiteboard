@@ -699,6 +699,30 @@ type ElementRow = {
   data: Record<string, unknown>;
 };
 
+/**
+ * `GET /api/boards/:id/watermark` —— 开板前的轻量水位校验。
+ *
+ * 只读 `boards.last_seq` 与最新快照 seq 两列（不读元素表、不解析快照 state），
+ * 让客户端在画首帧之前就能判断本地缓存是否已经落后。
+ */
+boardsRouter.get(
+  '/boards/:id/watermark',
+  handle(async (req, res) => {
+    const boardId = boardIdSchema.parse(req.params.id);
+    const access = await resolveBoardAccess(boardId, identityOf(req), shareTokenOf(req));
+    if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
+    const { rows } = await pool.query<{ seq: string }>(
+      'select coalesce(max(seq), 0) as seq from board_snapshots where board_id = $1',
+      [boardId],
+    );
+    res.json({
+      boardId,
+      lastSeq: access.board.last_seq,
+      snapshotSeq: Number(rows[0]?.seq ?? 0),
+    });
+  }),
+);
+
 /** `GET /api/boards/:id/snapshot` —— 整板重载（gap 过大或补拉失败时回退）。 */
 boardsRouter.get(
   '/boards/:id/snapshot',
@@ -708,10 +732,12 @@ boardsRouter.get(
     if (!access.ok) throw new AppError(404, 'NOT_FOUND', 'board not found');
     const board = access.board;
 
-    // 先读快照：快照的 seq 可能落后于 last_seq，客户端会按 seq 补拉差额；
-    // 没有快照（新板/未到阈值）才回退到现算。
+    // 只返回“与 last_seq 同步”的快照：快照按每 100 条 op 落一次，清空这类批量 delete
+    // 会让快照停在清空前（seq 落后、state 仍是旧元素）。若把旧快照当首帧发出去，
+    // 客户端会先画出已被删除的内容、再补拉 delete op 抹掉，表现为“闪一下”。
+    // 因此快照落后时直接按元素表现算（与无快照时的回退路径同源，返回 seq = last_seq）。
     const snapshot = await latestSnapshot(boardId);
-    if (snapshot) {
+    if (snapshot && snapshot.seq >= board.last_seq) {
       res.json({ boardId, seq: snapshot.seq, elements: snapshot.elements });
       return;
     }

@@ -1139,6 +1139,9 @@ export function BoardsPage() {
       return;
     }
     setPublicResetOpen(false);
+    // 本地也要立刻反映为空：删掉这块板的缓存场景/队列/缩略图。
+    // 否则本机缓存里尚未同步或旧的场景会在再次打开时顶掉服务端的空快照。
+    await clearBoardCache(PUBLIC_BOARD_ID);
     setThumbEpoch((epoch) => epoch + 1);
     setToast(result.data.cleared > 0 ? `已清空 ${result.data.cleared} 个元素` : "这本来就是一块空板");
   };

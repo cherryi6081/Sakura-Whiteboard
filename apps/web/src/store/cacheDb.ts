@@ -230,6 +230,14 @@ export async function writeBoardThumb(input: {
   await done(tx);
 }
 
+/** 删除一块板的本地缩略图（画面清空时用：卡片退回线稿占位，不再展示旧图）。 */
+export async function deleteBoardThumb(owner: string, boardId: string): Promise<void> {
+  const db = await openCacheDb();
+  const tx = db.transaction(CACHE_STORES.thumbs, 'readwrite');
+  tx.objectStore(CACHE_STORES.thumbs).delete([owner, boardId]);
+  await done(tx);
+}
+
 /**
  * 游客板转入账号后，把缩略图从 `owner` 键搬到新身份下。
  * 主键是 `[owner, boardId]`：同一事务内 put 新键 + delete 旧键，卡片不会突然退回线稿。

@@ -5,6 +5,7 @@ import { pool } from '../infra/db.js';
 import { getBoardLastSeq, persistOps } from '../realtime/opStore.js';
 import { allocateSeqRange } from '../realtime/seq.js';
 import { broadcastToBoard } from '../realtime/boardBroadcast.js';
+import { takeSnapshot } from './boardSnapshots.js';
 
 /**
  * 公共临时板（所有未登录访客共用一块）。
@@ -65,7 +66,11 @@ export async function resetPublicBoard(): Promise<{ cleared: number }> {
         order by element_id`,
       [PUBLIC_BOARD_ID],
     );
-    if (rows.length === 0) return { cleared: 0 };
+    if (rows.length === 0) {
+      // 已经是空板也要把快照刷新到最新：旧快照可能还留着清空前的元素
+      await takeSnapshot(PUBLIC_BOARD_ID).catch(() => null);
+      return { cleared: 0 };
+    }
 
     let cleared = 0;
     for (let start = 0; start < rows.length; start += RESET_CHUNK) {
@@ -112,6 +117,10 @@ export async function resetPublicBoard(): Promise<{ cleared: number }> {
     }
 
     await client.query('update boards set last_edited_at = now() where id = $1', [PUBLIC_BOARD_ID]);
+    // 清空后立刻落一份空快照：否则最新快照仍停在清空前（内容 + 旧 seq），
+    // 新浏览器/新账号打开时会先画出旧元素再补拉 delete op（闪一下）。
+    // 快照失败不影响清空本身（读路径会按元素表现算）。
+    await takeSnapshot(PUBLIC_BOARD_ID).catch(() => null);
     return { cleared };
   } finally {
     await client

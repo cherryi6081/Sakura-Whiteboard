@@ -234,6 +234,25 @@ export async function uploadBoardThumbnail(boardId: string, blob: Blob): Promise
   }
 }
 
+/**
+ * 画面清空后删除服务端缩略图（fire-and-forget）。
+ *
+ * 列表页优先展示 `thumbnailUrl`；清空后如果只删本机副本，服务端那张"清空前"的图
+ * 仍会被列表拉回来。`keepalive` 保证「返回」触发的整页导航不打断请求。
+ */
+export async function removeBoardThumbnail(boardId: string): Promise<void> {
+  try {
+    await fetch(`/api/boards/${encodeURIComponent(boardId)}/thumbnail`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "x-wb-upload": "1" },
+      keepalive: true,
+    });
+  } catch {
+    /* 删除失败保留旧图，不影响画布 */
+  }
+}
+
 /** 重命名（owner / editor）；服务端不改 `last_edited_at`。 */export function renameBoard(boardId: string, title: string): Promise<ApiResult<{ id: string; title: string }>> {
   return request<{ id: string; title: string }>(`/api/boards/${encodeURIComponent(boardId)}`, {
     method: "PATCH",
