@@ -353,6 +353,10 @@
   --surface-raised-hover: #232d45;
   --surface-sunken: #0e1422;
   --line-soft: #2b3552;
+  /* 画布外壳（.wb-board__canvas）的底色：白天是白纸，夜间必须跟随页面深底。
+     它只是 Excalidraw 白画布与右侧 272 列四周露出的背景；不覆盖的话，
+     属性面板/素材库上下各 16px 的内缩会露出白条。 */
+  --canvas-bg: var(--surface-page);
   /* 控件边界（按钮/输入/胶囊）在深纸面上要够 3:1：旧的 #4e5b84 对
      --surface-raised 只有 2.32，和白天 --control-border 的 3.12 不对等。
      用 ink-faint 与深纸面按 62/38 混出 ≈3.1:1，不新增色相。 */
