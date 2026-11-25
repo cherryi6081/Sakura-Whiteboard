@@ -255,26 +255,60 @@ export function BoardCanvas({ initialElements, viewModeEnabled, shareToken, onAp
   );
 
   /**
-   * Excalidraw 0.18.1 默认 iframe 渲染给嵌入卡片写死了 `scrolling="no"`，
-   * 浏览器据此禁止卡片内滚动。这里在 iframe 挂载后移除该属性，恢复默认的 auto；
-   * 只作用于 `.excalidraw__embeddable`，不碰画布 wheel/缩放和其它元素。
-   * （属性被移除后 React 不会重复写回：虚拟 DOM 里该 prop 始终是 "no"，不会产生 diff。）
+   * Excalidraw 0.18.1 默认 iframe 渲染有两个限制：
+   * 1. 写死了 `scrolling="no"`，浏览器据此禁止卡片内滚动；
+   * 2. 对非白名单站点不给 `allow-same-origin`，iframe 变成不透明源，
+   *    站点自身的 localStorage/sessionStorage/cookie 访问会抛 SecurityError，
+   *    不少 SPA 启动即崩溃成白卡片。
+   *
+   * 这里在 iframe 挂载后移除 scrolling，并对「跨源且 src 为 http(s)」的 iframe
+   * 补上 allow-same-origin。同源嵌入与 srcdoc（document 类型）保持原沙箱，
+   * 避免 allow-scripts + allow-same-origin 在同源场景下构成沙箱逃逸。
+   * 属性被改后 React 不会重复写回：虚拟 DOM 中的 props 未变化，不会产生 diff。
    */
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    const unlockScrolling = () => {
-      root
-        .querySelectorAll<HTMLIFrameElement>("iframe.excalidraw__embeddable[scrolling]")
-        .forEach((iframe) => iframe.removeAttribute("scrolling"));
+    const isCrossOriginHttpSrc = (src: string | null) => {
+      if (!src) return false;
+      try {
+        const url = new URL(src, window.location.href);
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+        return url.origin !== window.location.origin;
+      } catch {
+        return false;
+      }
     };
-    unlockScrolling();
-    const observer = new MutationObserver(unlockScrolling);
+    const relaxEmbedIframes = () => {
+      root.querySelectorAll<HTMLIFrameElement>("iframe.excalidraw__embeddable").forEach((iframe) => {
+        iframe.removeAttribute("scrolling");
+        const sandbox = iframe.getAttribute("sandbox");
+        const src = iframe.getAttribute("src");
+        if (!sandbox || sandbox.includes("allow-same-origin")) return;
+        if (!isCrossOriginHttpSrc(src) || !src) return;
+        iframe.setAttribute("sandbox", `${sandbox} allow-same-origin`);
+        // sandbox 变更只对下一次导航生效；首次文档仍是不透明源。
+        // 等首次 load 完成后再赋一次 src，确保第二次导航使用新沙箱；只重载一次。
+        if (iframe.dataset.embedSandboxRelaxed !== "1") {
+          iframe.dataset.embedSandboxRelaxed = "1";
+          iframe.addEventListener(
+            "load",
+            () => {
+              const currentSrc = iframe.getAttribute("src");
+              if (currentSrc) iframe.setAttribute("src", currentSrc);
+            },
+            { once: true },
+          );
+        }
+      });
+    };
+    relaxEmbedIframes();
+    const observer = new MutationObserver(relaxEmbedIframes);
     observer.observe(root, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["scrolling"],
+      attributeFilter: ["scrolling", "sandbox"],
     });
     return () => observer.disconnect();
   }, []);
